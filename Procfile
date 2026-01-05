@@ -1,1 +1,1 @@
-web: cd backend && alembic upgrade head && python run.py
+web: cd backend && python -m alembic upgrade head && python run.py
