@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: best_pr_postgres
+    environment:
+      POSTGRES_USER: best_pr_user
+      POSTGRES_PASSWORD: best_pr_password
+      POSTGRES_DB: best_pr_system
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U best_pr_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (опционально, для кэширования)
+  redis:
+    image: redis:7-alpine
+    container_name: best_pr_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: best_pr_backend
+    environment:
+      DATABASE_URL: postgresql://best_pr_user:best_pr_password@postgres:5432/best_pr_system
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: production
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: best_pr_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+  # Telegram Bot
+  bot:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.bot
+    container_name: best_pr_bot
+    environment:
+      DATABASE_URL: postgresql://best_pr_user:best_pr_password@postgres:5432/best_pr_system
+      API_URL: http://backend:8000
+    depends_on:
+      - postgres
+      - backend
+    volumes:
+      - ./backend:/app
+
+volumes:
+  postgres_data:
+  redis_data:
