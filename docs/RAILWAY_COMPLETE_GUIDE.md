@@ -29,12 +29,20 @@
 5. Перейдите во вкладку **"Variables"**
 6. Скопируйте значение `DATABASE_URL`
 
-**⚠️ ВАЖНО**: Замените `postgresql://` на `postgresql+asyncpg://` в начале URL
+**⚠️ ВАЖНО**: 
+1. Замените `postgresql://` на `postgresql+asyncpg://` в начале URL
+2. **Убедитесь, что в URL указан РЕАЛЬНЫЙ порт (обычно 5432), а не слово "port"!**
 
-**Пример:**
+**Пример ПРАВИЛЬНОГО URL:**
 ```
-Было:  postgresql://postgres:password@host:port/railway
-Стало: postgresql+asyncpg://postgres:password@host:port/railway
+postgresql+asyncpg://postgres:abc123@containers-us-west-123.railway.app:5432/railway
+```
+
+**Пример НЕПРАВИЛЬНОГО URL (вызовет ошибку):**
+```
+postgresql+asyncpg://postgres:password@host:port/railway
+                                                      ^^^^
+                                                      Здесь должно быть число (5432), а не слово "port"!
 ```
 
 ### Шаг 3: Создание SECRET_KEY
