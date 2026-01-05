@@ -1,13 +1,13 @@
 # 🚀 Как обновить код на Railway
 
 # 1. Перейдите в папку проекта
-cd "C:\Users\click\OneDrive\Рабочий стол\МГТУ\Python Projects\BESTMoscowBot\BEST Channel Bot"
+cd "C:\Users\click\OneDrive\Рабочий стол\МГТУ\Python Projects\BESTMoscowBot\BEST PR System"
 
 # 2. Добавьте изменения
 git add .
 
 # 3. Создайте коммит
-git commit -m "че происходит"
+git commit -m "Деплой 1"
 
 # 4. Отправьте в GitHub
 git push origin main

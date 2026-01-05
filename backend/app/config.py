@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")
     GOOGLE_DRIVE_FOLDER_ID: str = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
     
+    # Google Credentials (для ротации клиентов, как в существующем боте)
+    # Формат: JSON строка из credentials-1.json, credentials-2.json и т.д.
+    GOOGLE_CREDENTIALS_1_JSON: str = os.getenv("GOOGLE_CREDENTIALS_1_JSON", "")
+    GOOGLE_CREDENTIALS_2_JSON: str = os.getenv("GOOGLE_CREDENTIALS_2_JSON", "")
+    GOOGLE_CREDENTIALS_3_JSON: str = os.getenv("GOOGLE_CREDENTIALS_3_JSON", "")
+    GOOGLE_CREDENTIALS_4_JSON: str = os.getenv("GOOGLE_CREDENTIALS_4_JSON", "")
+    GOOGLE_CREDENTIALS_5_JSON: str = os.getenv("GOOGLE_CREDENTIALS_5_JSON", "")
+    
     # CORS
     CORS_ORIGINS: List[str] = [
         origin.strip()
