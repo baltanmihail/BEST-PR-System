@@ -30,10 +30,9 @@
 - **[START_HERE.md](./docs/START_HERE.md)** - Начните отсюда! 🎯
 - **[QUICK_START.md](./docs/QUICK_START.md)** - Быстрый старт
 - **[SETUP_INSTRUCTIONS.md](./docs/SETUP_INSTRUCTIONS.md)** - Подробная установка
-- **[POWERSHELL_COMMANDS.md](./docs/POWERSHELL_COMMANDS.md)** - Все команды PowerShell
 
 ### 📝 Git и деплой
-- **[RAILWAY_COMPLETE_GUIDE.md](./docs/RAILWAY_COMPLETE_GUIDE.md)** - ⭐ **Полное руководство по Railway** (всё в одном месте)
+- **[RAILWAY_COMPLETE_GUIDE.md](./docs/RAILWAY_COMPLETE_GUIDE.md)** - ⭐ **Полное руководство по Railway**
 - **[GIT_SETUP.md](./docs/GIT_SETUP.md)** - Настройка Git и GitHub
 - **[GIT_COMMIT_INFO.md](./docs/GIT_COMMIT_INFO.md)** - Информация для коммитов
 

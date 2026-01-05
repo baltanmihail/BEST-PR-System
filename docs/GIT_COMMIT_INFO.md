@@ -1,15 +1,16 @@
-# 🚀 Как обновить код на Railway
-
 # 1. Перейдите в папку проекта
-cd "C:\Users\click\OneDrive\Рабочий стол\МГТУ\Python Projects\BESTMoscowBot\BEST PR System"
+cd "BEST PR System"
 
-# 2. Добавьте изменения
+# 2. Проверьте, что изменения есть
+git status
+
+# 3. Добавьте все изменения
 git add .
 
-# 3. Создайте коммит
-git commit -m "Деплой 1"
+# 4. Создайте коммит
+git commit -m "chore: Consolidate Railway docs into single guide, remove duplicates"
 
-# 4. Отправьте в GitHub
+# 5. Отправьте в GitHub
 git push origin main
 
 # 📝 Информация для Git коммита
