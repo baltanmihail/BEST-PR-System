@@ -27,23 +27,41 @@
 3. Railway создаст базу данных автоматически
 4. Откройте созданную базу данных
 5. Перейдите во вкладку **"Variables"**
-6. Скопируйте значение `DATABASE_URL`
+6. Найдите переменную `DATABASE_URL`
+7. **ВАЖНО**: НЕ копируйте шаблон с `${{...}}`! Нужен реальный URL!
 
-**⚠️ ВАЖНО**: 
+**⚠️ КРИТИЧНО**: 
+- ❌ **НЕ используйте**: `postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}`
+- ✅ **Используйте**: Реальный URL, который Railway показывает в Variables (там будут реальные значения)
+
+**Как получить реальный URL:**
+
+**Вариант 1: Через Variables базы данных**
+1. В Variables базы данных найдите `DATABASE_URL`
+2. Railway показывает **два варианта**:
+   - Шаблон с `${{...}}` - **НЕ используйте этот!**
+   - Реальный URL с реальными значениями - **используйте этот!**
+3. Если видите только шаблон, используйте Вариант 2
+
+**Вариант 2: Через Connection Pooling (рекомендуется)**
+1. В Railway Dashboard откройте вашу базу данных
+2. Перейдите во вкладку **"Connect"** или **"Connection Info"**
+3. Там будет показан реальный URL с реальными значениями
+4. Скопируйте его
+
+**После получения реального URL:**
 1. Замените `postgresql://` на `postgresql+asyncpg://` в начале URL
-2. **Убедитесь, что в URL указан РЕАЛЬНЫЙ порт (обычно 5432), а не слово "port"!**
 
 **Пример ПРАВИЛЬНОГО URL:**
 ```
-postgresql+asyncpg://postgres:abc123@containers-us-west-123.railway.app:5432/railway
+postgresql+asyncpg://postgres:abc123def456@containers-us-west-123.railway.app:5432/railway
 ```
 
 **Пример НЕПРАВИЛЬНОГО URL (вызовет ошибку):**
 ```
-postgresql+asyncpg://postgres:password@host:port/railway
-                                                      ^^^^
-                                                      Здесь должно быть число (5432), а не слово "port"!
+postgresql://${{PGUSER}}:${{POSTGRES_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:5432/${{PGDATABASE}}
 ```
+Это шаблон, а не реальный URL!
 
 ### Шаг 3: Создание SECRET_KEY
 

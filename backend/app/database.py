@@ -27,13 +27,51 @@ elif db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg
     
     # Проверяем, что URL правильно сформирован
     # Формат: postgresql+asyncpg://user:password@host:port/database
-    if "@" not in db_url or ":" not in db_url.split("@")[1]:
-        raise ValueError(
-            f"Неправильный формат DATABASE_URL! "
-            f"Ожидается: postgresql+asyncpg://user:password@host:port/database\n"
-            f"Получено: {db_url[:50]}...\n"
-            f"Проверьте переменную DATABASE_URL в Railway Variables."
-        )
+    try:
+        # Парсим URL для проверки
+        if "@" not in db_url:
+            raise ValueError("DATABASE_URL должен содержать @ (user:password@host)")
+        
+        parts = db_url.split("@")
+        if len(parts) != 2:
+            raise ValueError("DATABASE_URL должен содержать ровно один @")
+        
+        host_part = parts[1]
+        if ":" not in host_part:
+            raise ValueError("DATABASE_URL должен содержать порт после хоста (host:port)")
+        
+        host_port = host_part.split("/")[0]  # host:port
+        if ":" not in host_port:
+            raise ValueError("DATABASE_URL должен содержать порт (host:port)")
+        
+        host, port = host_port.rsplit(":", 1)
+        
+        # Проверяем, что порт - это число, а не слово
+        try:
+            port_num = int(port)
+            if port_num < 1 or port_num > 65535:
+                raise ValueError(f"Порт должен быть от 1 до 65535, получено: {port_num}")
+        except ValueError as e:
+            if "invalid literal" in str(e) or port == "port":
+                raise ValueError(
+                    f"❌ ОШИБКА: В DATABASE_URL указан порт '{port}' вместо числа!\n"
+                    f"   Это значит, что вы скопировали пример URL, а не реальный.\n"
+                    f"   Действия:\n"
+                    f"   1. Откройте Railway Dashboard\n"
+                    f"   2. Перейдите в вашу PostgreSQL базу данных\n"
+                    f"   3. Откройте вкладку 'Variables'\n"
+                    f"   4. Скопируйте РЕАЛЬНЫЙ DATABASE_URL (там будет число, например 5432)\n"
+                    f"   5. Замените postgresql:// на postgresql+asyncpg://\n"
+                    f"   6. Обновите переменную DATABASE_URL в вашем сервисе\n"
+                    f"   Текущий URL: {db_url[:80]}..."
+                ) from e
+            raise
+        
+        logger.info(f"✅ DATABASE_URL валиден: {db_url.split('@')[0]}@***:{port}/***")
+        
+    except ValueError as e:
+        logger.error(f"❌ Ошибка валидации DATABASE_URL: {e}")
+        raise
 else:
     logger.warning(f"Неизвестный формат DATABASE_URL: {db_url[:30]}...")
 

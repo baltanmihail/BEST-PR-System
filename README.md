@@ -33,6 +33,9 @@
 
 ### 📝 Git и деплой
 - **[RAILWAY_COMPLETE_GUIDE.md](./docs/RAILWAY_COMPLETE_GUIDE.md)** - ⭐ **Полное руководство по Railway**
+- **[FIX_DATABASE_URL_TEMPLATE.md](./FIX_DATABASE_URL_TEMPLATE.md)** - 🔧 **КРИТИЧНО: DATABASE_URL содержит ${{...}}**
+- **[FIX_DATABASE_URL.md](./FIX_DATABASE_URL.md)** - 🔧 **Исправление ошибки DATABASE_URL**
+- **[DEPLOY_EXPLANATION.md](./DEPLOY_EXPLANATION.md)** - 📝 **Зачем деплоим сейчас?**
 - **[GIT_SETUP.md](./docs/GIT_SETUP.md)** - Настройка Git и GitHub
 - **[GIT_COMMIT_INFO.md](./docs/GIT_COMMIT_INFO.md)** - Информация для коммитов
 

@@ -26,11 +26,48 @@ config = context.config
 # Set SQLAlchemy URL from settings
 # Convert to async URL if needed
 db_url = settings.DATABASE_URL
+
+# Валидация DATABASE_URL
+if not db_url or db_url.strip() == "":
+    raise ValueError("❌ DATABASE_URL не установлен! Проверьте переменные окружения в Railway.")
+
 if db_url.startswith("sqlite"):
     db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://")
-elif db_url.startswith("postgresql://") and "asyncpg" not in db_url:
+elif db_url.startswith("postgresql://") or db_url.startswith("postgresql+asyncpg://"):
     # Convert postgresql:// to postgresql+asyncpg://
-    db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    if "asyncpg" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+asyncpg://")
+    
+    # Проверяем формат URL
+    try:
+        if "@" not in db_url:
+            raise ValueError("DATABASE_URL должен содержать @ (user:password@host)")
+        
+        host_part = db_url.split("@")[1]
+        if ":" not in host_part.split("/")[0]:
+            raise ValueError("DATABASE_URL должен содержать порт (host:port)")
+        
+        host_port = host_part.split("/")[0]
+        host, port = host_port.rsplit(":", 1)
+        
+        # Проверяем, что порт - число
+        try:
+            port_num = int(port)
+        except ValueError:
+            if port == "port":
+                raise ValueError(
+                    "❌ ОШИБКА: В DATABASE_URL указан порт 'port' вместо числа!\n"
+                    "   Вы скопировали пример URL, а не реальный из Railway.\n"
+                    "   Действия:\n"
+                    "   1. Railway Dashboard → PostgreSQL база данных → Variables\n"
+                    "   2. Скопируйте РЕАЛЬНЫЙ DATABASE_URL (там будет число, например 5432)\n"
+                    "   3. Замените postgresql:// на postgresql+asyncpg://\n"
+                    "   4. Обновите переменную DATABASE_URL в вашем сервисе"
+                )
+            raise ValueError(f"Порт должен быть числом, получено: '{port}'")
+    except ValueError as e:
+        print(f"\n❌ ОШИБКА ВАЛИДАЦИИ DATABASE_URL:\n{e}\n")
+        raise
 
 config.set_main_option("sqlalchemy.url", db_url)
 
@@ -90,16 +127,38 @@ async def run_migrations_online() -> None:
     # Get db_url from config (already converted)
     db_url = config.get_main_option("sqlalchemy.url")
     
-    # Create async engine directly
-    connectable = create_async_engine(
-        db_url,
-        poolclass=pool.NullPool,
-    )
+    try:
+        # Create async engine directly
+        connectable = create_async_engine(
+            db_url,
+            poolclass=pool.NullPool,
+        )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
+        async with connectable.connect() as connection:
+            await connection.run_sync(do_run_migrations)
 
-    await connectable.dispose()
+        await connectable.dispose()
+    except Exception as e:
+        error_msg = str(e)
+        if "port" in error_msg.lower() or "invalid literal" in error_msg.lower():
+            print("\n" + "="*60)
+            print("❌ ОШИБКА ПОДКЛЮЧЕНИЯ К БАЗЕ ДАННЫХ")
+            print("="*60)
+            print("\nПроблема: DATABASE_URL содержит неправильный формат порта.")
+            print("\nЧто делать:")
+            print("1. Откройте Railway Dashboard")
+            print("2. Перейдите в вашу PostgreSQL базу данных")
+            print("3. Откройте вкладку 'Variables'")
+            print("4. Скопируйте РЕАЛЬНЫЙ DATABASE_URL")
+            print("   (он должен содержать число после :, например :5432)")
+            print("5. Замените postgresql:// на postgresql+asyncpg://")
+            print("6. Обновите переменную DATABASE_URL в вашем сервисе (Backend)")
+            print("\nПример правильного URL:")
+            print("postgresql+asyncpg://postgres:password@host.railway.app:5432/railway")
+            print("                                                      ^^^^")
+            print("                                                      Это число!")
+            print("="*60 + "\n")
+        raise
 
 
 if context.is_offline_mode():
