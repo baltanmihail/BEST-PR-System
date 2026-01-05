@@ -33,11 +33,9 @@
 - **[POWERSHELL_COMMANDS.md](./docs/POWERSHELL_COMMANDS.md)** - Все команды PowerShell
 
 ### 📝 Git и деплой
-- **[RAILWAY_FIX_DEPLOY.md](./RAILWAY_FIX_DEPLOY.md)** - ⚠️ **Исправление ошибки деплоя** (pip not found)
-- **[FIX_TOKEN_LEAK.md](./FIX_TOKEN_LEAK.md)** - 🚨 **КРИТИЧНО: Токен попал в Git!**
+- **[RAILWAY_COMPLETE_GUIDE.md](./docs/RAILWAY_COMPLETE_GUIDE.md)** - ⭐ **Полное руководство по Railway** (всё в одном месте)
 - **[GIT_SETUP.md](./docs/GIT_SETUP.md)** - Настройка Git и GitHub
 - **[GIT_COMMIT_INFO.md](./docs/GIT_COMMIT_INFO.md)** - Информация для коммитов
-- **[RAILWAY_DEPLOY.md](./docs/RAILWAY_DEPLOY.md)** - Полная инструкция по деплою
 
 ### 🏗️ Техническая документация
 - **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Детальное описание архитектуры
