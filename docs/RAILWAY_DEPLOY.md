@@ -127,8 +127,8 @@ web: cd backend && alembic upgrade head && python run.py
 ### 2. railway.json
 Уже создан в корне проекта
 
-### 3. nixpacks.toml
-Уже создан в корне проекта
+### 3. runtime.txt
+Уже создан в корне проекта (указывает версию Python 3.11)
 
 ---
 

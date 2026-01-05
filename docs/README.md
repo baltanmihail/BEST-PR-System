@@ -13,6 +13,7 @@
 - **[POWERSHELL_COMMANDS.md](./POWERSHELL_COMMANDS.md)** - Все команды PowerShell
 
 ### 📝 Git и деплой
+- **[GIT_SETUP.md](./GIT_SETUP.md)** - Настройка Git и GitHub (начните отсюда!)
 - **[GIT_COMMIT_INFO.md](./GIT_COMMIT_INFO.md)** - Информация для коммитов
 - **[RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md)** - Деплой на Railway
 

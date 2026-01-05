@@ -33,8 +33,10 @@
 - **[POWERSHELL_COMMANDS.md](./docs/POWERSHELL_COMMANDS.md)** - Все команды PowerShell
 
 ### 📝 Git и деплой
+- **[GIT_SETUP.md](./docs/GIT_SETUP.md)** - Настройка Git и GitHub (начните отсюда!)
 - **[GIT_COMMIT_INFO.md](./docs/GIT_COMMIT_INFO.md)** - Информация для коммитов
 - **[RAILWAY_DEPLOY.md](./docs/RAILWAY_DEPLOY.md)** - Деплой на Railway
+- **Проблема "Repository not found"?** → [FIX_GIT_REMOTE.md](./FIX_GIT_REMOTE.md)
 
 ### 🏗️ Техническая документация
 - **[ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Детальное описание архитектуры
