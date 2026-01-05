@@ -52,6 +52,10 @@ logs/
 credentials*.json
 !credentials.example.json
 
+# Документация с секретами (если нужно)
+# docs/RAILWAY_SETUP_SIMPLE.md
+# docs/RAILWAY_VARIABLES.md
+
 # Node
 node_modules/
 npm-debug.log*

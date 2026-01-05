@@ -75,7 +75,7 @@ K8jL3mN9pQ2rS5tU7vW0xY1zA4bC6dE8fG
 
 ### 3. TELEGRAM_BOT_TOKEN
 ```
-Значение: 8275006557:AAFomMYi17esDTbsWBUUDHb154pnKxoqyKY
+Значение: (ваш токен от @BotFather)
 ```
 
 ### 4. TELEGRAM_ADMIN_IDS
