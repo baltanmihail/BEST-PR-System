@@ -124,6 +124,7 @@ class TaskAssignment(Base):
     
     # Relationships
     task = relationship("Task", back_populates="assignments")
+    user = relationship("User", foreign_keys=[user_id])
     
     __table_args__ = (
         CheckConstraint("rating IS NULL OR (rating >= 1 AND rating <= 5)", name="task_assignments_rating_check"),

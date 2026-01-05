@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.config import settings
-from app.api import auth
+from app.api import auth, tasks
 
 # Настройка логирования
 logging.basicConfig(
@@ -32,6 +32,7 @@ app.add_middleware(
 
 # Подключение роутеров
 app.include_router(auth.router, prefix=settings.API_V1_PREFIX)
+app.include_router(tasks.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():
