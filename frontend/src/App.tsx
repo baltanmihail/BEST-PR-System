@@ -11,6 +11,7 @@ import Activity from './pages/Activity'
 import Gallery from './pages/Gallery'
 import Register from './pages/Register'
 import Equipment from './pages/Equipment'
+import Settings from './pages/Settings'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +38,7 @@ function App() {
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/register" element={<Register />} />
             <Route path="/equipment" element={<Equipment />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>
       </BrowserRouter>

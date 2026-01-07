@@ -25,6 +25,7 @@ class NotificationType(str, enum.Enum):
     TASK_REVIEW = "task_review"
     ACHIEVEMENT_UNLOCKED = "achievement_unlocked"
     SUPPORT_REQUEST = "support_request"  # Запрос в поддержку (для админа)
+    SYSTEM = "system"  # Системные уведомления
 
 
 class Notification(Base):

@@ -27,9 +27,41 @@ export interface AgreementResponse {
   updated_at: string
 }
 
+export interface RegistrationCodeRequest {
+  telegram_id?: number
+  telegram_username?: string
+}
+
+export interface RegistrationCodeResponse {
+  message: string
+  expires_in_minutes: number
+}
+
+export interface RegistrationWithCodeRequest {
+  code: string
+  personal_data_consent: {
+    consent: boolean
+    date: string
+  }
+  user_agreement: {
+    accepted: boolean
+    version: string
+  }
+}
+
 export const registrationApi = {
   register: async (data: RegistrationRequest) => {
     const response = await api.post('/registration/register', data)
+    return response.data
+  },
+
+  requestCode: async (data: RegistrationCodeRequest): Promise<RegistrationCodeResponse> => {
+    const response = await api.post<RegistrationCodeResponse>('/registration/request-code', data)
+    return response.data
+  },
+
+  registerWithCode: async (data: RegistrationWithCodeRequest) => {
+    const response = await api.post('/registration/register-with-code', data)
     return response.data
   },
 

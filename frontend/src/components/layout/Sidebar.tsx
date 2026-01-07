@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera } from 'lucide-react'
+import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera, Settings } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 
@@ -13,6 +13,7 @@ const navigation = [
   { name: 'Галерея', href: '/gallery', icon: Image },
   { name: 'Уведомления', href: '/notifications', icon: Bell, requiresAuth: true },
   { name: 'Поддержка', href: '/support', icon: MessageSquare },
+  { name: 'Настройки', href: '/settings', icon: Settings, requiresAuth: true },
 ]
 
 export default function Sidebar() {

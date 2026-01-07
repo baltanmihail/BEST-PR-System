@@ -78,6 +78,8 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
+    # Мягкое удаление (soft delete)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     # Согласие на обработку персональных данных
     personal_data_consent = Column(Boolean, nullable=False, default=False)
     consent_date = Column(DateTime(timezone=True), nullable=True)

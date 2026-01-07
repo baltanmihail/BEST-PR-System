@@ -207,6 +207,7 @@ async def get_public_leaderboard(
     query = select(User).where(
         and_(
             User.is_active == True,
+            User.deleted_at.is_(None),  # Исключаем удалённых пользователей
             ~User.role.in_(excluded_roles)
         )
     ).order_by(
@@ -273,6 +274,7 @@ async def get_public_stats(
     users_query = select(func.count(User.id)).where(
         and_(
             User.is_active == True,
+            User.deleted_at.is_(None),  # Исключаем удалённых пользователей
             ~User.role.in_([
                 UserRole.COORDINATOR_SMM,
                 UserRole.COORDINATOR_DESIGN,
@@ -302,7 +304,12 @@ async def get_public_stats(
     total_tasks = total_tasks_result.scalar() or 0
     
     # Общее количество баллов
-    total_points_query = select(func.sum(User.points)).where(User.is_active == True)
+    total_points_query = select(func.sum(User.points)).where(
+        and_(
+            User.is_active == True,
+            User.deleted_at.is_(None)  # Исключаем удалённых пользователей
+        )
+    )
     total_points_result = await db.execute(total_points_query)
     total_points = total_points_result.scalar() or 0
     
