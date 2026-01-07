@@ -42,6 +42,8 @@ python scripts/create_coordinators.py
 | Тимофей Плошкин | @timplooo | PR-FR Coordinator | 1281345523 |
 | Тест PR-FR | @test_prfr | PR-FR Coordinator (тест) | 8359020564 |
 
+**Примечание**: Для тестирования созданы два PR-FR координатора. Тестовый аккаунт (8359020564) можно удалить из `TELEGRAM_ADMIN_IDS` на Railway для тестирования как обычного пользователя.
+
 ---
 
 ## Альтернативный способ: через API

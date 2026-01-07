@@ -17,22 +17,14 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
 
   useEffect(() => {
-    let wheelTimeoutId: number | undefined
-    let lastWheelTime = 0
-
     const handleWheel = (_e: WheelEvent) => {
-      const now = Date.now()
-      lastWheelTime = now
-
       // Убираем эффект размытия - он мешает читать контент
+      // Обработчик оставлен для возможного будущего использования
     }
 
     window.addEventListener('wheel', handleWheel, { passive: true })
     return () => {
       window.removeEventListener('wheel', handleWheel)
-      if (wheelTimeoutId !== undefined) {
-        clearTimeout(wheelTimeoutId)
-      }
     }
   }, [])
 
