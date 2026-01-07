@@ -130,6 +130,21 @@ def get_welcome_greeting(user_name: str, role: str, points: int = 0) -> str:
         return random.choice(greetings)
 
 
+def format_role_title(role: str) -> str:
+    """Человекочитаемое название роли/позиции для приветствия."""
+    mapping = {
+        "vp4pr": "VP4PR (руководитель PR)",
+        "coordinator_smm": "Координатор SMM",
+        "coordinator_design": "Координатор Design",
+        "coordinator_channel": "Глава Channel",
+        "coordinator_prfr": "Координатор PR-FR",
+        "active_participant": "Активный участник",
+        "participant": "Участник",
+        "novice": "Новичок",
+    }
+    return mapping.get(role, role)
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Команда /start - регистрация/авторизация пользователя"""
@@ -187,6 +202,10 @@ async def cmd_start(message: Message, state: FSMContext):
     
     # Создаём клавиатуру с инлайн-кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+
+    # Общая шапка (жирным, как просили)
+    header_title = f"<b>Добро пожаловать, {user.first_name}!</b>"
+    system_title = "<b>🎯 Добро пожаловать в BEST PR System!</b>"
     
     if not is_active:
         # Незарегистрированный пользователь
@@ -198,14 +217,16 @@ async def cmd_start(message: Message, state: FSMContext):
         if "error" in app_response or app_response.get("status_code") == 403:
             # Заявки ещё нет
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"🎯 Добро пожаловать в BEST PR System!\n\n"
+                f"{system_title}\n\n"
+                f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
                 f"📋 Ты можешь:\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
                 f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
-                f"🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
+                f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
             )
             
             keyboard.inline_keyboard = [
@@ -217,15 +238,17 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться", url="https://best-pr-system.up.railway.app/"),
+                    InlineKeyboardButton(text="📝 Зарегистрироваться", url=settings.FRONTEND_URL),
                 ],
             ]
         elif app_response.get("status") == "pending":
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"⏳ Твоя заявка на рассмотрении.\n"
-                f"Мы уведомим тебя, когда она будет одобрена!\n\n"
-                f"💡 Пока можешь просматривать доступные задачи и рейтинг."
+                f"{system_title}\n\n"
+                f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n\n"
+                f"Мы уведомим тебя, когда она будет одобрена.\n"
+                f"Пока можешь просматривать задачи и рейтинг."
             )
             
             keyboard.inline_keyboard = [
@@ -237,27 +260,31 @@ async def cmd_start(message: Message, state: FSMContext):
         elif app_response.get("status") == "rejected":
             reason = app_response.get("application_data", {}).get("rejection_reason", "не указана")
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"❌ Твоя заявка была отклонена.\n"
-                f"Причина: {reason}\n\n"
-                f"💡 Ты можешь подать новую заявку."
+                f"{system_title}\n\n"
+                f"🧭 <b>Статус:</b> заявка отклонена ❌\n"
+                f"📝 <b>Причина:</b> {reason}\n\n"
+                f"Ты можешь подать новую заявку."
             )
             
             keyboard.inline_keyboard = [
                 [
-                    InlineKeyboardButton(text="📝 Подать заявку", url="https://best-pr-system.up.railway.app/"),
+                    InlineKeyboardButton(text="📝 Подать заявку", url=settings.FRONTEND_URL),
                 ],
             ]
         else:
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"🎯 Добро пожаловать в BEST PR System!\n\n"
+                f"{system_title}\n\n"
+                f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
                 f"📋 Ты можешь:\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
                 f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
-                f"🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
+                f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
             )
             
             keyboard.inline_keyboard = [
@@ -269,17 +296,21 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться", url="https://best-pr-system.up.railway.app/"),
+                    InlineKeyboardButton(text="📝 Зарегистрироваться", url=settings.FRONTEND_URL),
                 ],
             ]
     else:
         # Зарегистрированный пользователь
         greeting = get_welcome_greeting(user.first_name, user_role, points)
+        role_title = format_role_title(user_role)
         
         if user_role == "vp4pr":
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"👑 Добро пожаловать в панель управления!\n\n"
+                f"{system_title}\n\n"
+                f"🧭 <b>Позиция:</b> {role_title}\n\n"
+                f"👑 <b>Панель управления</b>\n\n"
                 f"📊 Статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
                 f"• Баллы: {points}\n"
@@ -303,8 +334,11 @@ async def cmd_start(message: Message, state: FSMContext):
             ]
         elif "coordinator" in user_role:
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"💼 Добро пожаловать, координатор!\n\n"
+                f"{system_title}\n\n"
+                f"🧭 <b>Позиция:</b> {role_title}\n\n"
+                f"💼 <b>Режим координатора</b>\n\n"
                 f"📊 Твоя статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
                 f"• Баллы: {points}\n"
@@ -328,12 +362,13 @@ async def cmd_start(message: Message, state: FSMContext):
         else:
             # Обычный зарегистрированный пользователь
             welcome_text = (
+                f"{header_title}\n"
                 f"{greeting}\n\n"
-                f"✅ Добро пожаловать в BEST PR System!\n\n"
+                f"{system_title}\n\n"
+                f"🧭 <b>Роль:</b> {role_title}\n\n"
                 f"📊 Твоя статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
                 f"• Баллы: {points}\n"
-                f"• Роль: {user_role}\n"
                 f"• Выполнено: {user_data.get('completed_tasks', 0)} задач\n"
                 f"• 🏆 Ачивок: {user_data.get('achievements_count', 0)}\n\n"
                 f"💡 Выбери действие ниже:"
@@ -353,9 +388,10 @@ async def cmd_start(message: Message, state: FSMContext):
                 ],
             ]
     
-    # Отправляем фото с текстом и кнопками
+    # Отправляем фото только для НЕактивных (первое касание/мотивация).
+    # Для активных пользователей /start не должен каждый раз слать лого.
     try:
-        if welcome_photo_path and welcome_photo_path.exists():
+        if (not is_active) and welcome_photo_path and welcome_photo_path.exists():
             photo = FSInputFile(str(welcome_photo_path))
             await message.answer_photo(
                 photo=photo,
@@ -376,7 +412,8 @@ async def cmd_start(message: Message, state: FSMContext):
         # Fallback - отправляем только текст
         await message.answer(
             welcome_text,
-            reply_markup=keyboard
+            reply_markup=keyboard,
+            parse_mode="HTML"
         )
 
 
@@ -486,7 +523,7 @@ async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
         text += f"   Тип: {task.get('type', 'unknown')}\n\n"
     
     text += "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся по ссылке:\n"
-    text += "🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
+    text += f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
     
     await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
@@ -628,9 +665,9 @@ async def callback_equipment(callback: CallbackQuery, state: FSMContext):
     if not access_token:
         await callback.answer("⚠️ Для работы с оборудованием нужно зарегистрироваться!", show_alert=True)
         await callback.message.answer(
-            "📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
-            "💡 <b>Для работы с оборудованием BEST Channel</b> зарегистрируйся по ссылке:\n"
-            "🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>",
+            f"📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
+            f"💡 <b>Для работы с оборудованием BEST Channel</b> зарегистрируйся по ссылке:\n"
+            f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>",
             parse_mode="HTML"
         )
         return
@@ -748,9 +785,10 @@ async def callback_moderation(callback: CallbackQuery, state: FSMContext):
 async def callback_admin_panel(callback: CallbackQuery, state: FSMContext):
     """Админ-панель (только для VP4PR)"""
     await callback.message.answer(
-        "⚙️ Панель управления доступна через веб-интерфейс:\n"
-        "https://best-pr-system.up.railway.app/\n\n"
-        "💡 Там ты можешь управлять всеми аспектами системы."
+        f"⚙️ Панель управления доступна через веб-интерфейс:\n"
+        f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>\n\n"
+        f"💡 Там ты можешь управлять всеми аспектами системы.",
+        parse_mode="HTML"
     )
     await callback.answer()
 
@@ -821,11 +859,12 @@ async def cmd_equipment(message: Message, state: FSMContext):
     
     if not requests:
         text = (
-            "📦 У тебя нет заявок на оборудование.\n\n"
-            "💡 Для создания заявки используй веб-интерфейс:\n"
-            "https://best-pr-system.up.railway.app/\n\n"
-            "Или возьми задачу типа Channel - система автоматически предложит оборудование."
+            f"📦 У тебя нет заявок на оборудование.\n\n"
+            f"💡 Для создания заявки используй веб-интерфейс:\n"
+            f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>\n\n"
+            f"Или возьми задачу типа Channel - система автоматически предложит оборудование."
         )
+        parse_mode_val = "HTML"
     else:
         text = f"📦 Твои заявки на оборудование ({len(requests)}):\n\n"
         
@@ -845,8 +884,9 @@ async def cmd_equipment(message: Message, state: FSMContext):
                 f"   Статус: {req.get('status')}\n"
                 f"   Даты: {req.get('start_date')} - {req.get('end_date')}\n\n"
             )
+        parse_mode_val = None
     
-    await message.answer(text)
+    await message.answer(text, parse_mode=parse_mode_val if parse_mode_val else None)
 
 
 @router.message(Command("notifications"))

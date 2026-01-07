@@ -70,6 +70,9 @@ class Settings(BaseSettings):
         ).split(",")
     ]
     
+    # Frontend URL (для ссылок в боте и уведомлениях)
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
+    
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     

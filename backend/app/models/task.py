@@ -108,12 +108,22 @@ class Task(Base):
     
     @validates('status')
     def validate_status(self, key, value):
-        """Валидация статуса перед сохранением"""
+        """Валидация статуса перед сохранением.
+
+        ВАЖНО: возвращаем TaskStatus (enum), чтобы сравнения в коде работали:
+        `task.status == TaskStatus.ASSIGNED` и т.п.
+        Конвертацию в строку делает TaskStatusType.process_bind_param().
+        """
         if value is None:
             return None
         if isinstance(value, TaskStatus):
-            return value.value
-        return str(value) if value else None
+            return value
+        if isinstance(value, str):
+            try:
+                return TaskStatus(value)
+            except ValueError:
+                return TaskStatus.DRAFT
+        return value
     due_date = Column(DateTime(timezone=True), nullable=True, index=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
