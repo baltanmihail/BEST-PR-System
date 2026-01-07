@@ -5,10 +5,12 @@ export interface PublicTask {
   title: string
   type: string
   priority: string
+  status: string
   due_date_relative: string
   participants_count: number
   stages_count: number
   coordinator_name: string
+  created_at?: string | null
 }
 
 export interface PublicLeaderboardUser {
