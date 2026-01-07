@@ -22,6 +22,8 @@ def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
     
     # Создание ENUM типов (с проверкой существования)
+    # Важно: создаём типы ПЕРЕД использованием в таблицах,
+    # чтобы SQLAlchemy не пытался их создать автоматически
     op.execute("""
         DO $$ BEGIN
             CREATE TYPE user_role AS ENUM (
@@ -153,7 +155,7 @@ def upgrade() -> None:
         sa.Column('telegram_id', sa.BigInteger(), nullable=False, unique=True),
         sa.Column('username', sa.Text(), nullable=True),
         sa.Column('full_name', sa.Text(), nullable=False),
-        sa.Column('role', postgresql.ENUM('novice', 'participant', 'active_participant', 'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr', 'vp4pr', name='user_role'), nullable=False, server_default='novice'),
+        sa.Column('role', postgresql.ENUM('novice', 'participant', 'active_participant', 'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr', 'vp4pr', name='user_role', create_type=False), nullable=False, server_default='novice'),
         sa.Column('level', sa.Integer(), nullable=False, server_default='1'),
         sa.Column('points', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('streak_days', sa.Integer(), nullable=False, server_default='0'),
@@ -182,10 +184,10 @@ def upgrade() -> None:
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text('uuid_generate_v4()')),
         sa.Column('title', sa.Text(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('type', postgresql.ENUM('smm', 'design', 'channel', 'prfr', name='task_type'), nullable=False),
+        sa.Column('type', postgresql.ENUM('smm', 'design', 'channel', 'prfr', name='task_type', create_type=False), nullable=False),
         sa.Column('event_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'critical', name='task_priority'), nullable=False, server_default='medium'),
-        sa.Column('status', postgresql.ENUM('draft', 'open', 'assigned', 'in_progress', 'review', 'completed', 'cancelled', name='task_status'), nullable=False, server_default='draft'),
+        sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'critical', name='task_priority', create_type=False), nullable=False, server_default='medium'),
+        sa.Column('status', postgresql.ENUM('draft', 'open', 'assigned', 'in_progress', 'review', 'completed', 'cancelled', name='task_status', create_type=False), nullable=False, server_default='draft'),
         sa.Column('due_date', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_by', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
@@ -202,7 +204,7 @@ def upgrade() -> None:
         sa.Column('stage_name', sa.Text(), nullable=False),
         sa.Column('stage_order', sa.Integer(), nullable=False),
         sa.Column('due_date', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('status', postgresql.ENUM('pending', 'in_progress', 'completed', name='stage_status'), nullable=False, server_default='pending'),
+        sa.Column('status', postgresql.ENUM('pending', 'in_progress', 'completed', name='stage_status', create_type=False), nullable=False, server_default='pending'),
         sa.Column('status_color', sa.Text(), nullable=False, server_default='green'),
         sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
@@ -218,7 +220,7 @@ def upgrade() -> None:
         sa.Column('task_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('role_in_task', sa.Text(), nullable=False),
-        sa.Column('status', postgresql.ENUM('assigned', 'in_progress', 'completed', 'cancelled', name='assignment_status'), nullable=False, server_default='assigned'),
+        sa.Column('status', postgresql.ENUM('assigned', 'in_progress', 'completed', 'cancelled', name='assignment_status', create_type=False), nullable=False, server_default='assigned'),
         sa.Column('rating', sa.Integer(), nullable=True),
         sa.Column('feedback', sa.Text(), nullable=True),
         sa.Column('assigned_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
@@ -235,7 +237,7 @@ def upgrade() -> None:
         sa.Column('name', sa.Text(), nullable=False),
         sa.Column('category', sa.Text(), nullable=False),
         sa.Column('specs', postgresql.JSONB(), nullable=True),
-        sa.Column('status', postgresql.ENUM('available', 'rented', 'maintenance', 'broken', name='equipment_status'), nullable=False, server_default='available'),
+        sa.Column('status', postgresql.ENUM('available', 'rented', 'maintenance', 'broken', name='equipment_status', create_type=False), nullable=False, server_default='available'),
         sa.Column('current_holder_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
@@ -251,7 +253,7 @@ def upgrade() -> None:
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('start_date', sa.Date(), nullable=False),
         sa.Column('end_date', sa.Date(), nullable=False),
-        sa.Column('status', postgresql.ENUM('pending', 'approved', 'rejected', 'active', 'completed', 'cancelled', name='equipment_request_status'), nullable=False, server_default='pending'),
+        sa.Column('status', postgresql.ENUM('pending', 'approved', 'rejected', 'active', 'completed', 'cancelled', name='equipment_request_status', create_type=False), nullable=False, server_default='pending'),
         sa.Column('rejection_reason', sa.Text(), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
@@ -315,7 +317,7 @@ def upgrade() -> None:
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('task_id', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('application_data', postgresql.JSONB(), nullable=False),
-        sa.Column('status', postgresql.ENUM('pending', 'approved', 'rejected', name='moderation_status'), nullable=False, server_default='pending'),
+        sa.Column('status', postgresql.ENUM('pending', 'approved', 'rejected', name='moderation_status', create_type=False), nullable=False, server_default='pending'),
         sa.Column('decision_by', postgresql.UUID(as_uuid=True), nullable=True),
         sa.Column('decision_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
