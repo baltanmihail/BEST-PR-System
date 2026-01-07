@@ -1,7 +1,7 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum
+from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
@@ -22,6 +22,42 @@ class UserRole(str, enum.Enum):
     VP4PR = "vp4pr"
 
 
+class UserRoleType(TypeDecorator):
+    """TypeDecorator для правильной конвертации UserRole в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_ENUM(UserRole, name='userrole', create_type=False))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, UserRole):
+            return value.value  # Возвращаем значение enum'а ("novice"), а не имя ("NOVICE")
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return UserRole(value)
+            except ValueError:
+                # Если значение не найдено в enum, возвращаем NOVICE по умолчанию
+                return UserRole.NOVICE
+        return value
+
+
 class User(Base):
     """Пользователь"""
     __tablename__ = "users"
@@ -30,7 +66,7 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String, nullable=True)
     full_name = Column(String, nullable=False)
-    role = Column(PG_ENUM(UserRole, name='userrole', create_type=False), nullable=False, default=UserRole.NOVICE, server_default='novice')
+    role = Column(UserRoleType(), nullable=False, default=UserRole.NOVICE, server_default='novice')
     level = Column(Integer, nullable=False, default=1)
     points = Column(Integer, nullable=False, default=0, index=True)
     streak_days = Column(Integer, nullable=False, default=0)

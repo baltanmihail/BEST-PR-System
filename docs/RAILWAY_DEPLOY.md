@@ -15,7 +15,7 @@ git status
 git add .
 
 # Создайте коммит
-git commit -m "Это попытка номер 2.3"
+git commit -m "Это попытка номер 2.4"
 
 # Отправьте в GitHub
 git push origin main
