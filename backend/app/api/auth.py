@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import Optional
+import logging
 
 from app.database import get_db
 from app.models.user import User
@@ -12,6 +13,7 @@ from app.schemas.user import UserResponse, UserCreate
 from app.utils.auth import create_access_token, verify_telegram_auth
 from app.utils.permissions import get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
@@ -78,10 +80,15 @@ async def auth_telegram(
             "user": UserResponse.model_validate(user)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        error_detail = str(e) if str(e) else "Unknown error"
+        logger.error(f"Auth error: {error_detail}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Authentication error: {str(e)}"
+            detail=f"Authentication error: {error_detail}"
         )
 
 

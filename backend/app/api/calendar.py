@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.task import Task, TaskStage, TaskType
 from app.models.event import Event
-from app.utils.permissions import get_current_user
+from app.utils.permissions import get_current_user, OptionalUser
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from dateutil.relativedelta import relativedelta
@@ -27,7 +27,7 @@ async def get_calendar(
     end_date: Optional[date] = Query(None, description="Конечная дата (для timeline)"),
     task_type: Optional[TaskType] = Query(None, description="Фильтр по типу задачи"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(OptionalUser)
 ):
     """
     Получить календарь/таймлайн задач
@@ -58,7 +58,7 @@ async def _get_month_view(
     db: AsyncSession,
     month_date: date,
     task_type: Optional[TaskType],
-    current_user: User
+    current_user: Optional[User]
 ):
     """Получить календарь на месяц"""
     # Вычисляем начало и конец месяца
@@ -146,7 +146,7 @@ async def _get_week_view(
     db: AsyncSession,
     week_start: date,
     task_type: Optional[TaskType],
-    current_user: User
+    current_user: Optional[User]
 ):
     """Получить недельный вид"""
     # Вычисляем начало недели (понедельник)
@@ -209,7 +209,7 @@ async def _get_timeline_view(
     start_date: date,
     end_date: date,
     task_type: Optional[TaskType],
-    current_user: User
+    current_user: Optional[User]
 ):
     """Получить таймлайн (горизонтальная шкала)"""
     tasks, stages = await _get_tasks_and_stages_in_range(
@@ -282,7 +282,7 @@ async def _get_tasks_and_stages_in_range(
     start_date: date,
     end_date: date,
     task_type: Optional[TaskType],
-    current_user: User
+    current_user: Optional[User]
 ):
     """Получить задачи и этапы в диапазоне дат"""
     # Запрос для задач

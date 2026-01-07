@@ -80,3 +80,37 @@ def require_coordinator():
 def require_vp4pr():
     """Проверка, что пользователь - VP4PR"""
     return require_role(UserRole.VP4PR)
+
+
+async def OptionalUser(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """
+    Опциональная авторизация - возвращает пользователя если токен есть, иначе None
+    
+    Используется для endpoints, которые работают и без авторизации
+    """
+    if credentials is None:
+        return None
+    
+    try:
+        token = credentials.credentials
+        payload = verify_token(token)
+        
+        if payload is None:
+            return None
+        
+        user_id: Optional[str] = payload.get("sub")
+        if user_id is None:
+            return None
+        
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if user is None or not user.is_active:
+            return None
+        
+        return user
+    except Exception:
+        return None
