@@ -26,7 +26,7 @@ def upgrade() -> None:
     # чтобы SQLAlchemy не пытался их создать автоматически
     op.execute("""
         DO $$ BEGIN
-            CREATE TYPE user_role AS ENUM (
+            CREATE TYPE userrole AS ENUM (
                 'novice',
                 'participant',
                 'active_participant',
@@ -155,7 +155,7 @@ def upgrade() -> None:
         sa.Column('telegram_id', sa.BigInteger(), nullable=False, unique=True),
         sa.Column('username', sa.Text(), nullable=True),
         sa.Column('full_name', sa.Text(), nullable=False),
-        sa.Column('role', postgresql.ENUM('novice', 'participant', 'active_participant', 'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr', 'vp4pr', name='user_role', create_type=False), nullable=False, server_default='novice'),
+        sa.Column('role', postgresql.ENUM('novice', 'participant', 'active_participant', 'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr', 'vp4pr', name='userrole', create_type=False), nullable=False, server_default='novice'),
         sa.Column('level', sa.Integer(), nullable=False, server_default='1'),
         sa.Column('points', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('streak_days', sa.Integer(), nullable=False, server_default='0'),
@@ -511,4 +511,4 @@ def downgrade() -> None:
     op.execute('DROP TYPE IF EXISTS task_status')
     op.execute('DROP TYPE IF EXISTS task_priority')
     op.execute('DROP TYPE IF EXISTS task_type')
-    op.execute('DROP TYPE IF EXISTS user_role')
+    op.execute('DROP TYPE IF EXISTS userrole')
