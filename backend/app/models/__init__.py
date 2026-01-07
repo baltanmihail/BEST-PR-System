@@ -10,6 +10,7 @@ from app.models.file import File
 from app.models.telegram import TelegramChat
 from app.models.moderation import ModerationQueue
 from app.models.activity import ActivityLog
+from app.models.notification import Notification
 
 __all__ = [
     "User",
@@ -25,4 +26,5 @@ __all__ = [
     "TelegramChat",
     "ModerationQueue",
     "ActivityLog",
+    "Notification",
 ]

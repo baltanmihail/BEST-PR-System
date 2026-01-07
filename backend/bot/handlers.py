@@ -12,6 +12,7 @@ import logging
 from app.config import settings
 import hmac
 import hashlib
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -117,18 +118,53 @@ async def cmd_start(message: Message, state: FSMContext):
     # Сохраняем токен для последующих запросов
     await state.update_data(access_token=access_token)
     
-    welcome_text = (
-        f"👋 Привет, {user.first_name}!\n\n"
-        f"✅ Ты успешно зарегистрирован в BEST PR System.\n\n"
-        f"📊 Твоя статистика:\n"
-        f"• Уровень: {user_data.get('level', 1)}\n"
-        f"• Баллы: {user_data.get('points', 0)}\n\n"
-        f"💡 Используй команды:\n"
-        f"/tasks - мои задачи\n"
-        f"/stats - статистика\n"
-        f"/leaderboard - рейтинг\n"
-        f"/help - помощь"
-    )
+    # Проверяем статус активации
+    is_active = user_data.get("is_active", False)
+    
+    if not is_active:
+        # Получаем статус заявки
+        headers = {"Authorization": f"Bearer {access_token}"}
+        app_response = await call_api("GET", "/moderation/my-application", headers=headers)
+        
+        if app_response.get("status") == "pending":
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                f"⏳ Твоя заявка на регистрацию находится на рассмотрении.\n"
+                f"Мы уведомим тебя, когда она будет одобрена!\n\n"
+                f"💡 Пока можешь заполнить заявку через веб-интерфейс:\n"
+                f"https://best-pr-system.up.railway.app/"
+            )
+        elif app_response.get("status") == "rejected":
+            reason = app_response.get("application_data", {}).get("rejection_reason", "не указана")
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                f"❌ Твоя заявка была отклонена.\n"
+                f"Причина: {reason}\n\n"
+                f"💡 Ты можешь подать новую заявку через веб-интерфейс."
+            )
+        else:
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                f"📝 Пожалуйста, заполни заявку на регистрацию через веб-интерфейс:\n"
+                f"https://best-pr-system.up.railway.app/\n\n"
+                f"После одобрения заявки ты получишь полный доступ к системе."
+            )
+    else:
+        welcome_text = (
+            f"👋 Привет, {user.first_name}!\n\n"
+            f"✅ Добро пожаловать в BEST PR System!\n\n"
+            f"📊 Твоя статистика:\n"
+            f"• Уровень: {user_data.get('level', 1)}\n"
+            f"• Баллы: {user_data.get('points', 0)}\n"
+            f"• Роль: {user_data.get('role', 'novice')}\n\n"
+            f"💡 Используй команды:\n"
+            f"/tasks - мои задачи\n"
+            f"/stats - статистика\n"
+            f"/leaderboard - рейтинг\n"
+            f"/equipment - оборудование\n"
+            f"/notifications - уведомления\n"
+            f"/help - помощь"
+        )
     
     await message.answer(welcome_text)
 
@@ -199,29 +235,23 @@ async def cmd_stats(message: Message, state: FSMContext):
     
     headers = {"Authorization": f"Bearer {access_token}"}
     
-    # Получаем информацию о пользователе
-    user_response = await call_api("GET", "/auth/me", headers=headers)
+    # Получаем статистику через API геймификации
+    stats_response = await call_api("GET", "/gamification/stats", headers=headers)
     
-    if "error" in user_response:
+    if "error" in stats_response:
         await message.answer("❌ Ошибка при загрузке статистики.")
         return
     
-    user = user_response
-    
-    # Получаем задачи пользователя
-    tasks_response = await call_api("GET", "/tasks", headers=headers)
-    tasks = tasks_response.get("items", []) if "error" not in tasks_response else []
-    
-    active_tasks = len([t for t in tasks if t.get("status") not in ["completed", "cancelled"]])
-    completed_tasks = len([t for t in tasks if t.get("status") == "completed"])
+    stats = stats_response
     
     stats_text = (
         f"📊 Твоя статистика:\n\n"
-        f"🎯 Уровень: {user.get('level', 1)}\n"
-        f"⭐ Баллы: {user.get('points', 0)}\n"
-        f"📋 Активных задач: {active_tasks}\n"
-        f"✅ Выполнено: {completed_tasks}\n"
-        f"🔥 Серия дней: {user.get('streak_days', 0)}"
+        f"🎯 Уровень: {stats.get('level', 1)}\n"
+        f"⭐ Баллы: {stats.get('points', 0)}\n"
+        f"👤 Роль: {stats.get('role', 'novice')}\n"
+        f"📋 Активных задач: {stats.get('active_tasks', 0)}\n"
+        f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+        f"🏆 Ачивок: {stats.get('achievements_count', 0)}"
     )
     
     await message.answer(stats_text)
@@ -239,11 +269,145 @@ async def cmd_leaderboard(message: Message, state: FSMContext):
         )
         return
     
-    # TODO: Добавить endpoint /api/v1/gamification/leaderboard
-    await message.answer(
-        "🏆 Рейтинг временно недоступен. "
-        "Используй веб-интерфейс для просмотра рейтинга."
-    )
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = await call_api("GET", "/gamification/leaderboard?limit=10", headers=headers)
+    
+    if "error" in response or not response:
+        await message.answer("❌ Ошибка при загрузке рейтинга.")
+        return
+    
+    leaderboard = response if isinstance(response, list) else []
+    
+    if not leaderboard:
+        await message.answer("📊 Рейтинг пока пуст.")
+        return
+    
+    text = "🏆 ТОП-10 участников:\n\n"
+    
+    medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
+    
+    for i, user in enumerate(leaderboard[:10], 1):
+        medal = medals[i-1] if i <= 3 else f"{i}."
+        text += (
+            f"{medal} {user.get('full_name', 'Unknown')}\n"
+            f"   ⭐ {user.get('points', 0)} баллов | "
+            f"Уровень {user.get('level', 1)} | "
+            f"✅ {user.get('completed_tasks', 0)} задач\n\n"
+        )
+    
+    await message.answer(text)
+
+
+@router.message(Command("equipment"))
+async def cmd_equipment(message: Message, state: FSMContext):
+    """Команда /equipment - работа с оборудованием"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await message.answer(
+            "⚠️ Сначала выполните команду /start для авторизации."
+        )
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # Получаем мои заявки на оборудование
+    requests_response = await call_api("GET", "/equipment/requests", headers=headers)
+    
+    if "error" in requests_response:
+        await message.answer("❌ Ошибка при загрузке заявок.")
+        return
+    
+    requests = requests_response if isinstance(requests_response, list) else []
+    
+    if not requests:
+        text = (
+            "📦 У тебя нет заявок на оборудование.\n\n"
+            "💡 Для создания заявки используй веб-интерфейс:\n"
+            "https://best-pr-system.up.railway.app/\n\n"
+            "Или возьми задачу типа Channel - система автоматически предложит оборудование."
+        )
+    else:
+        text = f"📦 Твои заявки на оборудование ({len(requests)}):\n\n"
+        
+        status_emoji = {
+            "pending": "⏳",
+            "approved": "✅",
+            "rejected": "❌",
+            "active": "📦",
+            "completed": "✔️",
+            "cancelled": "🚫"
+        }
+        
+        for i, req in enumerate(requests[:5], 1):  # Показываем первые 5
+            emoji = status_emoji.get(req.get("status"), "❓")
+            text += (
+                f"{i}. {emoji} {req.get('equipment_name', 'Unknown')}\n"
+                f"   Статус: {req.get('status')}\n"
+                f"   Даты: {req.get('start_date')} - {req.get('end_date')}\n\n"
+            )
+    
+    await message.answer(text)
+
+
+@router.message(Command("notifications"))
+async def cmd_notifications(message: Message, state: FSMContext):
+    """Команда /notifications - уведомления"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await message.answer(
+            "⚠️ Сначала выполните команду /start для авторизации."
+        )
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # Получаем непрочитанные уведомления
+    response = await call_api("GET", "/notifications?unread_only=true&limit=10", headers=headers)
+    
+    if "error" in response:
+        await message.answer("❌ Ошибка при загрузке уведомлений.")
+        return
+    
+    unread_count = response.get("unread_count", 0)
+    notifications = response.get("items", [])
+    
+    if unread_count == 0:
+        await message.answer("✅ Нет непрочитанных уведомлений!")
+        return
+    
+    text = f"🔔 Непрочитанных уведомлений: {unread_count}\n\n"
+    
+    type_emoji = {
+        "task_assigned": "📋",
+        "task_completed": "✅",
+        "task_deadline": "⏰",
+        "equipment_request": "📦",
+        "equipment_approved": "✅",
+        "equipment_rejected": "❌",
+        "moderation_approved": "🎉",
+        "moderation_rejected": "😔",
+        "new_task": "🆕",
+        "task_review": "👁️",
+        "achievement_unlocked": "🏆"
+    }
+    
+    for i, notif in enumerate(notifications[:5], 1):  # Показываем первые 5
+        emoji = type_emoji.get(notif.get("type"), "📢")
+        text += (
+            f"{i}. {emoji} {notif.get('title')}\n"
+            f"   {notif.get('message')}\n\n"
+        )
+    
+    if unread_count > 5:
+        text += f"... и ещё {unread_count - 5} уведомлений"
+    
+    text += "\n💡 Используй веб-интерфейс для просмотра всех уведомлений."
+    
+    await message.answer(text)
 
 
 @router.message(Command("help"))
@@ -255,6 +419,8 @@ async def cmd_help(message: Message):
         "/tasks - список моих задач\n"
         "/stats - моя статистика\n"
         "/leaderboard - рейтинг участников\n"
+        "/equipment - мои заявки на оборудование\n"
+        "/notifications - уведомления\n"
         "/help - эта справка\n\n"
         "💡 Также можно использовать веб-интерфейс для более удобной работы."
     )

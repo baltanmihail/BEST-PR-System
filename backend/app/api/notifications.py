@@ -94,7 +94,6 @@ async def mark_as_read(
     
     Доступно всем авторизованным пользователям
     """
-    import json
     notification = await NotificationService.mark_as_read(
         db=db,
         notification_id=notification_id,

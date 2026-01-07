@@ -170,6 +170,35 @@ async def publish_task(
             detail="Task not found, already published, or you don't have permission"
         )
     
+    # Уведомляем активных пользователей о новой задаче
+    from app.services.notification_service import NotificationService
+    from sqlalchemy import select
+    from app.models.user import UserRole
+    
+    # Получаем активных пользователей (кроме координаторов, они и так знают)
+    users_query = select(User.id).where(
+        User.is_active == True,
+        ~User.role.in_([
+            UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        ])
+    )
+    users_result = await db.execute(users_query)
+    user_ids = [row[0] for row in users_result.all()]
+    
+    if user_ids:
+        try:
+            await NotificationService.notify_new_task(
+                db=db,
+                user_ids=user_ids,
+                task_id=task.id,
+                task_title=task.title,
+                task_type=task.type.value
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to send notifications: {e}")
+    
     return TaskResponse.model_validate(task)
 
 
