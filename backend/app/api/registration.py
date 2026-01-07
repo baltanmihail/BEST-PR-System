@@ -179,33 +179,30 @@ async def request_registration_code(
     telegram_id = request.telegram_id
     telegram_username = request.telegram_username
     
-    # Если указан только username, пытаемся найти пользователя в БД
+    # Если указан только username (для незарегистрированных пользователей username не будет в БД)
+    # Нужно обязательно telegram_id для отправки сообщения
+    # Telegram Bot API не позволяет отправлять сообщения по username без chat_id
     if not telegram_id and telegram_username:
-        # Убираем @ если есть
-        username_clean = telegram_username.lstrip('@')
-        
-        # Пытаемся найти пользователя по username
-        result = await db.execute(
-            select(User).where(User.username == username_clean)
+        # Если указан только username без ID, нужно попросить пользователя указать ID
+        # Для незарегистрированных пользователей username не будет в системе
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Для запроса кода необходимо указать ваш Telegram ID. "
+                   "Вы можете узнать его, начав диалог с ботом @BESTPRSystemBot или используя бота @userinfobot. "
+                   "Если у вас есть username, используйте его вместе с ID (бот автоматически определит формат ввода)."
         )
-        existing_user = result.scalar_one_or_none()
-        
-        if existing_user:
-            telegram_id = existing_user.telegram_id
-        else:
-            # Если пользователь не найден, нужно telegram_id для отправки сообщения
-            # Telegram Bot API не позволяет отправлять сообщения по username без chat_id
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Пользователь с таким username не найден в системе. Пожалуйста, укажите ваш Telegram ID. "
-                       "Вы можете узнать его, начав диалог с ботом @BESTPRSystemBot или используя бота @userinfobot"
-            )
     
     if not telegram_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Необходимо указать Telegram ID. Вы можете узнать его, начав диалог с ботом @BESTPRSystemBot"
+            detail="Необходимо указать Telegram ID. Вы можете узнать его, начав диалог с ботом @BESTPRSystemBot или используя бота @userinfobot"
         )
+    
+    # Очищаем username от @ если есть
+    if telegram_username:
+        telegram_username = telegram_username.lstrip('@')
+    else:
+        telegram_username = None
     
     # Проверяем, не зарегистрирован ли уже пользователь
     result = await db.execute(
@@ -217,6 +214,31 @@ async def request_registration_code(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Пользователь уже зарегистрирован"
+        )
+    
+    # Проверяем, что пользователь начал диалог с ботом (пытаемся отправить тестовое сообщение)
+    # Если это не удастся, пользователь не начал диалог с ботом
+    try:
+        # Пробуем отправить тестовое сообщение (если бот не может отправить - пользователь не начал диалог)
+        test_sent = await send_telegram_message(
+            telegram_id,
+            "🔐 Подготовка кода регистрации...",
+            silent_fail=True  # Не логируем ошибку, просто проверяем
+        )
+        if not test_sent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Не удалось отправить сообщение в Telegram. Убедитесь, что вы начали диалог с ботом @BESTPRSystemBot. "
+                       f"Нажмите /start в боте, чтобы начать диалог."
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to test send message to telegram_id={telegram_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Не удалось отправить сообщение в Telegram. Убедитесь, что вы начали диалог с ботом @BESTPRSystemBot. "
+                   f"Нажмите /start в боте, чтобы начать диалог."
         )
     
     # Генерируем код
@@ -241,7 +263,7 @@ async def request_registration_code(
         logger.error(f"Failed to send registration code to telegram_id={telegram_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Не удалось отправить код в Telegram. Убедитесь, что вы начали диалог с ботом @BESTPRSystemBot"
+            detail="Не удалось отправить код в Telegram. Убедитесь, что вы начали диалог с ботом @BESTPRSystemBot. Нажмите /start в боте."
         )
     
     logger.info(f"Registration code sent to telegram_id={telegram_id}")

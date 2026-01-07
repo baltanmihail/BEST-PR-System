@@ -42,7 +42,13 @@ async def get_public_tasks(
         query = query.where(Task.type == task_type)
     
     # Подсчёт общего количества
-    count_query = select(func.count()).select_from(Task).where(status_filter)
+    count_query = select(func.count()).select_from(Task).where(
+        Task.status.in_([
+            TaskStatus.OPEN,
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS
+        ])
+    )
     if task_type:
         count_query = count_query.where(Task.type == task_type)
     

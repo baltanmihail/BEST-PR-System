@@ -236,7 +236,8 @@ async def cmd_start(message: Message, state: FSMContext):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
+                f"🧭 <b>Статус:</b> гость (без регистрации)\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
                 f"📋 Ты можешь:\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
@@ -264,7 +265,8 @@ async def cmd_start(message: Message, state: FSMContext):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n\n"
+                f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
                 f"Мы уведомим тебя, когда она будет одобрена.\n"
                 f"Пока можешь просматривать задачи и рейтинг."
             )
@@ -281,6 +283,7 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> заявка отклонена ❌\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n"
                 f"📝 <b>Причина:</b> {reason}\n\n"
                 f"Ты можешь подать новую заявку."
             )
@@ -330,7 +333,8 @@ async def cmd_start(message: Message, state: FSMContext):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Позиция:</b> {role_title}\n\n"
+                f"🧭 <b>Позиция:</b> {role_title}\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
                 f"👑 <b>Панель управления</b>\n\n"
                 f"📊 Статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
@@ -357,7 +361,8 @@ async def cmd_start(message: Message, state: FSMContext):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Позиция:</b> {role_title}\n\n"
+                f"🧭 <b>Позиция:</b> {role_title}\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
                 f"💼 <b>Режим координатора</b>\n\n"
                 f"📊 Твоя статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
@@ -384,7 +389,8 @@ async def cmd_start(message: Message, state: FSMContext):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Роль:</b> {role_title}\n\n"
+                f"🧭 <b>Роль:</b> {role_title}\n"
+                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
                 f"📊 Твоя статистика:\n"
                 f"• Уровень: {user_data.get('level', 1)}\n"
                 f"• Баллы: {points}\n"

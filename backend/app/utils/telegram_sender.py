@@ -38,7 +38,7 @@ async def get_bot():
     return _bot_instance
 
 
-async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "HTML") -> bool:
+async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "HTML", silent_fail: bool = False) -> bool:
     """
     Отправить сообщение в Telegram
     
@@ -46,6 +46,7 @@ async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "H
         chat_id: ID чата (telegram_id пользователя)
         message: Текст сообщения
         parse_mode: Режим парсинга (HTML или Markdown)
+        silent_fail: Если True, не логирует ошибку (для тестовых сообщений)
     
     Returns:
         True если сообщение отправлено успешно, False в противном случае
@@ -53,14 +54,17 @@ async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "H
     try:
         bot = await get_bot()
         if not bot:
-            logger.warning("Bot instance not available, cannot send message")
+            if not silent_fail:
+                logger.warning("Bot instance not available, cannot send message")
             return False
         
         await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
-        logger.info(f"Message sent to Telegram user {chat_id}")
+        if not silent_fail:
+            logger.info(f"Message sent to Telegram user {chat_id}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
+        if not silent_fail:
+            logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
         return False
 
 
