@@ -30,9 +30,9 @@ export default function Home() {
       if (isRegistered) {
         return tasksApi.getTasks({ limit: 100 })
       } else {
-        const publicTasks = await publicApi.getTasks({ limit: 100 })
+        const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
         return {
-          items: publicTasks.map(task => ({
+          items: publicTasksResponse.items.map(task => ({
             id: task.id,
             title: task.title,
             type: task.type,
@@ -42,9 +42,9 @@ export default function Home() {
             participants_count: task.participants_count,
             stages_count: task.stages_count,
           })),
-          total: publicTasks.length,
-          skip: 0,
-          limit: 100
+          total: publicTasksResponse.total,
+          skip: publicTasksResponse.skip,
+          limit: publicTasksResponse.limit
         }
       }
     },

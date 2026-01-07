@@ -27,14 +27,21 @@ export interface PublicStats {
   average_points: number
 }
 
+export interface PublicTasksResponse {
+  items: PublicTask[]
+  total: number
+  skip: number
+  limit: number
+}
+
 export const publicApi = {
   // Публичные задачи
   getTasks: async (params?: {
     skip?: number
     limit?: number
     task_type?: string
-  }): Promise<PublicTask[]> => {
-    const response = await api.get<PublicTask[]>('/public/tasks', { params })
+  }): Promise<PublicTasksResponse> => {
+    const response = await api.get<PublicTasksResponse>('/public/tasks', { params })
     return response.data
   },
 

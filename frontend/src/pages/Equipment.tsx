@@ -4,7 +4,7 @@ import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, Arrow
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { equipmentApi, Equipment, EquipmentRequest } from '../services/equipment'
+import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse } from '../services/equipment'
 
 export default function Equipment() {
   const { theme } = useThemeStore()
@@ -23,7 +23,7 @@ export default function Equipment() {
   const isRegistered = user && user.is_active
 
   // Загружаем оборудование
-  const { data: equipmentData, isLoading } = useQuery({
+  const { data: equipmentData, isLoading } = useQuery<EquipmentResponse>({
     queryKey: ['equipment'],
     queryFn: () => equipmentApi.getEquipment(),
     enabled: !!user, // Только для авторизованных
@@ -33,7 +33,7 @@ export default function Equipment() {
   const { data: myRequests } = useQuery({
     queryKey: ['equipment', 'requests', 'my'],
     queryFn: () => equipmentApi.getMyRequests(),
-    enabled: isRegistered,
+    enabled: !!isRegistered,
   })
 
   const createRequestMutation = useMutation({
@@ -254,9 +254,9 @@ export default function Equipment() {
       )}
 
       {/* Список оборудования */}
-      {!isLoading && equipmentData && (
+      {!isLoading && equipmentData && equipmentData.items && Array.isArray(equipmentData.items) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {equipmentData.items?.map((equipment: Equipment) => (
+          {equipmentData.items.map((equipment: Equipment) => (
             <div
               key={equipment.id}
               className={`glass-enhanced ${theme} rounded-xl p-6 card-3d hover:scale-105 transition-transform`}
@@ -302,7 +302,7 @@ export default function Equipment() {
       )}
 
       {/* Мои заявки */}
-      {isRegistered && myRequests && myRequests.length > 0 && (
+      {isRegistered && Array.isArray(myRequests) && myRequests.length > 0 && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mt-6`}>
           <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
             Мои заявки

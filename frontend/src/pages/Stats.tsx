@@ -1,6 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { Sparkles, Trophy, Award, TrendingUp, Target, ArrowLeft, Star, Loader2, AlertCircle } from 'lucide-react'
+import { Trophy, Award, TrendingUp, ArrowLeft, Star, Loader2, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'

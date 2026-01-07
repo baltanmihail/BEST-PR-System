@@ -28,14 +28,21 @@ export interface EquipmentRequestResponse {
   created_at: string
 }
 
+export interface EquipmentResponse {
+  items: Equipment[]
+  total: number
+  skip: number
+  limit: number
+}
+
 export const equipmentApi = {
   getEquipment: async (params?: {
     skip?: number
     limit?: number
     category?: string
     status?: string
-  }) => {
-    const response = await api.get('/equipment', { params })
+  }): Promise<EquipmentResponse> => {
+    const response = await api.get<EquipmentResponse>('/equipment', { params })
     return response.data
   },
 

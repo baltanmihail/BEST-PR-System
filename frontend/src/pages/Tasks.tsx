@@ -5,6 +5,7 @@ import { publicApi } from '../services/public'
 import TaskCard from '../components/TaskCard'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
+import { Task } from '../types/task'
 
 export default function Tasks() {
   const { theme } = useThemeStore()
@@ -19,22 +20,27 @@ export default function Tasks() {
       if (isRegistered) {
         return tasksApi.getTasks({ limit: 100 })
       } else {
-        const publicTasks = await publicApi.getTasks({ limit: 100 })
-        // Преобразуем формат публичных задач в формат, совместимый с TaskCard
+        const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
+        // Преобразуем формат публичных задач в полный формат Task для TaskCard
         return {
-          items: publicTasks.map(task => ({
+          items: publicTasksResponse.items.map(task => ({
             id: task.id,
             title: task.title,
-            type: task.type,
-            status: 'open',
-            priority: task.priority || 'medium',
-            due_date_relative: task.due_date_relative,
-            participants_count: task.participants_count,
-            stages_count: task.stages_count,
-          })),
-          total: publicTasks.length,
-          skip: 0,
-          limit: 100
+            description: undefined,
+            type: task.type as Task['type'],
+            event_id: undefined,
+            priority: (task.priority || 'medium') as Task['priority'],
+            status: (task.status || 'open') as Task['status'],
+            due_date: undefined,
+            created_by: '',
+            created_at: task.created_at || new Date().toISOString(),
+            updated_at: task.created_at || new Date().toISOString(),
+            stages: [],
+            assignments: [],
+          } as Task)),
+          total: publicTasksResponse.total,
+          skip: publicTasksResponse.skip,
+          limit: publicTasksResponse.limit
         }
       }
     },
