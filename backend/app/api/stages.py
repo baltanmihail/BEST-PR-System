@@ -3,6 +3,7 @@ API endpoints для этапов задач
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
 from uuid import UUID
 
 from app.database import get_db
