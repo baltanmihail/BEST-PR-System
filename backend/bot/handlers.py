@@ -51,12 +51,17 @@ def generate_telegram_hash(data: dict, bot_token: str) -> str:
     
     В реальном боте это делается на клиенте (фронтенд),
     но здесь мы симулируем для тестирования
+    
+    ВАЖНО: Должно полностью соответствовать логике verify_telegram_auth
     """
-    # Создаём копию данных без hash
-    data_copy = {k: v for k, v in data.items() if k != 'hash'}
+    # Создаём копию данных без hash, исключая None значения и пустые строки
+    # Это должно точно соответствовать логике verify_telegram_auth
+    data_copy = {k: v for k, v in data.items() if k != "hash" and v is not None and v != ""}
     
     # Создаём строку для проверки (как в verify_telegram_auth)
-    data_check_string = '\n'.join(f"{k}={v}" for k, v in sorted(data_copy.items()))
+    data_check_string = "\n".join(
+        f"{key}={value}" for key, value in sorted(data_copy.items())
+    )
     
     # Получаем секретный ключ от Telegram Bot API
     secret_key = hashlib.sha256(bot_token.encode()).digest()
@@ -168,13 +173,21 @@ async def cmd_start(message: Message, state: FSMContext):
     user = message.from_user
     
     # Подготавливаем данные для авторизации через Telegram
+    # ВАЖНО: first_name обязателен, если его нет - используем "User"
+    first_name = user.first_name or "User"
+    
     auth_data = {
         "id": user.id,
-        "first_name": user.first_name,
-        "last_name": user.last_name or "",
-        "username": user.username or "",
+        "first_name": first_name,
         "auth_date": int(message.date.timestamp()),
     }
+    
+    # Добавляем опциональные поля только если они не пустые
+    # Это важно для совместимости с verify_telegram_auth, который исключает пустые значения
+    if user.last_name:
+        auth_data["last_name"] = user.last_name
+    if user.username:
+        auth_data["username"] = user.username
     
     # Генерируем hash для проверки подлинности
     auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
@@ -183,13 +196,35 @@ async def cmd_start(message: Message, state: FSMContext):
     response = await call_api("POST", "/auth/telegram", data=auth_data)
     
     if "error" in response:
-        await message.answer(
-            "❌ Ошибка авторизации. Попробуйте позже или обратитесь к администратору."
-        )
+        error_msg = response.get("error", "Неизвестная ошибка")
+        status_code = response.get("status_code")
+        
+        # Более информативное сообщение об ошибке
+        if status_code == 401:
+            await message.answer(
+                "❌ Ошибка авторизации: неверные данные Telegram.\n\n"
+                "Попробуйте:\n"
+                "1. Перезапустить бота командой /start\n"
+                "2. Если проблема сохраняется, обратитесь к администратору"
+            )
+        else:
+            await message.answer(
+                f"❌ Ошибка авторизации: {error_msg}\n\n"
+                "Попробуйте позже или обратитесь к администратору."
+            )
+        logger.error(f"Auth failed for user {user.id}: {error_msg} (status: {status_code})")
         return
     
     access_token = response.get("access_token")
     user_data = response.get("user", {})
+    
+    if not access_token:
+        logger.error(f"No access_token in response for user {user.id}")
+        await message.answer(
+            "❌ Ошибка авторизации: не получен токен доступа.\n\n"
+            "Попробуйте позже или обратитесь к администратору."
+        )
+        return
     
     # Сохраняем токен для последующих запросов
     await state.update_data(access_token=access_token)
