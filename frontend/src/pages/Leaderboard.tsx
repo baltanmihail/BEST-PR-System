@@ -15,12 +15,18 @@ export default function Leaderboard() {
   const { data: leaderboardData, isLoading, error } = useQuery({
     queryKey: ['leaderboard', isRegistered],
     queryFn: async () => {
-      if (isRegistered) {
-        return gamificationApi.getLeaderboard(50) // Больше пользователей для зарегистрированных
-      } else {
-        return publicApi.getLeaderboard()
+      try {
+        if (isRegistered) {
+          return await gamificationApi.getLeaderboard(50) // Больше пользователей для зарегистрированных
+        } else {
+          return await publicApi.getLeaderboard()
+        }
+      } catch (err: any) {
+        console.error('Error loading leaderboard:', err)
+        throw err
       }
     },
+    retry: 2,
   })
 
   // Преобразуем данные из API в нужный формат

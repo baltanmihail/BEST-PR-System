@@ -11,40 +11,45 @@ export default function Tasks() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const isRegistered = user && user.is_active
-  const isUnregistered = !user || !user.is_active
 
   // Используем публичный API для незарегистрированных, защищённый для зарегистрированных
   const { data, isLoading, error } = useQuery({
     queryKey: ['tasks', isRegistered],
     queryFn: async () => {
-      if (isRegistered) {
-        return tasksApi.getTasks({ limit: 100 })
-      } else {
-        const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
-        // Преобразуем формат публичных задач в полный формат Task для TaskCard
-        return {
-          items: publicTasksResponse.items.map(task => ({
-            id: task.id,
-            title: task.title,
-            description: undefined,
-            type: task.type as Task['type'],
-            event_id: undefined,
-            priority: (task.priority || 'medium') as Task['priority'],
-            status: (task.status || 'open') as Task['status'],
-            due_date: undefined,
-            created_by: '',
-            created_at: (task.created_at || new Date().toISOString()) as string,
-            updated_at: (task.created_at || new Date().toISOString()) as string,
-            stages: [],
-            assignments: [],
-          } as Task)),
-          total: publicTasksResponse.total,
-          skip: publicTasksResponse.skip,
-          limit: publicTasksResponse.limit
+      try {
+        if (isRegistered) {
+          return await tasksApi.getTasks({ limit: 100 })
+        } else {
+          const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
+          // Преобразуем формат публичных задач в полный формат Task для TaskCard
+          return {
+            items: publicTasksResponse.items.map(task => ({
+              id: task.id,
+              title: task.title,
+              description: undefined,
+              type: task.type as Task['type'],
+              event_id: undefined,
+              priority: (task.priority || 'medium') as Task['priority'],
+              status: (task.status || 'open') as Task['status'],
+              due_date: undefined,
+              created_by: '',
+              created_at: (task.created_at || new Date().toISOString()) as string,
+              updated_at: (task.created_at || new Date().toISOString()) as string,
+              stages: [],
+              assignments: [],
+            } as Task)),
+            total: publicTasksResponse.total,
+            skip: publicTasksResponse.skip,
+            limit: publicTasksResponse.limit
+          }
         }
+      } catch (err: any) {
+        console.error('Error loading tasks:', err)
+        throw err
       }
     },
-    enabled: isUnregistered || !!user, // Загружаем для всех
+    enabled: true, // Загружаем для всех
+    retry: 2,
   })
 
   const tasks = data?.items || []

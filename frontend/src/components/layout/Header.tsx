@@ -1,9 +1,12 @@
 import { Link } from 'react-router-dom'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, Bell, User } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
+import { useAuthStore } from '../../store/authStore'
 
 export default function Header() {
   const { theme, toggleTheme } = useThemeStore()
+  const { user } = useAuthStore()
+  const isRegistered = user && user.is_active
 
   return (
     <header className={`glass-enhanced ${theme} border-b border-white/30 sticky top-0 z-50 rounded-none rounded-r-2xl`}>
@@ -31,6 +34,43 @@ export default function Header() {
               <span className="hidden sm:inline">Задачи</span>
               <span className="sm:hidden">📋</span>
             </Link>
+            <div className="h-4 md:h-6 w-px bg-white/30" />
+            
+            {/* Уведомления (только для зарегистрированных) */}
+            {isRegistered && (
+              <>
+                <Link
+                  to="/notifications"
+                  className="text-white/90 hover:text-white transition-colors p-1.5 md:p-2 rounded-lg hover:bg-white/10 flex items-center justify-center relative"
+                  title="Уведомления"
+                >
+                  <Bell className="h-4 w-4 md:h-5 md:w-5" />
+                  {/* Можно добавить индикатор непрочитанных */}
+                </Link>
+                <div className="h-4 md:h-6 w-px bg-white/30" />
+              </>
+            )}
+            
+            {/* Профиль / Регистрация */}
+            {isRegistered ? (
+              <Link
+                to="/settings"
+                className="text-white/90 hover:text-white transition-colors p-1.5 md:p-2 rounded-lg hover:bg-white/10 flex items-center justify-center"
+                title="Настройки профиля"
+              >
+                <User className="h-4 w-4 md:h-5 md:w-5" />
+              </Link>
+            ) : (
+              <Link
+                to="/register"
+                className="text-white/90 hover:text-white transition-colors font-medium px-2 md:px-3 py-1.5 md:py-2 rounded-lg hover:bg-white/10 text-sm md:text-base flex items-center space-x-1"
+                title="Регистрация"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Регистрация</span>
+              </Link>
+            )}
+            
             <div className="h-4 md:h-6 w-px bg-white/30" />
             <button
               onClick={toggleTheme}

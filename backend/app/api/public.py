@@ -28,14 +28,15 @@ async def get_public_tasks(
     Показывает только открытые задачи (open, assigned, in_progress)
     Без детальной информации
     """
-    # Фильтр: только публичные статусы (используем строковые значения для запросов)
-    status_filter = Task.status.in_([
-        TaskStatus.OPEN.value,
-        TaskStatus.ASSIGNED.value,
-        TaskStatus.IN_PROGRESS.value
-    ])
-    
-    query = select(Task).where(status_filter)
+    # Фильтр: только публичные статусы
+    # Используем enum объекты напрямую, TypeDecorator сам конвертирует их
+    query = select(Task).where(
+        Task.status.in_([
+            TaskStatus.OPEN,
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS
+        ])
+    )
     
     if task_type:
         query = query.where(Task.type == task_type)
@@ -114,9 +115,9 @@ async def get_public_task(
         and_(
             Task.id == task_id,
             Task.status.in_([
-                TaskStatus.OPEN.value,
-                TaskStatus.ASSIGNED.value,
-                TaskStatus.IN_PROGRESS.value
+                TaskStatus.OPEN,
+                TaskStatus.ASSIGNED,
+                TaskStatus.IN_PROGRESS
             ])
         )
     )
@@ -254,7 +255,7 @@ async def get_public_stats(
     """
     # Общее количество выполненных задач
     completed_tasks_query = select(func.count(Task.id)).where(
-        Task.status == TaskStatus.COMPLETED.value
+        Task.status == TaskStatus.COMPLETED
     )
     completed_result = await db.execute(completed_tasks_query)
     completed_tasks = completed_result.scalar() or 0
@@ -262,9 +263,9 @@ async def get_public_stats(
     # Активные задачи
     active_tasks_query = select(func.count(Task.id)).where(
         Task.status.in_([
-            TaskStatus.ASSIGNED.value,
-            TaskStatus.IN_PROGRESS.value,
-            TaskStatus.REVIEW.value
+            TaskStatus.ASSIGNED,
+            TaskStatus.IN_PROGRESS,
+            TaskStatus.REVIEW
         ])
     )
     active_result = await db.execute(active_tasks_query)

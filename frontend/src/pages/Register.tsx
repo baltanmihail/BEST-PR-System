@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, AlertCircle, CheckCircle2, Loader2, ArrowLeft, FileText, Shield, MessageSquare, Key } from 'lucide-react'
+import { UserPlus, AlertCircle, CheckCircle2, Loader2, ArrowLeft, MessageSquare, Key } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
@@ -20,8 +20,7 @@ export default function Register() {
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('telegram')
   
   // Для регистрации через код
-  const [telegramId, setTelegramId] = useState<string>('')
-  const [telegramUsername, setTelegramUsername] = useState<string>('')
+  const [telegramInput, setTelegramInput] = useState<string>('') // Единое поле для ID или username
   const [verificationCode, setVerificationCode] = useState<string>('')
   const [codeRequested, setCodeRequested] = useState(false)
 
@@ -203,61 +202,33 @@ export default function Register() {
           </p>
         </div>
 
-        {/* Согласие на обработку персональных данных */}
-        <div className={`p-4 bg-white/10 rounded-lg border ${consentAccepted ? 'border-best-primary' : 'border-white/20'}`}>
-          <label className="flex items-start space-x-3 cursor-pointer">
+        {/* Согласия (компактно) */}
+        <div className={`p-3 bg-white/10 rounded-lg border ${(consentAccepted && agreementAccepted) ? 'border-best-primary' : 'border-white/20'}`}>
+          <label className="flex items-start space-x-2 cursor-pointer">
             <input
               type="checkbox"
-              checked={consentAccepted}
-              onChange={(e) => setConsentAccepted(e.target.checked)}
-              className="mt-1 w-5 h-5 rounded border-white/30 text-best-primary focus:ring-best-primary"
+              checked={consentAccepted && agreementAccepted}
+              onChange={(e) => {
+                setConsentAccepted(e.target.checked)
+                setAgreementAccepted(e.target.checked)
+              }}
+              className="mt-1 w-4 h-4 rounded border-white/30 text-best-primary focus:ring-best-primary"
             />
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
-                <Shield className="h-5 w-5 text-best-primary" />
-                <span className={`text-white font-medium text-readable ${theme}`}>
-                  Согласие на обработку персональных данных
-                </span>
-              </div>
-              <p className={`text-white/70 text-sm text-readable ${theme}`}>
-                Я даю согласие на обработку моих персональных данных для целей управления задачами и связи со мной.
-              </p>
-            </div>
-          </label>
-        </div>
-
-        {/* Пользовательское соглашение */}
-        <div className={`p-4 bg-white/10 rounded-lg border ${agreementAccepted ? 'border-best-primary' : 'border-white/20'}`}>
-          <label className="flex items-start space-x-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={agreementAccepted}
-              onChange={(e) => setAgreementAccepted(e.target.checked)}
-              className="mt-1 w-5 h-5 rounded border-white/30 text-best-primary focus:ring-best-primary"
-            />
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
-                <FileText className="h-5 w-5 text-best-primary" />
-                <span className={`text-white font-medium text-readable ${theme}`}>
-                  Пользовательское соглашение
-                </span>
-              </div>
-              <p className={`text-white/70 text-sm text-readable ${theme} mb-2`}>
-                Я принимаю условия пользовательского соглашения BEST PR System.
-              </p>
-              <button
-                onClick={() => setShowAgreement(!showAgreement)}
-                className="text-best-primary hover:text-best-primary/80 text-sm underline"
-              >
-                {showAgreement ? 'Скрыть' : 'Прочитать соглашение'}
-              </button>
-              {showAgreement && (
-                <div className={`mt-3 p-3 bg-black/20 rounded-lg max-h-60 overflow-y-auto text-readable ${theme}`}>
-                  <pre className="text-white/80 text-xs whitespace-pre-wrap font-sans">
-                    {agreementContent || 'Загрузка...'}
-                  </pre>
-                </div>
-              )}
+            <div className="flex-1 text-sm">
+              <span className={`text-white text-readable ${theme}`}>
+                Я принимаю{' '}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowAgreement(true)
+                  }}
+                  className="text-best-primary hover:text-best-primary/80 underline"
+                >
+                  пользовательское соглашение
+                </button>
+                {' '}и даю согласие на обработку персональных данных
+              </span>
             </div>
           </label>
         </div>
@@ -343,54 +314,59 @@ export default function Register() {
                   <label className={`block text-white text-sm font-medium mb-2 text-readable ${theme}`}>
                     Telegram ID или Username
                   </label>
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Ваш Telegram ID (например: 123456789)"
-                      value={telegramId}
-                      onChange={(e) => setTelegramId(e.target.value)}
-                      className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary"
-                    />
-                    <p className="text-white/60 text-xs text-center">или</p>
-                    <input
-                      type="text"
-                      placeholder="Ваш Telegram username (например: @username)"
-                      value={telegramUsername}
-                      onChange={(e) => setTelegramUsername(e.target.value)}
-                      className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    placeholder="Введите ID (123456789) или username (@username)"
+                    value={telegramInput}
+                    onChange={(e) => setTelegramInput(e.target.value)}
+                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary"
+                  />
                   <p className="text-white/60 text-xs mt-2">
-                    💡 Убедитесь, что вы начали диалог с ботом @BESTPRSystemBot
+                    💡 Бот автоматически определит, что вы ввели. Начните диалог с{' '}
+                    <a 
+                      href="https://t.me/BESTPRSystemBot" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-best-primary hover:underline"
+                    >
+                      @BESTPRSystemBot
+                    </a>
                   </p>
                   <details className="mt-2">
                     <summary className="text-white/70 text-xs cursor-pointer hover:text-white">
                       Как узнать свой Telegram ID?
                     </summary>
                     <div className="mt-2 p-3 bg-white/5 rounded-lg text-white/80 text-xs space-y-2">
-                      <p>Способ 1: Начните диалог с ботом @userinfobot - он покажет ваш ID</p>
-                      <p>Способ 2: Начните диалог с ботом @BESTPRSystemBot - он также может показать ваш ID</p>
-                      <p>Способ 3: Если у вас есть username, попробуйте ввести его (но лучше использовать ID)</p>
+                      <p>• Начните диалог с ботом <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-best-primary hover:underline">@userinfobot</a> - он покажет ваш ID</p>
+                      <p>• Или начните диалог с <a href="https://t.me/BESTPRSystemBot" target="_blank" rel="noopener noreferrer" className="text-best-primary hover:underline">@BESTPRSystemBot</a></p>
                     </div>
                   </details>
                 </div>
 
                 <button
                   onClick={() => {
-                    const id = telegramId ? parseInt(telegramId) : undefined
-                    const username = telegramUsername ? telegramUsername.replace('@', '') : undefined
-                    
-                    if (!id && !username) {
+                    if (!telegramInput.trim()) {
                       alert('Введите Telegram ID или username')
                       return
                     }
                     
-                    codeRequestMutation.mutate({
-                      telegram_id: id,
-                      telegram_username: username,
-                    })
+                    // Определяем, что введено: ID (только цифры) или username (начинается с @ или без)
+                    const input = telegramInput.trim()
+                    const isNumeric = /^\d+$/.test(input)
+                    
+                    if (isNumeric) {
+                      codeRequestMutation.mutate({
+                        telegram_id: parseInt(input),
+                        telegram_username: undefined,
+                      })
+                    } else {
+                      codeRequestMutation.mutate({
+                        telegram_id: undefined,
+                        telegram_username: input.replace('@', ''),
+                      })
+                    }
                   }}
-                  disabled={codeRequestMutation.isPending || (!telegramId && !telegramUsername)}
+                  disabled={codeRequestMutation.isPending || !telegramInput.trim()}
                   className="w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   {codeRequestMutation.isPending ? (
@@ -487,6 +463,7 @@ export default function Register() {
                   onClick={() => {
                     setCodeRequested(false)
                     setVerificationCode('')
+                    setTelegramInput('')
                   }}
                   className="w-full text-white/70 hover:text-white text-sm underline"
                 >
@@ -569,6 +546,40 @@ export default function Register() {
           </>
         )}
       </div>
+
+      {/* Модальное окно для пользовательского соглашения */}
+      {showAgreement && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAgreement(false)}
+        >
+          <div 
+            className={`glass-enhanced ${theme} rounded-xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto w-full`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-2xl font-bold text-white text-readable ${theme}`}>
+                Пользовательское соглашение
+              </h2>
+              <button
+                onClick={() => setShowAgreement(false)}
+                className="text-white/70 hover:text-white text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className={`text-white/80 text-sm whitespace-pre-wrap text-readable ${theme}`}>
+              {agreementContent || 'Загрузка...'}
+            </div>
+            <button
+              onClick={() => setShowAgreement(false)}
+              className="mt-4 w-full bg-best-primary text-white py-2 px-4 rounded-lg hover:bg-best-primary/80 transition-all"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
