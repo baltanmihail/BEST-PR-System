@@ -104,6 +104,11 @@ export default function Cursor2() {
             const model = gltf.scene
             model.scale.set(0.35, 0.35, 0.35)
             model.rotation.set(0, 5.4, 0)
+            
+            // Центрируем модель (важно для правильного позиционирования)
+            const box = new THREE.Box3().setFromObject(model)
+            const center = box.getCenter(new THREE.Vector3())
+            model.position.sub(center) // Перемещаем модель так, чтобы её центр был в (0,0,0)
 
             model.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -123,11 +128,13 @@ export default function Cursor2() {
           },
           undefined,
           () => {
-            // Fallback
+            // Fallback - центрируем конус
             const geometry = new THREE.ConeGeometry(0.08, 0.25, 8)
             const material = new THREE.MeshStandardMaterial({ color: 0x1e88e5, metalness: 0.3, roughness: 0.3 })
             const cone = new THREE.Mesh(geometry, material)
             cone.rotation.set(-0.3, 0, 0)
+            // Центрируем конус (геометрия конуса создаётся с центром в основании)
+            cone.position.y = 0.125 // Смещаем вверх на половину высоты, чтобы центр был в (0,0,0)
             scene.add(cone)
             modelRef.current = cone
           }

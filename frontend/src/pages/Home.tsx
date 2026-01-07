@@ -7,7 +7,7 @@ import { useAuthStore } from '../store/authStore'
 import { useEffect } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
-import MotivationalChat from '../components/MotivationalChat'
+import ChatWidget from '../components/ChatWidget'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -25,9 +25,30 @@ export default function Home() {
 
   // Загружаем данные в зависимости от роли
   const { data: tasksData } = useQuery({
-    queryKey: ['tasks', 'stats'],
-    queryFn: () => tasksApi.getTasks({ limit: 100 }),
-    enabled: !!user,
+    queryKey: ['tasks', 'stats', isRegistered],
+    queryFn: async () => {
+      if (isRegistered) {
+        return tasksApi.getTasks({ limit: 100 })
+      } else {
+        const publicTasks = await publicApi.getTasks({ limit: 100 })
+        return {
+          items: publicTasks.map(task => ({
+            id: task.id,
+            title: task.title,
+            type: task.type,
+            status: 'open',
+            priority: task.priority || 'medium',
+            due_date_relative: task.due_date_relative,
+            participants_count: task.participants_count,
+            stages_count: task.stages_count,
+          })),
+          total: publicTasks.length,
+          skip: 0,
+          limit: 100
+        }
+      }
+    },
+    enabled: isUnregistered || !!user, // Загружаем для всех
   })
 
   const { data: publicStats } = useQuery({
@@ -47,7 +68,7 @@ export default function Home() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <MotivationalChat />
+      <ChatWidget />
       
       {/* Hero Section - разный контент для разных ролей */}
       <div 
@@ -82,13 +103,13 @@ export default function Home() {
               <span>Посмотреть задачи</span>
               <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
             </Link>
-            <button
-              onClick={() => navigate('/tasks')}
+            <Link
+              to="/register"
               className="inline-flex items-center justify-center space-x-2 bg-best-primary text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all text-sm md:text-base"
             >
               <span>Зарегистрироваться</span>
               <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
-            </button>
+            </Link>
           </div>
         )}
         {isRegistered && (

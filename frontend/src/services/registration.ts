@@ -1,19 +1,26 @@
 import api from './api'
-import { TelegramAuthData } from './auth'
 
 export interface RegistrationRequest {
-  telegram_auth: TelegramAuthData
+  telegram_auth: {
+    id: number
+    first_name: string
+    last_name?: string
+    username?: string
+    photo_url?: string
+    auth_date: number
+    hash: string
+  }
   personal_data_consent: {
     consent: boolean
-    consent_date?: string
+    date: string
   }
   user_agreement: {
     accepted: boolean
-    version?: string
+    version: string
   }
 }
 
-export interface UserAgreement {
+export interface AgreementResponse {
   version: string
   title: string
   content: string
@@ -21,18 +28,13 @@ export interface UserAgreement {
 }
 
 export const registrationApi = {
-  register: async (data: RegistrationRequest): Promise<{
-    access_token: string
-    token_type: string
-    user: any
-    message: string
-  }> => {
+  register: async (data: RegistrationRequest) => {
     const response = await api.post('/registration/register', data)
     return response.data
   },
 
-  getAgreement: async (): Promise<UserAgreement> => {
-    const response = await api.get<UserAgreement>('/registration/agreement')
+  getAgreement: async (): Promise<AgreementResponse> => {
+    const response = await api.get<AgreementResponse>('/registration/agreement')
     return response.data
   },
 }

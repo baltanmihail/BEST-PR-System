@@ -1,0 +1,222 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { UserPlus, AlertCircle, CheckCircle2, Loader2, ArrowLeft, FileText, Shield } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useAuthStore } from '../store/authStore'
+import { useThemeStore } from '../store/themeStore'
+import { registrationApi, RegistrationRequest } from '../services/registration'
+
+export default function Register() {
+  const { theme } = useThemeStore()
+  const { login, user } = useAuthStore()
+  const navigate = useNavigate()
+  const [agreementAccepted, setAgreementAccepted] = useState(false)
+  const [consentAccepted, setConsentAccepted] = useState(false)
+  const [agreementContent, setAgreementContent] = useState<string>('')
+  const [showAgreement, setShowAgreement] = useState(false)
+
+  // Проверяем, не зарегистрирован ли уже пользователь
+  useEffect(() => {
+    if (user && user.is_active) {
+      navigate('/')
+    }
+  }, [user, navigate])
+
+  // Получаем пользовательское соглашение
+  const { data: agreementData } = useQuery({
+    queryKey: ['agreement'],
+    queryFn: () => registrationApi.getAgreement(),
+  })
+
+  useEffect(() => {
+    if (agreementData?.content) {
+      setAgreementContent(agreementData.content)
+    }
+  }, [agreementData])
+
+  const registrationMutation = useMutation({
+    mutationFn: (data: RegistrationRequest) => registrationApi.register(data),
+    onSuccess: (data) => {
+      if (data.access_token) {
+        login(data.access_token)
+        navigate('/')
+      }
+    },
+  })
+
+  const handleTelegramAuth = () => {
+    // Telegram WebApp доступен только в Telegram
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp
+      const initData = tg.initDataUnsafe
+
+      if (initData && initData.user) {
+        const registrationData: RegistrationRequest = {
+          telegram_auth: {
+            id: initData.user.id,
+            first_name: initData.user.first_name || '',
+            last_name: initData.user.last_name,
+            username: initData.user.username,
+            photo_url: initData.user.photo_url,
+            auth_date: Math.floor(Date.now() / 1000),
+            hash: tg.initData || '',
+          },
+          personal_data_consent: {
+            consent: consentAccepted,
+            date: new Date().toISOString(),
+          },
+          user_agreement: {
+            accepted: agreementAccepted,
+            version: agreementData?.version || '1.0',
+          },
+        }
+
+        registrationMutation.mutate(registrationData)
+      } else {
+        alert('Не удалось получить данные из Telegram. Откройте эту страницу через Telegram бота.')
+      }
+    } else {
+      // Fallback для браузера - показываем предупреждение
+      alert('Для регистрации откройте эту страницу через Telegram бота. Перейдите в бота и нажмите кнопку "Зарегистрироваться".')
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 md:p-6">
+      {/* Заголовок */}
+      <div className="flex items-center space-x-4 mb-8">
+        <Link
+          to="/"
+          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+        >
+          <ArrowLeft className="h-6 w-6 text-white" />
+        </Link>
+        <div className="flex items-center space-x-3">
+          <UserPlus className="h-8 w-8 text-best-primary" />
+          <h1 className={`text-3xl md:text-4xl font-bold text-readable ${theme}`}>Регистрация</h1>
+        </div>
+      </div>
+
+      {/* Форма регистрации */}
+      <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6`}>
+        <div>
+          <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+            Присоединяйся к команде PR-отдела!
+          </h2>
+          <p className={`text-white/80 text-readable ${theme}`}>
+            После регистрации твоя заявка будет рассмотрена модераторами. После одобрения ты сможешь брать задачи и зарабатывать баллы!
+          </p>
+        </div>
+
+        {/* Согласие на обработку персональных данных */}
+        <div className={`p-4 bg-white/10 rounded-lg border ${consentAccepted ? 'border-best-primary' : 'border-white/20'}`}>
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={consentAccepted}
+              onChange={(e) => setConsentAccepted(e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-white/30 text-best-primary focus:ring-best-primary"
+            />
+            <div className="flex-1">
+              <div className="flex items-center space-x-2 mb-1">
+                <Shield className="h-5 w-5 text-best-primary" />
+                <span className={`text-white font-medium text-readable ${theme}`}>
+                  Согласие на обработку персональных данных
+                </span>
+              </div>
+              <p className={`text-white/70 text-sm text-readable ${theme}`}>
+                Я даю согласие на обработку моих персональных данных для целей управления задачами и связи со мной.
+              </p>
+            </div>
+          </label>
+        </div>
+
+        {/* Пользовательское соглашение */}
+        <div className={`p-4 bg-white/10 rounded-lg border ${agreementAccepted ? 'border-best-primary' : 'border-white/20'}`}>
+          <label className="flex items-start space-x-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={agreementAccepted}
+              onChange={(e) => setAgreementAccepted(e.target.checked)}
+              className="mt-1 w-5 h-5 rounded border-white/30 text-best-primary focus:ring-best-primary"
+            />
+            <div className="flex-1">
+              <div className="flex items-center space-x-2 mb-1">
+                <FileText className="h-5 w-5 text-best-primary" />
+                <span className={`text-white font-medium text-readable ${theme}`}>
+                  Пользовательское соглашение
+                </span>
+              </div>
+              <p className={`text-white/70 text-sm text-readable ${theme} mb-2`}>
+                Я принимаю условия пользовательского соглашения BEST PR System.
+              </p>
+              <button
+                onClick={() => setShowAgreement(!showAgreement)}
+                className="text-best-primary hover:text-best-primary/80 text-sm underline"
+              >
+                {showAgreement ? 'Скрыть' : 'Прочитать соглашение'}
+              </button>
+              {showAgreement && (
+                <div className={`mt-3 p-3 bg-black/20 rounded-lg max-h-60 overflow-y-auto text-readable ${theme}`}>
+                  <pre className="text-white/80 text-xs whitespace-pre-wrap font-sans">
+                    {agreementContent || 'Загрузка...'}
+                  </pre>
+                </div>
+              )}
+            </div>
+          </label>
+        </div>
+
+        {/* Ошибки */}
+        {registrationMutation.error && (
+          <div className={`p-4 bg-red-500/20 border border-red-500/50 rounded-lg`}>
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="h-5 w-5 text-red-400" />
+              <p className="text-white text-sm">
+                {registrationMutation.error instanceof Error
+                  ? registrationMutation.error.message
+                  : 'Произошла ошибка при регистрации'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Успех */}
+        {registrationMutation.isSuccess && (
+          <div className={`p-4 bg-green-500/20 border border-green-500/50 rounded-lg`}>
+            <div className="flex items-center space-x-2">
+              <CheckCircle2 className="h-5 w-5 text-green-400" />
+              <p className="text-white text-sm">
+                Регистрация успешна! Ваша заявка отправлена на модерацию.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Кнопка регистрации */}
+        <button
+          onClick={handleTelegramAuth}
+          disabled={!agreementAccepted || !consentAccepted || registrationMutation.isPending}
+          className={`w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2`}
+        >
+          {registrationMutation.isPending ? (
+            <>
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span>Регистрация...</span>
+            </>
+          ) : (
+            <>
+              <UserPlus className="h-5 w-5" />
+              <span>Зарегистрироваться</span>
+            </>
+          )}
+        </button>
+
+        <p className={`text-white/60 text-sm text-center text-readable ${theme}`}>
+          Для регистрации необходимо открыть эту страницу через Telegram бота
+        </p>
+      </div>
+    </div>
+  )
+}

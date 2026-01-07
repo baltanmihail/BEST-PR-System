@@ -1,15 +1,44 @@
 import { useQuery } from '@tanstack/react-query'
 import { CheckSquare, AlertCircle, Filter, Loader2 } from 'lucide-react'
 import { tasksApi } from '../services/tasks'
+import { publicApi } from '../services/public'
 import TaskCard from '../components/TaskCard'
 import { useThemeStore } from '../store/themeStore'
-
+import { useAuthStore } from '../store/authStore'
 
 export default function Tasks() {
   const { theme } = useThemeStore()
+  const { user } = useAuthStore()
+  const isRegistered = user && user.is_active
+  const isUnregistered = !user || !user.is_active
+
+  // Используем публичный API для незарегистрированных, защищённый для зарегистрированных
   const { data, isLoading, error } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: () => tasksApi.getTasks({ limit: 100 }),
+    queryKey: ['tasks', isRegistered],
+    queryFn: async () => {
+      if (isRegistered) {
+        return tasksApi.getTasks({ limit: 100 })
+      } else {
+        const publicTasks = await publicApi.getTasks({ limit: 100 })
+        // Преобразуем формат публичных задач в формат, совместимый с TaskCard
+        return {
+          items: publicTasks.map(task => ({
+            id: task.id,
+            title: task.title,
+            type: task.type,
+            status: 'open',
+            priority: task.priority || 'medium',
+            due_date_relative: task.due_date_relative,
+            participants_count: task.participants_count,
+            stages_count: task.stages_count,
+          })),
+          total: publicTasks.length,
+          skip: 0,
+          limit: 100
+        }
+      }
+    },
+    enabled: isUnregistered || !!user, // Загружаем для всех
   })
 
   const tasks = data?.items || []

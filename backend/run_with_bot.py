@@ -99,10 +99,19 @@ async def run_bot():
         
         # Используем простой способ создания бота без DefaultBotProperties
         bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+        
+        # Закрываем все предыдущие соединения, чтобы избежать конфликтов
+        try:
+            await bot.delete_webhook(drop_pending_updates=True)
+            logger.info("✅ Удалены все предыдущие webhook'и и pending updates")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось удалить webhook: {e}")
+        
         dp = Dispatcher()
         dp.include_router(router)
         
-        await dp.start_polling(bot, skip_updates=True)
+        # Запускаем polling с очисткой обновлений
+        await dp.start_polling(bot, skip_updates=True, allowed_updates=["message", "callback_query"])
     except Exception as e:
         logger.error(f"❌ Bot error: {e}")
         import traceback

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star } from 'lucide-react'
+import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 
@@ -8,6 +8,7 @@ const navigation = [
   { name: 'Задачи', href: '/tasks', icon: CheckSquare },
   { name: 'Рейтинг', href: '/leaderboard', icon: Trophy },
   { name: 'Статистика', href: '/stats', icon: Star },
+  { name: 'Оборудование', href: '/equipment', icon: Camera, requiresAuth: true },
   { name: 'Активность', href: '/activity', icon: Activity, requiresAuth: true },
   { name: 'Галерея', href: '/gallery', icon: Image },
   { name: 'Уведомления', href: '/notifications', icon: Bell, requiresAuth: true },

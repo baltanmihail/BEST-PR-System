@@ -9,6 +9,8 @@ import Support from './pages/Support'
 import Notifications from './pages/Notifications'
 import Activity from './pages/Activity'
 import Gallery from './pages/Gallery'
+import Register from './pages/Register'
+import Equipment from './pages/Equipment'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +35,8 @@ function App() {
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/activity" element={<Activity />} />
             <Route path="/gallery" element={<Gallery />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/equipment" element={<Equipment />} />
           </Routes>
         </Layout>
       </BrowserRouter>

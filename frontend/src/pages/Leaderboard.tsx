@@ -1,23 +1,38 @@
+import { useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../store/themeStore'
-import { Award, Trophy, Medal, ArrowLeft } from 'lucide-react'
+import { useAuthStore } from '../store/authStore'
+import { Award, Trophy, Medal, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { publicApi } from '../services/public'
+import { gamificationApi } from '../services/gamification'
 
 export default function Leaderboard() {
   const { theme } = useThemeStore()
+  const { user } = useAuthStore()
+  const isRegistered = user && user.is_active
 
-  // Заглушка данных топа - позже подключить к API
-  const topUsers = [
-    { id: 1, name: 'Иван Петров', points: 1250, level: 8, position: 1 },
-    { id: 2, name: 'Мария Смирнова', points: 1180, level: 7, position: 2 },
-    { id: 3, name: 'Алексей Иванов', points: 1120, level: 7, position: 3 },
-    { id: 4, name: 'Елена Козлова', points: 980, level: 6, position: 4 },
-    { id: 5, name: 'Дмитрий Новиков', points: 920, level: 6, position: 5 },
-    { id: 6, name: 'Анна Федорова', points: 850, level: 5, position: 6 },
-    { id: 7, name: 'Сергей Волков', points: 780, level: 5, position: 7 },
-    { id: 8, name: 'Ольга Морозова', points: 720, level: 5, position: 8 },
-    { id: 9, name: 'Павел Лебедев', points: 650, level: 4, position: 9 },
-    { id: 10, name: 'Татьяна Соколова', points: 580, level: 4, position: 10 },
-  ]
+  // Используем публичный API для всех, защищённый для зарегистрированных
+  const { data: leaderboardData, isLoading, error } = useQuery({
+    queryKey: ['leaderboard', isRegistered],
+    queryFn: async () => {
+      if (isRegistered) {
+        return gamificationApi.getLeaderboard(50) // Больше пользователей для зарегистрированных
+      } else {
+        return publicApi.getLeaderboard()
+      }
+    },
+  })
+
+  // Преобразуем данные из API в нужный формат
+  const topUsers = leaderboardData?.map((user, index) => ({
+    id: index + 1,
+    name: user.name,
+    username: user.username,
+    points: user.points,
+    level: user.level,
+    position: user.rank || index + 1,
+    completed_tasks: user.completed_tasks || 0,
+  })) || []
 
   const getMedalIcon = (position: number) => {
     if (position === 1) return <Trophy className="h-8 w-8 text-yellow-400" />
@@ -49,8 +64,36 @@ export default function Leaderboard() {
         </div>
       </div>
 
+      {/* Загрузка */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-best-primary" />
+        </div>
+      )}
+
+      {/* Ошибка */}
+      {error && (
+        <div className={`glass-enhanced ${theme} rounded-xl p-6 border-2 border-status-red/50 bg-red-500/20 backdrop-blur-xl mb-6`}>
+          <div className="flex items-center space-x-3">
+            <AlertCircle className="h-6 w-6 text-white flex-shrink-0" />
+            <div>
+              <p className="text-white font-semibold text-lg">Ошибка загрузки рейтинга</p>
+              <p className="text-white/80 text-sm mt-1">Проверьте подключение к API</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Список топа */}
-      <div className="space-y-4">
+      {!isLoading && !error && topUsers.length === 0 && (
+        <div className={`glass-enhanced ${theme} rounded-xl p-12 text-center text-white`}>
+          <Trophy className="h-12 w-12 text-white mx-auto mb-4" />
+          <p className={`text-white text-lg text-readable ${theme}`}>Пока нет данных рейтинга</p>
+        </div>
+      )}
+
+      {!isLoading && !error && topUsers.length > 0 && (
+        <div className="space-y-4">
         {topUsers.map((user) => (
           <div
             key={user.id}
@@ -91,9 +134,11 @@ export default function Leaderboard() {
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Подиум (для топ-3) */}
+      {!isLoading && !error && topUsers.length >= 3 && (
       <div className="mt-12 grid grid-cols-3 gap-6">
         {/* 2 место */}
         <div className={`glass-enhanced ${theme} rounded-xl p-6 text-center transform translate-y-4`}>
@@ -131,6 +176,7 @@ export default function Leaderboard() {
           <p className="text-white/50">{topUsers[2]?.points} баллов</p>
         </div>
       </div>
+      )}
     </div>
   )
 }
