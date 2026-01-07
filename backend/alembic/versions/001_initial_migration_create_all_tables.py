@@ -21,93 +21,129 @@ def upgrade() -> None:
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     op.execute('CREATE EXTENSION IF NOT EXISTS "pg_trgm"')
     
-    # Создание ENUM типов
+    # Создание ENUM типов (с проверкой существования)
     op.execute("""
-        CREATE TYPE user_role AS ENUM (
-            'novice',
-            'participant',
-            'active_participant',
-            'coordinator_smm',
-            'coordinator_design',
-            'coordinator_channel',
-            'coordinator_prfr',
-            'vp4pr'
-        )
+        DO $$ BEGIN
+            CREATE TYPE user_role AS ENUM (
+                'novice',
+                'participant',
+                'active_participant',
+                'coordinator_smm',
+                'coordinator_design',
+                'coordinator_channel',
+                'coordinator_prfr',
+                'vp4pr'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE task_type AS ENUM (
-            'smm',
-            'design',
-            'channel',
-            'prfr'
-        )
+        DO $$ BEGIN
+            CREATE TYPE task_type AS ENUM (
+                'smm',
+                'design',
+                'channel',
+                'prfr'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE task_priority AS ENUM (
-            'low',
-            'medium',
-            'high',
-            'critical'
-        )
+        DO $$ BEGIN
+            CREATE TYPE task_priority AS ENUM (
+                'low',
+                'medium',
+                'high',
+                'critical'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE task_status AS ENUM (
-            'draft',
-            'open',
-            'assigned',
-            'in_progress',
-            'review',
-            'completed',
-            'cancelled'
-        )
+        DO $$ BEGIN
+            CREATE TYPE task_status AS ENUM (
+                'draft',
+                'open',
+                'assigned',
+                'in_progress',
+                'review',
+                'completed',
+                'cancelled'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE stage_status AS ENUM (
-            'pending',
-            'in_progress',
-            'completed'
-        )
+        DO $$ BEGIN
+            CREATE TYPE stage_status AS ENUM (
+                'pending',
+                'in_progress',
+                'completed'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE assignment_status AS ENUM (
-            'assigned',
-            'in_progress',
-            'completed',
-            'cancelled'
-        )
+        DO $$ BEGIN
+            CREATE TYPE assignment_status AS ENUM (
+                'assigned',
+                'in_progress',
+                'completed',
+                'cancelled'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE equipment_status AS ENUM (
-            'available',
-            'rented',
-            'maintenance',
-            'broken'
-        )
+        DO $$ BEGIN
+            CREATE TYPE equipment_status AS ENUM (
+                'available',
+                'rented',
+                'maintenance',
+                'broken'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE equipment_request_status AS ENUM (
-            'pending',
-            'approved',
-            'rejected',
-            'active',
-            'completed',
-            'cancelled'
-        )
+        DO $$ BEGIN
+            CREATE TYPE equipment_request_status AS ENUM (
+                'pending',
+                'approved',
+                'rejected',
+                'active',
+                'completed',
+                'cancelled'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     op.execute("""
-        CREATE TYPE moderation_status AS ENUM (
-            'pending',
-            'approved',
-            'rejected'
-        )
+        DO $$ BEGIN
+            CREATE TYPE moderation_status AS ENUM (
+                'pending',
+                'approved',
+                'rejected'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
     
     # Создание таблиц
