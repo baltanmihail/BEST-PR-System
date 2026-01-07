@@ -4,7 +4,6 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from app.config import settings
@@ -26,10 +25,8 @@ async def main():
         return
     
     # Создаём бота и диспетчер
-    bot = Bot(
-        token=settings.TELEGRAM_BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    # Используем простой способ создания бота без DefaultBotProperties
+    bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
     dp = Dispatcher()
     
     # Регистрируем роутер
@@ -41,6 +38,8 @@ async def main():
         await dp.start_polling(bot, skip_updates=True)
     except Exception as e:
         logger.error(f"❌ Ошибка при запуске бота: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
     finally:
         await bot.session.close()
 

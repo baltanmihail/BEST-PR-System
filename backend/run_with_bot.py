@@ -42,10 +42,8 @@ async def run_bot():
     """Запуск Telegram бота"""
     logger.info("🤖 Starting Telegram bot...")
     try:
-        # bot_main() уже async, но запускается через start_polling
         # Используем прямое создание бота и диспетчера
         from aiogram import Bot, Dispatcher
-        from aiogram.client.default import DefaultBotProperties
         from aiogram.enums import ParseMode
         from app.config import settings
         from bot.handlers import router
@@ -54,10 +52,8 @@ async def run_bot():
             logger.warning("⚠️ TELEGRAM_BOT_TOKEN не установлен, бот не запустится")
             return
         
-        bot = Bot(
-            token=settings.TELEGRAM_BOT_TOKEN,
-            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-        )
+        # Используем простой способ создания бота без DefaultBotProperties
+        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
         dp = Dispatcher()
         dp.include_router(router)
         
