@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Bell, CheckCircle2, Filter, AlertCircle } from 'lucide-react'
+import { Bell, CheckCircle2, Filter } from 'lucide-react'
 import { notificationsApi } from '../services/notifications'
 import { useThemeStore } from '../store/themeStore'
 import { useState } from 'react'
@@ -34,7 +34,6 @@ export default function Notifications() {
 
   const notifications = data?.items || []
   const importantNotifications = data?.important || []
-  const regularNotifications = data?.regular || []
 
   return (
     <div className="max-w-4xl mx-auto">

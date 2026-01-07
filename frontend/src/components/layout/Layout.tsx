@@ -17,20 +17,12 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
 
   useEffect(() => {
-    let wheelTimeoutId: number
+    let wheelTimeoutId: number | undefined
     let lastWheelTime = 0
-    let wheelVelocity = 0
 
-    const handleWheel = (e: WheelEvent) => {
+    const handleWheel = (_e: WheelEvent) => {
       const now = Date.now()
-      const deltaTime = now - lastWheelTime
       lastWheelTime = now
-
-      // Вычисляем скорость вращения колёсика
-      const delta = Math.abs(e.deltaY)
-      if (deltaTime > 0) {
-        wheelVelocity = delta / deltaTime * 1000
-      }
 
       // Убираем эффект размытия - он мешает читать контент
     }
@@ -38,7 +30,9 @@ export default function Layout({ children }: LayoutProps) {
     window.addEventListener('wheel', handleWheel, { passive: true })
     return () => {
       window.removeEventListener('wheel', handleWheel)
-      clearTimeout(wheelTimeoutId)
+      if (wheelTimeoutId !== undefined) {
+        clearTimeout(wheelTimeoutId)
+      }
     }
   }, [])
 

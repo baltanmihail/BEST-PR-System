@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Sparkles, ArrowRight, Target, Trophy, CheckSquare, Users, TrendingUp } from 'lucide-react'
+import { Sparkles, ArrowRight, Target, Trophy, Users } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../services/tasks'
 import { publicApi } from '../services/public'

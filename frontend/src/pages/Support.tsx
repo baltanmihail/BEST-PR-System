@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Send, CheckCircle2, AlertCircle } from 'lucide-react'
 import { supportApi } from '../services/support'
 import { useThemeStore } from '../store/themeStore'

@@ -1,7 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Calendar, Trophy, Settings, MessageSquare, Bell, Activity, Image } from 'lucide-react'
+import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
-import { useAuthStore } from '../../store/authStore'
 
 const navigation = [
   { name: 'Главная', href: '/', icon: Home },
