@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, cast, String
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
@@ -28,11 +28,11 @@ async def get_public_tasks(
     Показывает только открытые задачи (open, assigned, in_progress)
     Без детальной информации
     """
-    # Фильтр: только публичные статусы
-    status_filter = TaskStatus.in_([
-        TaskStatus.OPEN,
-        TaskStatus.ASSIGNED,
-        TaskStatus.IN_PROGRESS
+    # Фильтр: только публичные статусы (используем строковые значения для запросов)
+    status_filter = Task.status.in_([
+        TaskStatus.OPEN.value,
+        TaskStatus.ASSIGNED.value,
+        TaskStatus.IN_PROGRESS.value
     ])
     
     query = select(Task).where(status_filter)
@@ -114,9 +114,9 @@ async def get_public_task(
         and_(
             Task.id == task_id,
             Task.status.in_([
-                TaskStatus.OPEN,
-                TaskStatus.ASSIGNED,
-                TaskStatus.IN_PROGRESS
+                TaskStatus.OPEN.value,
+                TaskStatus.ASSIGNED.value,
+                TaskStatus.IN_PROGRESS.value
             ])
         )
     )
@@ -253,7 +253,7 @@ async def get_public_stats(
     """
     # Общее количество выполненных задач
     completed_tasks_query = select(func.count(Task.id)).where(
-        Task.status == TaskStatus.COMPLETED
+        Task.status == TaskStatus.COMPLETED.value
     )
     completed_result = await db.execute(completed_tasks_query)
     completed_tasks = completed_result.scalar() or 0
@@ -261,9 +261,9 @@ async def get_public_stats(
     # Активные задачи
     active_tasks_query = select(func.count(Task.id)).where(
         Task.status.in_([
-            TaskStatus.ASSIGNED,
-            TaskStatus.IN_PROGRESS,
-            TaskStatus.REVIEW
+            TaskStatus.ASSIGNED.value,
+            TaskStatus.IN_PROGRESS.value,
+            TaskStatus.REVIEW.value
         ])
     )
     active_result = await db.execute(active_tasks_query)
@@ -296,10 +296,23 @@ async def get_public_stats(
     avg_result = await db.execute(avg_points_query)
     avg_points = round(avg_result.scalar() or 0, 1)
     
+    # Общее количество задач
+    total_tasks_query = select(func.count(Task.id))
+    total_tasks_result = await db.execute(total_tasks_query)
+    total_tasks = total_tasks_result.scalar() or 0
+    
+    # Общее количество баллов
+    total_points_query = select(func.sum(User.points)).where(User.is_active == True)
+    total_points_result = await db.execute(total_points_query)
+    total_points = total_points_result.scalar() or 0
+    
     return {
+        "total_users": participants_count,  # Используем participants_count как total_users
+        "total_tasks": total_tasks,
         "completed_tasks": completed_tasks,
         "active_tasks": active_tasks,
         "participants_count": participants_count,
+        "total_points": total_points,
         "average_points": avg_points,
         "updated_at": datetime.utcnow().isoformat()
     }

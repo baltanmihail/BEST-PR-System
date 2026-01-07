@@ -1,9 +1,9 @@
 """
 Модели задач
 """
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Enum, Integer, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Enum, Integer, CheckConstraint, TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -38,6 +38,47 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TaskStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации TaskStatus в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            # Используем правильное имя типа из базы данных
+            return dialect.type_descriptor(PG_ENUM(
+                TaskStatus, 
+                name='task_status', 
+                create_type=False, 
+                values_callable=lambda x: [e.value for e in TaskStatus]
+            ))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, TaskStatus):
+            return value.value
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return TaskStatus(value)
+            except ValueError:
+                return TaskStatus.DRAFT
+        return value
+
+
 class StageStatus(str, enum.Enum):
     """Статусы этапов"""
     PENDING = "pending"
@@ -63,7 +104,16 @@ class Task(Base):
     type = Column(Enum(TaskType), nullable=False, index=True)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
     priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.MEDIUM, index=True)
-    status = Column(Enum(TaskStatus), nullable=False, default=TaskStatus.DRAFT, index=True)
+    status = Column(TaskStatusType(), nullable=False, default=TaskStatus.DRAFT, server_default='draft', index=True)
+    
+    @validates('status')
+    def validate_status(self, key, value):
+        """Валидация статуса перед сохранением"""
+        if value is None:
+            return None
+        if isinstance(value, TaskStatus):
+            return value.value
+        return str(value) if value else None
     due_date = Column(DateTime(timezone=True), nullable=True, index=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

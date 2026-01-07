@@ -204,7 +204,8 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
-                f"💡 Для взятия задач и работы с оборудованием нужно зарегистрироваться."
+                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
+                f"🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
             )
             
             keyboard.inline_keyboard = [
@@ -255,7 +256,8 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
-                f"💡 Для взятия задач и работы с оборудованием нужно зарегистрироваться."
+                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
+                f"🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
             )
             
             keyboard.inline_keyboard = [
@@ -358,14 +360,16 @@ async def cmd_start(message: Message, state: FSMContext):
             await message.answer_photo(
                 photo=photo,
                 caption=welcome_text,
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                parse_mode="HTML"
             )
         else:
             # Если фото нет, отправляем только текст
             logger.info(f"Welcome photo not found at {welcome_photo_path}, sending text only")
             await message.answer(
                 welcome_text,
-                reply_markup=keyboard
+                reply_markup=keyboard,
+                parse_mode="HTML"
             )
     except Exception as e:
         logger.error(f"Error sending welcome message: {e}")
@@ -481,9 +485,10 @@ async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
         text += f"{i}. {task.get('title', 'Без названия')}\n"
         text += f"   Тип: {task.get('type', 'unknown')}\n\n"
     
-    text += "💡 Для взятия задачи зарегистрируйся!"
+    text += "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся по ссылке:\n"
+    text += "🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>"
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -514,7 +519,7 @@ async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
             f"Уровень {user.get('level', 1)}\n\n"
         )
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -536,7 +541,7 @@ async def callback_view_stats(callback: CallbackQuery, state: FSMContext):
         f"⭐ Всего баллов: {stats.get('total_points', 0)}\n"
     )
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -578,7 +583,7 @@ async def callback_my_tasks(callback: CallbackQuery, state: FSMContext):
             f"   Тип: {task.get('type', 'unknown')}\n\n"
         )
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -624,8 +629,9 @@ async def callback_equipment(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⚠️ Для работы с оборудованием нужно зарегистрироваться!", show_alert=True)
         await callback.message.answer(
             "📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
-            "💡 Зарегистрируйся через веб-интерфейс:\n"
-            "https://best-pr-system.up.railway.app/"
+            "💡 <b>Для работы с оборудованием BEST Channel</b> зарегистрируйся по ссылке:\n"
+            "🔗 <a href=\"https://best-pr-system.up.railway.app/\">https://best-pr-system.up.railway.app/</a>",
+            parse_mode="HTML"
         )
         return
     
@@ -663,7 +669,7 @@ async def callback_equipment(callback: CallbackQuery, state: FSMContext):
         text += f"{i}. {status_emoji} {eq.get('name', 'Unknown')}\n"
         text += f"   Категория: {eq.get('category', 'unknown')}\n\n"
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -697,7 +703,7 @@ async def callback_notifications(callback: CallbackQuery, state: FSMContext):
         text += f"{emoji} {notif.get('title', 'Без названия')}\n"
         text += f"   {notif.get('message', '')[:50]}...\n\n"
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
@@ -734,7 +740,7 @@ async def callback_moderation(callback: CallbackQuery, state: FSMContext):
     
     text += "💡 Используй веб-интерфейс для одобрения/отклонения."
     
-    await callback.message.answer(text)
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
 
