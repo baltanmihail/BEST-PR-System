@@ -47,11 +47,11 @@ export default function Layout({ children }: LayoutProps) {
       <Cursor2 />
       
       <Header />
-      <div className="flex relative z-10">
+      <div className="flex flex-col md:flex-row relative z-10">
         <Sidebar />
         <main 
           ref={mainRef}
-          className="flex-1 p-6 relative z-10 glass-trail"
+          className="flex-1 p-4 md:p-6 relative z-10 glass-trail"
           style={{
             transition: 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), filter 0.2s ease-out',
             backdropFilter: 'blur(3px)', // Размытие фона (3D моделей) при наложении

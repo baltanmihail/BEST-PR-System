@@ -15,7 +15,7 @@ git status
 git add .
 
 # Создайте коммит
-git commit -m "Ещё больше изменений"
+git commit -m "Ещё изменений"
 
 # Отправьте в GitHub
 git push origin main

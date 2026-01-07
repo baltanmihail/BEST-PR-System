@@ -31,7 +31,7 @@ export default function Cursor2() {
   const hoverSinceRef = useRef<number>(0)
   const lastPressRef = useRef<number>(0)
 
-  const trailLength = 8
+  const trailLength = 0 // Убираем трейл для уменьшения нагрузки
 
   useEffect(() => {
     setEnabled(location.pathname === '/')
@@ -181,8 +181,8 @@ export default function Cursor2() {
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate)
 
-      // Плавное следование (lerp) - точное центрирование
-      const lerpFactor = 0.18
+      // Плавное следование (lerp) - точное центрирование (увеличена скорость для уменьшения задержки)
+      const lerpFactor = 0.35 // Было 0.18, увеличено до 0.35 для быстрого отклика
       currentPos.current.x += (mousePos.current.x - currentPos.current.x) * lerpFactor
       currentPos.current.y += (mousePos.current.y - currentPos.current.y) * lerpFactor
 
@@ -192,19 +192,7 @@ export default function Cursor2() {
         containerRef.current.style.top = `${currentPos.current.y}px`
       }
 
-      // Обновляем трейл
-      trailPositions.current.unshift({ x: currentPos.current.x, y: currentPos.current.y })
-      if (trailPositions.current.length > trailLength) {
-        trailPositions.current.pop()
-      }
-
-      trailRefs.current.forEach((trail, index) => {
-        if (trail && trailPositions.current[index]) {
-          const pos = trailPositions.current[index]
-          trail.style.left = `${pos.x}px`
-          trail.style.top = `${pos.y}px`
-        }
-      })
+      // Трейл отключен для производительности
 
       // Idle-анимация: если долго наводимся на action-элемент (реже, слабее)
       const actionEl = hoverActionRef.current
@@ -252,29 +240,7 @@ export default function Cursor2() {
         }}
       />
 
-      {/* Трейл (очень лёгкий след - почти невидимый) */}
-      {[...Array(trailLength)].map((_, i) => (
-        <div
-          key={i}
-          ref={(el) => {
-            if (el) trailRefs.current[i] = el
-          }}
-          className="fixed pointer-events-none z-[9998]"
-          style={{
-            width: `${8 - i * 0.6}px`, // Меньше размер
-            height: `${8 - i * 0.6}px`,
-            opacity: 0.15 - i * 0.015, // Гораздо прозрачнее
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <div
-            className="w-full h-full rounded-full bg-white/20" // Белый вместо синего
-            style={{
-              boxShadow: '0 0 3px rgba(255, 255, 255, 0.1)', // Очень лёгкое свечение
-            }}
-          />
-        </div>
-      ))}
+      {/* Трейл отключен для производительности */}
     </>
   )
 }

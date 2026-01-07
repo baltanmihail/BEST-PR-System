@@ -1,16 +1,19 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { MessageSquare, Send, CheckCircle2, AlertCircle } from 'lucide-react'
+import { MessageSquare, Send, CheckCircle2, AlertCircle, HelpCircle, Lightbulb, Paperclip, Link as LinkIcon, X } from 'lucide-react'
 import { supportApi } from '../services/support'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 
+type SupportType = 'question' | 'suggestion' | null
+
 export default function Support() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
+  const [supportType, setSupportType] = useState<SupportType>(null)
   const [message, setMessage] = useState('')
-  const [contact, setContact] = useState('')
-  const [category, setCategory] = useState('')
+  const [link, setLink] = useState('')
+  const [attachedFile, setAttachedFile] = useState<File | null>(null)
 
   const queryClient = useQueryClient()
 
@@ -18,45 +21,125 @@ export default function Support() {
     mutationFn: supportApi.createRequest,
     onSuccess: () => {
       setMessage('')
-      setContact('')
-      setCategory('')
+      setLink('')
+      setAttachedFile(null)
+      setSupportType(null)
       queryClient.invalidateQueries({ queryKey: ['support'] })
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!message.trim()) return
+    if (!message.trim() || !supportType) return
+
+    let fullMessage = message.trim()
+    if (link.trim()) {
+      fullMessage += `\n\n🔗 Ссылка: ${link.trim()}`
+    }
+    if (attachedFile) {
+      fullMessage += `\n\n📎 Прикреплён файл: ${attachedFile.name}`
+    }
 
     mutation.mutate({
-      message: message.trim(),
-      contact: contact.trim() || undefined,
-      category: category || undefined,
+      message: fullMessage,
+      category: supportType === 'question' ? 'question' : 'suggestion',
+      contact: user?.telegram_username || user?.email || undefined,
     })
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { // 10MB
+        alert('Файл слишком большой. Максимальный размер: 10MB')
+        return
+      }
+      setAttachedFile(file)
+    }
+  }
+
+  if (!supportType) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className={`glass-enhanced ${theme} rounded-2xl p-8 text-white`}>
+          <div className="flex items-center space-x-3 mb-6">
+            <MessageSquare className="h-8 w-8 text-best-primary" />
+            <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
+          </div>
+          <p className={`text-white/80 text-readable ${theme} mb-8`}>
+            Выберите цель обращения
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <button
+              onClick={() => setSupportType('question')}
+              className={`glass-enhanced ${theme} rounded-xl p-6 hover:bg-white/10 transition-all border border-white/20 hover:border-best-primary text-left`}
+            >
+              <HelpCircle className="h-8 w-8 text-best-primary mb-4" />
+              <h3 className={`text-xl font-semibold text-white mb-2 text-readable ${theme}`}>
+                Есть вопросы?
+              </h3>
+              <p className={`text-white/70 text-sm text-readable ${theme}`}>
+                Напишите нам, и мы поможем! Задайте любой вопрос о системе, задачах или оборудовании.
+              </p>
+            </button>
+
+            <button
+              onClick={() => setSupportType('suggestion')}
+              className={`glass-enhanced ${theme} rounded-xl p-6 hover:bg-white/10 transition-all border border-white/20 hover:border-best-primary text-left`}
+            >
+              <Lightbulb className="h-8 w-8 text-best-accent mb-4" />
+              <h3 className={`text-xl font-semibold text-white mb-2 text-readable ${theme}`}>
+                Предложение, идея или сценарий
+              </h3>
+              <p className={`text-white/70 text-sm text-readable ${theme}`}>
+                Поделитесь своими идеями! Можно прикрепить ссылку или файл с подробным описанием.
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className={`glass-enhanced ${theme} rounded-2xl p-8 mb-8 text-white`}>
-        <div className="flex items-center space-x-3 mb-6">
-          <MessageSquare className="h-8 w-8 text-best-primary" />
-          <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
+      <div className={`glass-enhanced ${theme} rounded-2xl p-6 md:p-8 text-white`}>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            {supportType === 'question' ? (
+              <HelpCircle className="h-8 w-8 text-best-primary" />
+            ) : (
+              <Lightbulb className="h-8 w-8 text-best-accent" />
+            )}
+            <h1 className={`text-2xl md:text-3xl font-bold text-white text-readable ${theme}`}>
+              {supportType === 'question' ? 'Задать вопрос' : 'Отправить предложение'}
+            </h1>
+          </div>
+          <button
+            onClick={() => {
+              setSupportType(null)
+              setMessage('')
+              setLink('')
+              setAttachedFile(null)
+            }}
+            className="p-2 hover:bg-white/20 rounded-lg transition-all"
+          >
+            <X className="h-5 w-5 text-white" />
+          </button>
         </div>
-        <p className={`text-white/80 text-readable ${theme} mb-6`}>
-          Есть вопросы? Напишите нам, и мы поможем!
-        </p>
 
         {mutation.isSuccess && (
           <div className={`mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg flex items-center space-x-3`}>
-            <CheckCircle2 className="h-5 w-5 text-green-400" />
-            <p className="text-white">Ваш запрос отправлен! Мы свяжемся с вами в ближайшее время.</p>
+            <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0" />
+            <p className="text-white">Ваше сообщение отправлено! Мы свяжемся с вами в ближайшее время.</p>
           </div>
         )}
 
         {mutation.isError && (
           <div className={`mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-lg flex items-center space-x-3`}>
-            <AlertCircle className="h-5 w-5 text-red-400" />
-            <p className="text-white">Ошибка при отправке запроса. Попробуйте позже.</p>
+            <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+            <p className="text-white">Ошибка при отправке сообщения. Попробуйте позже.</p>
           </div>
         )}
 
@@ -70,60 +153,95 @@ export default function Support() {
               onChange={(e) => setMessage(e.target.value)}
               required
               rows={6}
-              className={`w-full bg-white/10 border border-white/30 rounded-lg p-4 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
-              placeholder="Опишите ваш вопрос или проблему..."
+              className={`w-full bg-white/10 border border-white/30 rounded-lg p-4 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} resize-none`}
+              placeholder={
+                supportType === 'question'
+                  ? 'Опишите ваш вопрос...'
+                  : 'Опишите вашу идею, предложение или сценарий...'
+              }
             />
           </div>
 
-          {!user && (
-            <div>
-              <label className={`block text-white mb-2 text-readable ${theme}`}>
-                Контакт (Telegram username или email)
-              </label>
-              <input
-                type="text"
-                value={contact}
-                onChange={(e) => setContact(e.target.value)}
-                className={`w-full bg-white/10 border border-white/30 rounded-lg p-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
-                placeholder="@username или email@example.com"
-              />
-            </div>
+          {supportType === 'suggestion' && (
+            <>
+              <div>
+                <label className={`block text-white mb-2 text-readable ${theme}`}>
+                  <LinkIcon className="h-4 w-4 inline mr-2" />
+                  Ссылка (опционально)
+                </label>
+                <input
+                  type="url"
+                  value={link}
+                  onChange={(e) => setLink(e.target.value)}
+                  className={`w-full bg-white/10 border border-white/30 rounded-lg p-3 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  placeholder="https://example.com"
+                />
+              </div>
+
+              <div>
+                <label className={`block text-white mb-2 text-readable ${theme}`}>
+                  <Paperclip className="h-4 w-4 inline mr-2" />
+                  Прикрепить файл (опционально)
+                </label>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="file"
+                    onChange={handleFileChange}
+                    className="hidden"
+                    id="file-upload"
+                    accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                  />
+                  <label
+                    htmlFor="file-upload"
+                    className={`flex-1 bg-white/10 border border-white/30 rounded-lg p-3 text-white cursor-pointer hover:bg-white/20 transition-all text-readable ${theme} text-center`}
+                  >
+                    {attachedFile ? attachedFile.name : 'Выберите файл (макс. 10MB)'}
+                  </label>
+                  {attachedFile && (
+                    <button
+                      type="button"
+                      onClick={() => setAttachedFile(null)}
+                      className="p-2 hover:bg-white/20 rounded-lg transition-all"
+                    >
+                      <X className="h-5 w-5 text-white" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
           )}
 
-          <div>
-            <label className={`block text-white mb-2 text-readable ${theme}`}>
-              Категория (опционально)
-            </label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className={`w-full bg-white/10 border border-white/30 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+          <div className="flex space-x-4">
+            <button
+              type="button"
+              onClick={() => {
+                setSupportType(null)
+                setMessage('')
+                setLink('')
+                setAttachedFile(null)
+              }}
+              className="flex-1 bg-white/10 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/20 transition-all"
             >
-              <option value="">Выберите категорию</option>
-              <option value="technical">Техническая проблема</option>
-              <option value="task">Вопрос по задаче</option>
-              <option value="registration">Регистрация</option>
-              <option value="other">Другое</option>
-            </select>
+              Отмена
+            </button>
+            <button
+              type="submit"
+              disabled={mutation.isPending || !message.trim()}
+              className="flex-1 bg-best-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            >
+              {mutation.isPending ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Отправка...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="h-5 w-5" />
+                  <span>Отправить</span>
+                </>
+              )}
+            </button>
           </div>
-
-          <button
-            type="submit"
-            disabled={mutation.isPending || !message.trim()}
-            className="w-full bg-best-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-          >
-            {mutation.isPending ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                <span>Отправка...</span>
-              </>
-            ) : (
-              <>
-                <Send className="h-5 w-5" />
-                <span>Отправить</span>
-              </>
-            )}
-          </button>
         </form>
       </div>
     </div>

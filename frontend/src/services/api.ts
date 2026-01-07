@@ -2,7 +2,7 @@ import axios from 'axios'
 
 // Для локальной разработки используем localhost, для production - Railway
 const API_BASE_URL = import.meta.env.VITE_API_URL || 
-  (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : 'https://best-pr-system.up.railway.app/api/v1')
+  (import.meta.env.DEV ? 'http://localhost:8000/api/v1' : 'https://best-pr-api.up.railway.app/api/v1')
 
 const api = axios.create({
   baseURL: API_BASE_URL,

@@ -203,8 +203,7 @@ async def cmd_start(message: Message, state: FSMContext):
     # Создаём клавиатуру с инлайн-кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
 
-    # Общая шапка (жирным, как просили)
-    header_title = f"<b>Добро пожаловать, {user.first_name}!</b>"
+    # Системная шапка
     system_title = "<b>🎯 Добро пожаловать в BEST PR System!</b>"
     
     if not is_active:
@@ -217,7 +216,6 @@ async def cmd_start(message: Message, state: FSMContext):
         if "error" in app_response or app_response.get("status_code") == 403:
             # Заявки ещё нет
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
@@ -243,7 +241,6 @@ async def cmd_start(message: Message, state: FSMContext):
             ]
         elif app_response.get("status") == "pending":
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n\n"
@@ -275,7 +272,6 @@ async def cmd_start(message: Message, state: FSMContext):
             ]
         else:
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
@@ -306,7 +302,6 @@ async def cmd_start(message: Message, state: FSMContext):
         
         if user_role == "vp4pr":
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Позиция:</b> {role_title}\n\n"
@@ -362,7 +357,6 @@ async def cmd_start(message: Message, state: FSMContext):
         else:
             # Обычный зарегистрированный пользователь
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Роль:</b> {role_title}\n\n"
@@ -508,25 +502,29 @@ async def cmd_stats(message: Message, state: FSMContext):
 @router.callback_query(F.data == "view_tasks")
 async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
     """Просмотр задач (для незарегистрированных)"""
-    # Получаем публичные задачи
-    response = await call_api("GET", "/public/tasks?limit=5")
-    
-    if "error" in response or not response.get("items"):
-        await callback.answer("❌ Ошибка при загрузке задач.", show_alert=True)
-        return
-    
-    tasks = response.get("items", [])[:5]
-    text = "📋 Доступные задачи:\n\n"
-    
-    for i, task in enumerate(tasks, 1):
-        text += f"{i}. {task.get('title', 'Без названия')}\n"
-        text += f"   Тип: {task.get('type', 'unknown')}\n\n"
-    
-    text += "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся по ссылке:\n"
-    text += f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+    try:
+        await callback.answer()  # Сначала отвечаем на callback
+        # Получаем публичные задачи
+        response = await call_api("GET", "/public/tasks?limit=5")
+        
+        if "error" in response or not response.get("items"):
+            await callback.message.answer("❌ Ошибка при загрузке задач. Попробуйте позже.")
+            return
+        
+        tasks = response.get("items", [])[:5]
+        text = "📋 Доступные задачи:\n\n"
+        
+        for i, task in enumerate(tasks, 1):
+            text += f"{i}. {task.get('title', 'Без названия')}\n"
+            text += f"   Тип: {task.get('type', 'unknown')}\n\n"
+        
+        text += "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся по ссылке:\n"
+        text += f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_view_tasks: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "view_leaderboard")
@@ -563,234 +561,257 @@ async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "view_stats")
 async def callback_view_stats(callback: CallbackQuery, state: FSMContext):
     """Просмотр статистики системы (публичный)"""
-    response = await call_api("GET", "/public/stats")
-    
-    if "error" in response:
-        await callback.answer("❌ Ошибка при загрузке статистики.", show_alert=True)
-        return
-    
-    stats = response
-    text = (
-        f"📊 Статистика системы:\n\n"
-        f"👥 Пользователей: {stats.get('total_users', 0)}\n"
-        f"📋 Всего задач: {stats.get('total_tasks', 0)}\n"
-        f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
-        f"⭐ Всего баллов: {stats.get('total_points', 0)}\n"
-    )
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+    try:
+        await callback.answer()  # Сначала отвечаем на callback
+        response = await call_api("GET", "/public/stats")
+        
+        if "error" in response:
+            await callback.message.answer("❌ Ошибка при загрузке статистики. Попробуйте позже.")
+            return
+        
+        stats = response
+        text = (
+            f"📊 Статистика системы:\n\n"
+            f"👥 Пользователей: {stats.get('total_users', 0)}\n"
+            f"📋 Всего задач: {stats.get('total_tasks', 0)}\n"
+            f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+            f"⭐ Всего баллов: {stats.get('total_points', 0)}\n"
+        )
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_view_stats: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "my_tasks")
 async def callback_my_tasks(callback: CallbackQuery, state: FSMContext):
     """Мои задачи (для зарегистрированных)"""
-    data = await state.get_data()
-    access_token = data.get("access_token")
-    
-    if not access_token:
-        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = await call_api("GET", "/tasks", headers=headers)
-    
-    if "error" in response:
-        await callback.answer("❌ Ошибка при загрузке задач.", show_alert=True)
-        return
-    
-    tasks = response.get("items", [])
-    active_tasks = [t for t in tasks if t.get("status") not in ["completed", "cancelled"]]
-    
-    if not active_tasks:
-        await callback.message.answer("✅ Все задачи выполнены!")
+    try:
         await callback.answer()
-        return
-    
-    text = f"📋 Твои активные задачи ({len(active_tasks)}):\n\n"
-    
-    for i, task in enumerate(active_tasks[:10], 1):
-        status_emoji = {
-            "draft": "📝", "open": "🟢", "assigned": "👤",
-            "in_progress": "⚙️", "review": "👁️",
-        }.get(task.get("status"), "❓")
+        data = await state.get_data()
+        access_token = data.get("access_token")
         
-        text += (
-            f"{i}. {status_emoji} {task.get('title', 'Без названия')}\n"
-            f"   Тип: {task.get('type', 'unknown')}\n\n"
-        )
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = await call_api("GET", "/tasks", headers=headers)
+        
+        if "error" in response:
+            await callback.message.answer("❌ Ошибка при загрузке задач. Попробуйте позже.")
+            return
+        
+        tasks = response.get("items", [])
+        active_tasks = [t for t in tasks if t.get("status") not in ["completed", "cancelled"]]
+        
+        if not active_tasks:
+            await callback.message.answer("✅ Все задачи выполнены!")
+            return
+        
+        text = f"📋 Твои активные задачи ({len(active_tasks)}):\n\n"
+        
+        for i, task in enumerate(active_tasks[:10], 1):
+            status_emoji = {
+                "draft": "📝", "open": "🟢", "assigned": "👤",
+                "in_progress": "⚙️", "review": "👁️",
+            }.get(task.get("status"), "❓")
+            
+            text += (
+                f"{i}. {status_emoji} {task.get('title', 'Без названия')}\n"
+                f"   Тип: {task.get('type', 'unknown')}\n\n"
+            )
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_my_tasks: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "my_stats")
 async def callback_my_stats(callback: CallbackQuery, state: FSMContext):
     """Моя статистика"""
-    data = await state.get_data()
-    access_token = data.get("access_token")
-    
-    if not access_token:
-        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    stats_response = await call_api("GET", "/gamification/stats", headers=headers)
-    
-    if "error" in stats_response:
-        await callback.answer("❌ Ошибка при загрузке статистики.", show_alert=True)
-        return
-    
-    stats = stats_response
-    stats_text = (
-        f"📊 Твоя статистика:\n\n"
-        f"🎯 Уровень: {stats.get('level', 1)}\n"
-        f"⭐ Баллы: {stats.get('points', 0)}\n"
-        f"👤 Роль: {stats.get('role', 'novice')}\n"
-        f"📋 Активных задач: {stats.get('active_tasks', 0)}\n"
-        f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
-        f"🏆 Ачивок: {stats.get('achievements_count', 0)}"
-    )
-    
-    await callback.message.answer(stats_text)
-    await callback.answer()
+    try:
+        await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        stats_response = await call_api("GET", "/gamification/stats", headers=headers)
+        
+        if "error" in stats_response:
+            await callback.message.answer("❌ Ошибка при загрузке статистики. Попробуйте позже.")
+            return
+        
+        stats = stats_response
+        stats_text = (
+            f"📊 Твоя статистика:\n\n"
+            f"🎯 Уровень: {stats.get('level', 1)}\n"
+            f"⭐ Баллы: {stats.get('points', 0)}\n"
+            f"👤 Роль: {stats.get('role', 'novice')}\n"
+            f"📋 Активных задач: {stats.get('active_tasks', 0)}\n"
+            f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+            f"🏆 Ачивок: {stats.get('achievements_count', 0)}"
+        )
+        
+        await callback.message.answer(stats_text)
+    except Exception as e:
+        logger.error(f"Error in callback_my_stats: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "equipment")
 async def callback_equipment(callback: CallbackQuery, state: FSMContext):
     """Оборудование - требует регистрации"""
-    data = await state.get_data()
-    access_token = data.get("access_token")
-    
-    if not access_token:
-        await callback.answer("⚠️ Для работы с оборудованием нужно зарегистрироваться!", show_alert=True)
-        await callback.message.answer(
-            f"📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
-            f"💡 <b>Для работы с оборудованием BEST Channel</b> зарегистрируйся по ссылке:\n"
-            f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>",
-            parse_mode="HTML"
-        )
-        return
-    
-    # Проверяем, активен ли пользователь
-    headers = {"Authorization": f"Bearer {access_token}"}
-    user_response = await call_api("GET", "/auth/me", headers=headers)
-    
-    if "error" in user_response or not user_response.get("is_active"):
-        await callback.answer("⚠️ Для работы с оборудованием нужно быть активным пользователем!", show_alert=True)
-        return
-    
-    # Получаем оборудование
-    equipment_response = await call_api("GET", "/equipment", headers=headers)
-    
-    if "error" in equipment_response:
-        await callback.answer("❌ Ошибка при загрузке оборудования.", show_alert=True)
-        return
-    
-    equipment_list = equipment_response.get("items", [])
-    
-    if not equipment_list:
-        await callback.message.answer("📦 Оборудование пока не добавлено.")
+    try:
         await callback.answer()
-        return
-    
-    text = "📦 Доступное оборудование:\n\n"
-    for i, eq in enumerate(equipment_list[:10], 1):
-        status_emoji = {
-            "available": "✅",
-            "rented": "🔴",
-            "maintenance": "🔧",
-            "broken": "❌",
-        }.get(eq.get("status"), "❓")
+        data = await state.get_data()
+        access_token = data.get("access_token")
         
-        text += f"{i}. {status_emoji} {eq.get('name', 'Unknown')}\n"
-        text += f"   Категория: {eq.get('category', 'unknown')}\n\n"
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+        if not access_token:
+            await callback.message.answer(
+                f"📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
+                f"💡 <b>Для работы с оборудованием BEST Channel</b> зарегистрируйся по ссылке:\n"
+                f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Проверяем, активен ли пользователь
+        headers = {"Authorization": f"Bearer {access_token}"}
+        user_response = await call_api("GET", "/auth/me", headers=headers)
+        
+        if "error" in user_response or not user_response.get("is_active"):
+            await callback.message.answer("⚠️ Для работы с оборудованием нужно быть активным пользователем!")
+            return
+        
+        # Получаем оборудование
+        equipment_response = await call_api("GET", "/equipment", headers=headers)
+        
+        if "error" in equipment_response:
+            await callback.message.answer("❌ Ошибка при загрузке оборудования. Попробуйте позже.")
+            return
+        
+        equipment_list = equipment_response.get("items", [])
+        
+        if not equipment_list:
+            await callback.message.answer("📦 Оборудование пока не добавлено.")
+            return
+        
+        text = "📦 Доступное оборудование:\n\n"
+        for i, eq in enumerate(equipment_list[:10], 1):
+            status_emoji = {
+                "available": "✅",
+                "rented": "🔴",
+                "maintenance": "🔧",
+                "broken": "❌",
+            }.get(eq.get("status"), "❓")
+            
+            text += f"{i}. {status_emoji} {eq.get('name', 'Unknown')}\n"
+            text += f"   Категория: {eq.get('category', 'unknown')}\n\n"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_equipment: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "notifications")
 async def callback_notifications(callback: CallbackQuery, state: FSMContext):
     """Уведомления"""
-    data = await state.get_data()
-    access_token = data.get("access_token")
-    
-    if not access_token:
-        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = await call_api("GET", "/notifications?limit=5", headers=headers)
-    
-    if "error" in response:
-        await callback.answer("❌ Ошибка при загрузке уведомлений.", show_alert=True)
-        return
-    
-    notifications = response.get("items", [])
-    
-    if not notifications:
-        await callback.message.answer("🔔 У тебя нет уведомлений.")
+    try:
         await callback.answer()
-        return
-    
-    text = "🔔 Последние уведомления:\n\n"
-    for notif in notifications[:5]:
-        emoji = "🔴" if notif.get("is_read") == False else "⚪"
-        text += f"{emoji} {notif.get('title', 'Без названия')}\n"
-        text += f"   {notif.get('message', '')[:50]}...\n\n"
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = await call_api("GET", "/notifications?limit=5", headers=headers)
+        
+        if "error" in response:
+            await callback.message.answer("❌ Ошибка при загрузке уведомлений. Попробуйте позже.")
+            return
+        
+        notifications = response.get("items", [])
+        
+        if not notifications:
+            await callback.message.answer("🔔 У тебя нет уведомлений.")
+            return
+        
+        text = "🔔 Последние уведомления:\n\n"
+        for notif in notifications[:5]:
+            emoji = "🔴" if notif.get("is_read") == False else "⚪"
+            text += f"{emoji} {notif.get('title', 'Без названия')}\n"
+            text += f"   {notif.get('message', '')[:50]}...\n\n"
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_notifications: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "moderation")
 async def callback_moderation(callback: CallbackQuery, state: FSMContext):
     """Модерация (только для координаторов)"""
-    data = await state.get_data()
-    access_token = data.get("access_token")
-    
-    if not access_token:
-        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
-        return
-    
-    headers = {"Authorization": f"Bearer {access_token}"}
-    response = await call_api("GET", "/moderation/applications", headers=headers)
-    
-    if "error" in response:
-        await callback.answer("❌ Ошибка при загрузке заявок.", show_alert=True)
-        return
-    
-    applications = response.get("items", [])
-    pending = [a for a in applications if a.get("status") == "pending"]
-    
-    if not pending:
-        await callback.message.answer("✅ Нет заявок на рассмотрении.")
+    try:
         await callback.answer()
-        return
-    
-    text = f"📋 Заявки на модерацию ({len(pending)}):\n\n"
-    for i, app in enumerate(pending[:5], 1):
-        user_name = app.get("application_data", {}).get("full_name", "Unknown")
-        text += f"{i}. 👤 {user_name}\n"
-        text += f"   Статус: ожидает рассмотрения\n\n"
-    
-    text += "💡 Используй веб-интерфейс для одобрения/отклонения."
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response = await call_api("GET", "/moderation/applications", headers=headers)
+        
+        if "error" in response:
+            await callback.message.answer("❌ Ошибка при загрузке заявок. Попробуйте позже.")
+            return
+        
+        applications = response.get("items", [])
+        pending = [a for a in applications if a.get("status") == "pending"]
+        
+        if not pending:
+            await callback.message.answer("✅ Нет заявок на рассмотрении.")
+            return
+        
+        text = f"📋 Заявки на модерацию ({len(pending)}):\n\n"
+        for i, app in enumerate(pending[:5], 1):
+            user_name = app.get("application_data", {}).get("full_name", "Unknown")
+            text += f"{i}. 👤 {user_name}\n"
+            text += f"   Статус: ожидает рассмотрения\n\n"
+        
+        text += "💡 Используй веб-интерфейс для одобрения/отклонения."
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_moderation: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "admin_panel")
 async def callback_admin_panel(callback: CallbackQuery, state: FSMContext):
     """Админ-панель (только для VP4PR)"""
-    await callback.message.answer(
-        f"⚙️ Панель управления доступна через веб-интерфейс:\n"
-        f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>\n\n"
-        f"💡 Там ты можешь управлять всеми аспектами системы.",
-        parse_mode="HTML"
-    )
-    await callback.answer()
+    try:
+        await callback.answer()
+        await callback.message.answer(
+            f"⚙️ Панель управления доступна через веб-интерфейс:\n"
+            f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>\n\n"
+            f"💡 Там ты можешь управлять всеми аспектами системы.",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logger.error(f"Error in callback_admin_panel: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.message(Command("leaderboard"))

@@ -1,6 +1,6 @@
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { Sparkles, Trophy, Award, TrendingUp, Target, ArrowLeft } from 'lucide-react'
+import { Sparkles, Trophy, Award, TrendingUp, Target, ArrowLeft, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useEffect } from 'react'
 
@@ -23,7 +23,7 @@ export default function Stats() {
           <ArrowLeft className="h-6 w-6 text-white" />
         </Link>
         <div className="flex items-center space-x-3">
-          <Sparkles className="h-8 w-8 text-best-secondary" />
+          <Star className="h-8 w-8 text-best-secondary" />
           <h1 className={`text-4xl font-bold text-readable ${theme}`}>Ваша статистика</h1>
         </div>
       </div>

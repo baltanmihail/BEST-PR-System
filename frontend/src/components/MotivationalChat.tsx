@@ -50,7 +50,8 @@ export default function MotivationalChat() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-6 right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 transition-all flex items-center justify-center z-50`}
+        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 transition-all flex items-center justify-center z-50`}
+        aria-label="Открыть чат"
       >
         <MessageSquare className="h-6 w-6 text-white" />
         <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full"></span>
@@ -60,7 +61,7 @@ export default function MotivationalChat() {
 
   return (
     <div
-      className={`fixed bottom-6 right-6 w-80 glass-enhanced ${theme} rounded-2xl p-4 shadow-2xl z-50 border border-white/30`}
+      className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-80 max-w-sm glass-enhanced ${theme} rounded-2xl p-4 shadow-2xl z-50 border border-white/30`}
     >
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">

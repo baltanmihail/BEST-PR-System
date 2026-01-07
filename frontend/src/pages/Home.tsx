@@ -53,11 +53,11 @@ export default function Home() {
       <div 
         ref={heroParallax.ref}
         style={{ transform: heroParallax.transform }}
-        className={`glass-enhanced ${theme} rounded-2xl p-8 mb-8 text-white card-3d parallax-hover`}
+        className={`glass-enhanced ${theme} rounded-xl md:rounded-2xl p-4 md:p-8 mb-6 md:mb-8 text-white card-3d parallax-hover`}
       >
-        <div className="flex items-center space-x-3 mb-4">
-          <Sparkles className="h-8 w-8" />
-          <h1 className={`text-4xl font-bold text-readable ${theme}`}>
+        <div className="flex items-center space-x-2 md:space-x-3 mb-3 md:mb-4">
+          <Sparkles className="h-6 w-6 md:h-8 md:w-8 flex-shrink-0" />
+          <h1 className={`text-2xl md:text-4xl font-bold text-readable ${theme}`}>
             {isCoordinator
               ? 'Панель координатора'
               : isRegistered
@@ -65,7 +65,7 @@ export default function Home() {
               : 'Добро пожаловать в BEST PR System!'}
           </h1>
         </div>
-        <p className={`text-xl text-white text-readable ${theme} mb-6`}>
+        <p className={`text-base md:text-xl text-white text-readable ${theme} mb-4 md:mb-6`}>
           {isCoordinator
             ? 'Управляйте задачами, модерацией и командой'
             : isRegistered
@@ -73,21 +73,21 @@ export default function Home() {
             : 'Присоединяйся к команде PR-отдела! Смотри задачи, зарабатывай баллы, развивайся!'}
         </p>
         {isUnregistered && (
-          <div className="flex items-center space-x-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <Link
               to="/tasks"
               data-cursor-action="view-tasks"
-              className="inline-flex items-center space-x-2 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30"
+              className="inline-flex items-center justify-center space-x-2 bg-white/20 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30 text-sm md:text-base"
             >
               <span>Посмотреть задачи</span>
-              <ArrowRight className="h-5 w-5" />
+              <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
             </Link>
             <button
               onClick={() => navigate('/tasks')}
-              className="inline-flex items-center space-x-2 bg-best-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all"
+              className="inline-flex items-center justify-center space-x-2 bg-best-primary text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all text-sm md:text-base"
             >
               <span>Зарегистрироваться</span>
-              <ArrowRight className="h-5 w-5" />
+              <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
             </button>
           </div>
         )}
@@ -95,16 +95,16 @@ export default function Home() {
           <Link
             to="/tasks"
             data-cursor-action="view-tasks"
-            className="inline-flex items-center space-x-2 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30"
+            className="inline-flex items-center justify-center space-x-2 bg-white/20 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30 text-sm md:text-base"
           >
             <span>Посмотреть задачи</span>
-            <ArrowRight className="h-5 w-5" />
+            <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
           </Link>
         )}
       </div>
 
       {/* Stats Cards - разный контент для разных ролей */}
-      <div className={`grid ${isCoordinator ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'} gap-6 mb-8`}>
+      <div className={`grid ${isCoordinator ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3'} gap-4 md:gap-6 mb-6 md:mb-8`}>
         <div 
           ref={card1Parallax.ref}
           style={{ transform: card1Parallax.transform }}
@@ -127,40 +127,40 @@ export default function Home() {
           style={{ transform: card2Parallax.transform }}
           data-static-cursor-anchor="user-level"
           onClick={() => navigate('/stats')}
-          className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover cursor-pointer hover:scale-105 transition-transform`}
+          className={`glass-enhanced ${theme} rounded-xl p-4 md:p-6 card-3d text-white parallax-hover cursor-pointer hover:scale-105 transition-transform`}
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3 md:mb-4">
             <div className="relative">
-              <Sparkles className="h-7 w-7 text-best-secondary drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-              <div className="absolute inset-0 h-7 w-7 text-best-secondary blur-md opacity-50">
+              <Sparkles className="h-6 w-6 md:h-7 md:w-7 text-best-secondary drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+              <div className="absolute inset-0 h-6 w-6 md:h-7 md:w-7 text-best-secondary blur-md opacity-50">
                 <Sparkles className="h-full w-full" />
               </div>
             </div>
-            <span className={`text-3xl font-bold text-white text-readable ${theme}`}>{user?.level || 1}</span>
+            <span className={`text-2xl md:text-3xl font-bold text-white text-readable ${theme}`}>{user?.level || 1}</span>
           </div>
-          <h3 className={`text-white font-medium text-readable ${theme}`}>Уровень</h3>
+          <h3 className={`text-white font-medium text-sm md:text-base text-readable ${theme}`}>Уровень</h3>
         </div>
 
         <div
           ref={card3Parallax.ref}
           style={{ transform: card3Parallax.transform }}
           data-static-cursor-anchor="top"
-          className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover cursor-pointer hover:scale-105 transition-transform`}
+          className={`glass-enhanced ${theme} rounded-xl p-4 md:p-6 card-3d text-white parallax-hover cursor-pointer hover:scale-105 transition-transform`}
         >
           <Link
             to="/leaderboard"
             className="block"
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3 md:mb-4">
               <div className="relative">
-                <Trophy className="h-8 w-8 text-best-accent drop-shadow-[0_0_8px_rgba(250,204,21,0.6)]" />
-                <div className="absolute inset-0 h-8 w-8 text-best-accent blur-md opacity-50">
+                <Trophy className="h-7 w-7 md:h-8 md:w-8 text-best-accent drop-shadow-[0_0_8px_rgba(250,204,21,0.6)]" />
+                <div className="absolute inset-0 h-7 w-7 md:h-8 md:w-8 text-best-accent blur-md opacity-50">
                   <Trophy className="h-full w-full" />
                 </div>
               </div>
-              <span className={`text-3xl font-bold text-white text-readable ${theme}`}>#1</span>
+              <span className={`text-2xl md:text-3xl font-bold text-white text-readable ${theme}`}>#1</span>
             </div>
-            <h3 className={`text-white font-medium text-readable ${theme}`}>Топ</h3>
+            <h3 className={`text-white font-medium text-sm md:text-base text-readable ${theme}`}>Топ</h3>
           </Link>
         </div>
         
