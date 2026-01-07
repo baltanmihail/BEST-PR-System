@@ -26,11 +26,14 @@ def get_api_url():
     if api_url:
         return api_url + settings.API_V1_PREFIX
     
-    # Проверяем, есть ли Railway URL в DATABASE_URL
-    db_url = settings.DATABASE_URL
-    if 'railway' in db_url.lower():
-        # Предполагаем, что API на том же домене
-        return 'https://best-pr-system.up.railway.app' + settings.API_V1_PREFIX
+    # Если бот и API в одном сервисе на Railway - используем localhost
+    environment = os.getenv('ENVIRONMENT', 'development')
+    port = os.getenv('PORT', '8080')
+    
+    if environment == 'production' and 'railway' in settings.DATABASE_URL.lower():
+        # На Railway в одном сервисе используем localhost
+        # Если нужен внешний URL - установите API_URL в переменных окружения
+        return f'http://localhost:{port}' + settings.API_V1_PREFIX
     
     return 'http://localhost:8000' + settings.API_V1_PREFIX
 
@@ -67,8 +70,10 @@ async def call_api(method: str, endpoint: str, data: Optional[dict] = None, head
     """Вызов API endpoint"""
     url = f"{API_URL}{endpoint}"
     
+    logger.debug(f"Calling API: {method} {url}")
+    
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:  # Увеличил таймаут до 30 секунд
             if method.upper() == "GET":
                 response = await client.get(url, headers=headers)
             elif method.upper() == "POST":
