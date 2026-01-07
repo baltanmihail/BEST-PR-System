@@ -267,7 +267,8 @@ class AIService:
         
         # Простой анализ на основе ключевых слов
         if suggestion_type == "script":
-            analysis["summary"] = f"Сценарий '{title or 'без названия}': {content[:100]}..."
+            title_text = title or 'без названия'
+            analysis["summary"] = f"Сценарий '{title_text}': {content[:100]}..."
             analysis["structure"] = "Проверьте структуру: начало, развитие, кульминация, развязка"
             if len(content) < 500:
                 analysis["improvements"].append("Сценарий слишком короткий, рекомендуется расширить")
