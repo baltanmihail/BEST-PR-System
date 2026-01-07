@@ -37,21 +37,32 @@ async def get_calendar(
     - week: недельный вид
     - timeline: горизонтальная шкала всего семестра
     """
-    # Если дата не указана, используем текущую
-    if not start_date:
-        start_date = date.today()
-    
-    if view == "month":
-        return await _get_month_view(db, start_date, task_type, current_user)
-    elif view == "week":
-        return await _get_week_view(db, start_date, task_type, current_user)
-    elif view == "timeline":
-        if not end_date:
-            # По умолчанию показываем 6 месяцев от start_date
-            end_date = start_date + relativedelta(months=6)
-        return await _get_timeline_view(db, start_date, end_date, task_type, current_user)
-    else:
-        return {"error": "Invalid view type"}
+    try:
+        # Если дата не указана, используем текущую
+        if not start_date:
+            start_date = date.today()
+        
+        if view == "month":
+            return await _get_month_view(db, start_date, task_type, current_user)
+        elif view == "week":
+            return await _get_week_view(db, start_date, task_type, current_user)
+        elif view == "timeline":
+            if not end_date:
+                # По умолчанию показываем 6 месяцев от start_date
+                end_date = start_date + relativedelta(months=6)
+            return await _get_timeline_view(db, start_date, end_date, task_type, current_user)
+        else:
+            return {"error": "Invalid view type"}
+    except Exception as e:
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Calendar error: {e}\n{traceback.format_exc()}")
+        return {
+            "error": str(e),
+            "view": view,
+            "message": "Произошла ошибка при получении календаря"
+        }
 
 
 async def _get_month_view(
@@ -111,6 +122,7 @@ async def _get_month_view(
         current_date = current_date + relativedelta(days=1)
     
     # Добавляем мероприятия (events)
+    # Событие попадает в диапазон, если date_start <= last_day и date_end >= first_day
     events_query = select(Event).where(
         and_(
             Event.date_start <= last_day,
@@ -125,7 +137,7 @@ async def _get_month_view(
             "id": str(event.id),
             "name": event.name,
             "date_start": event.date_start.isoformat(),
-            "date_end": event.date_end.isoformat() if event.date_end else None,
+            "date_end": event.date_end.isoformat(),
             "color": "purple"
         }
         for event in events
@@ -250,10 +262,7 @@ async def _get_timeline_view(
     events_query = select(Event).where(
         and_(
             Event.date_start <= end_date,
-            or_(
-                Event.date_end >= start_date,
-                Event.date_end == None
-            )
+            Event.date_end >= start_date
         )
     )
     events_result = await db.execute(events_query)
@@ -286,14 +295,20 @@ async def _get_tasks_and_stages_in_range(
 ):
     """Получить задачи и этапы в диапазоне дат"""
     # Запрос для задач
+    # Задача попадает в диапазон, если:
+    # - due_date или created_at >= start_date И
+    # - due_date или created_at <= end_date
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date, datetime.max.time())
+    
     conditions = [
         or_(
-            and_(Task.due_date >= datetime.combine(start_date, datetime.min.time())),
-            Task.created_at >= datetime.combine(start_date, datetime.min.time())
+            Task.due_date >= start_dt,
+            Task.created_at >= start_dt
         ),
         or_(
-            Task.due_date <= datetime.combine(end_date, datetime.max.time()),
-            Task.created_at <= datetime.combine(end_date, datetime.max.time())
+            Task.due_date <= end_dt,
+            Task.created_at <= end_dt
         )
     ]
     

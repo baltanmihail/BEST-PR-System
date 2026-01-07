@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.config import settings
-from app.api import auth, tasks, stages, events, equipment, calendar
+from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications
 
 # Настройка логирования
 logging.basicConfig(
@@ -37,6 +37,9 @@ app.include_router(stages.router, prefix=settings.API_V1_PREFIX)
 app.include_router(events.router, prefix=settings.API_V1_PREFIX)
 app.include_router(equipment.router, prefix=settings.API_V1_PREFIX)
 app.include_router(calendar.router, prefix=settings.API_V1_PREFIX)
+app.include_router(gamification.router, prefix=settings.API_V1_PREFIX)
+app.include_router(moderation.router, prefix=settings.API_V1_PREFIX)
+app.include_router(notifications.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():

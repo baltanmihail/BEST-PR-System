@@ -147,6 +147,32 @@ async def delete_task(
     return None
 
 
+@router.post("/{task_id}/publish", response_model=TaskResponse)
+async def publish_task(
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Опубликовать задачу (изменить статус с DRAFT на OPEN)
+    
+    Доступно только координаторам и VP4PR
+    """
+    task = await TaskService.publish_task(
+        db=db,
+        task_id=task_id,
+        current_user=current_user
+    )
+    
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found, already published, or you don't have permission"
+        )
+    
+    return TaskResponse.model_validate(task)
+
+
 @router.post("/{task_id}/assign", response_model=dict)
 async def assign_task(
     task_id: UUID,
@@ -227,6 +253,32 @@ async def assign_task(
                 # Если ошибка при получении оборудования, продолжаем без него
                 pass
     
+    # Начисляем баллы за взятие задачи
+    from app.services.gamification_service import GamificationService
+    try:
+        await GamificationService.award_task_taken_points(
+            db=db,
+            user_id=current_user.id,
+            task=task
+        )
+    except Exception as e:
+        # Логируем ошибку, но не прерываем процесс
+        import logging
+        logging.error(f"Failed to award points for task taken: {e}")
+    
+    # Уведомляем о назначении задачи
+    from app.services.notification_service import NotificationService
+    try:
+        await NotificationService.notify_task_assigned(
+            db=db,
+            user_id=current_user.id,
+            task_id=task.id,
+            task_title=task.title
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to send notification: {e}")
+    
     await db.commit()
     await db.refresh(task)
     
@@ -292,13 +344,68 @@ async def complete_task(
         )
     
     # Обновляем назначение
+    completed_at = None
     if assignment:
         assignment.status = AssignmentStatus.COMPLETED
-        from datetime import datetime
-        assignment.completed_at = datetime.utcnow()
+        from datetime import datetime, timezone
+        completed_at = datetime.now(timezone.utc)
+        assignment.completed_at = completed_at
     
     # Обновляем статус задачи
     task.status = TaskStatus.COMPLETED
+    
+    # Начисляем баллы за выполнение задачи
+    from app.services.gamification_service import GamificationService
+    if assignment and completed_at:
+        try:
+            # Начисляем баллы за выполнение
+            await GamificationService.award_task_completed_points(
+                db=db,
+                user_id=current_user.id,
+                task=task,
+                assignment=assignment,
+                completed_at=completed_at
+            )
+            
+            # Проверяем и начисляем ачивки
+            new_achievements = await GamificationService.check_and_award_achievements(
+                db=db,
+                user_id=current_user.id,
+                task=task
+            )
+            
+            # Уведомляем о новых ачивках
+            from app.services.notification_service import NotificationService
+            achievement_names = {
+                "first_task": "🎯 Первая кровь",
+                "speedster": "⚡ Скорострел",
+                "reliable": "🛡️ Надёжный",
+                "director": "🎬 Режиссёр",
+                "designer": "🖌️ Дизайнер",
+                "smm_guru": "📢 SMM-гур",
+                "helper": "🤝 Помощник",
+                "unstoppable": "🔥 Неудержимый"
+            }
+            for achievement in new_achievements:
+                await NotificationService.notify_achievement_unlocked(
+                    db=db,
+                    user_id=current_user.id,
+                    achievement_type=achievement.achievement_type,
+                    achievement_name=achievement_names.get(achievement.achievement_type, achievement.achievement_type)
+                )
+            
+            # Уведомляем о завершении задачи
+            await NotificationService.notify_task_completed(
+                db=db,
+                user_id=current_user.id,
+                task_id=task.id,
+                task_title=task.title
+            )
+        except Exception as e:
+            # Логируем ошибку, но не прерываем процесс
+            import logging
+            logging.error(f"Failed to award points/achievements for task completion: {e}")
+    
     await db.commit()
     await db.refresh(task)
     

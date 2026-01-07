@@ -136,6 +136,38 @@ class TaskService:
         return task
     
     @staticmethod
+    async def publish_task(
+        db: AsyncSession,
+        task_id: UUID,
+        current_user: User
+    ) -> Optional[Task]:
+        """Опубликовать задачу (изменить статус с DRAFT на OPEN)"""
+        task = await TaskService.get_task_by_id(db, task_id)
+        
+        if not task:
+            return None
+        
+        # Проверка прав (только создатель или координатор)
+        from app.models.user import UserRole
+        if task.created_by != current_user.id and current_user.role not in [
+            UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        ]:
+            return None
+        
+        # Проверяем, что задача в статусе DRAFT
+        if task.status != TaskStatus.DRAFT:
+            return None
+        
+        # Публикуем задачу
+        task.status = TaskStatus.OPEN
+        
+        await db.commit()
+        await db.refresh(task)
+        
+        return task
+    
+    @staticmethod
     async def delete_task(
         db: AsyncSession,
         task_id: UUID,

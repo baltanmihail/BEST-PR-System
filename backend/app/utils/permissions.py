@@ -18,6 +18,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> User:
+    """Получить текущего пользователя (требует активного аккаунта)"""
     """Получить текущего пользователя из JWT токена"""
     token = credentials.credentials
     payload = verify_token(token)

@@ -337,6 +337,39 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='SET NULL'),
     )
     
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE notification_type AS ENUM (
+                'task_assigned',
+                'task_completed',
+                'task_deadline',
+                'equipment_request',
+                'equipment_approved',
+                'equipment_rejected',
+                'moderation_approved',
+                'moderation_rejected',
+                'new_task',
+                'task_review',
+                'achievement_unlocked'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
+    
+    op.create_table(
+        'notifications',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text('uuid_generate_v4()')),
+        sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('type', postgresql.ENUM('task_assigned', 'task_completed', 'task_deadline', 'equipment_request', 'equipment_approved', 'equipment_rejected', 'moderation_approved', 'moderation_rejected', 'new_task', 'task_review', 'achievement_unlocked', name='notification_type', create_type=False), nullable=False),
+        sa.Column('title', sa.String(), nullable=False),
+        sa.Column('message', sa.Text(), nullable=False),
+        sa.Column('data', sa.String(), nullable=True),
+        sa.Column('is_read', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.text('NOW()')),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+    )
+    
     # Создание индексов
     op.create_index('idx_users_telegram_id', 'users', ['telegram_id'])
     op.create_index('idx_users_role', 'users', ['role'])
@@ -394,10 +427,19 @@ def upgrade() -> None:
     op.create_index('idx_activity_log_user_id', 'activity_log', ['user_id'])
     op.create_index('idx_activity_log_timestamp', 'activity_log', ['timestamp'], postgresql_ops={'timestamp': 'DESC'})
     op.create_index('idx_activity_log_action', 'activity_log', ['action'])
+    
+    op.create_index('idx_notifications_user_id', 'notifications', ['user_id'])
+    op.create_index('idx_notifications_type', 'notifications', ['type'])
+    op.create_index('idx_notifications_is_read', 'notifications', ['is_read'])
+    op.create_index('idx_notifications_created_at', 'notifications', ['created_at'], postgresql_ops={'created_at': 'DESC'})
 
 
 def downgrade() -> None:
     # Удаление индексов
+    op.drop_index('idx_notifications_created_at', table_name='notifications')
+    op.drop_index('idx_notifications_is_read', table_name='notifications')
+    op.drop_index('idx_notifications_type', table_name='notifications')
+    op.drop_index('idx_notifications_user_id', table_name='notifications')
     op.drop_index('idx_activity_log_action', table_name='activity_log')
     op.drop_index('idx_activity_log_timestamp', table_name='activity_log')
     op.drop_index('idx_activity_log_user_id', table_name='activity_log')
@@ -444,6 +486,7 @@ def downgrade() -> None:
     op.drop_index('idx_users_telegram_id', table_name='users')
     
     # Удаление таблиц
+    op.drop_table('notifications')
     op.drop_table('activity_log')
     op.drop_table('moderation_queue')
     op.drop_table('files')
@@ -459,6 +502,7 @@ def downgrade() -> None:
     op.drop_table('users')
     
     # Удаление ENUM типов
+    op.execute('DROP TYPE IF EXISTS notification_type')
     op.execute('DROP TYPE IF EXISTS moderation_status')
     op.execute('DROP TYPE IF EXISTS equipment_request_status')
     op.execute('DROP TYPE IF EXISTS equipment_status')

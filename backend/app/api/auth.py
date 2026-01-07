@@ -55,15 +55,29 @@ async def auth_telegram(
         user = result.scalar_one_or_none()
         
         if not user:
-            # Создаём нового пользователя
+            # Создаём нового пользователя (неактивного, требует модерации)
             user = User(
                 telegram_id=telegram_id,
                 username=username,
-                full_name=full_name
+                full_name=full_name,
+                is_active=False  # Требует модерации
             )
             db.add(user)
             await db.commit()
             await db.refresh(user)
+            
+            # Создаём заявку на модерацию
+            from app.services.moderation_service import ModerationService
+            await ModerationService.create_user_application(
+                db=db,
+                user_id=user.id,
+                application_data={
+                    "telegram_id": telegram_id,
+                    "username": username,
+                    "full_name": full_name,
+                    "source": "telegram_auth"
+                }
+            )
         else:
             # Обновляем данные существующего пользователя
             user.username = username
