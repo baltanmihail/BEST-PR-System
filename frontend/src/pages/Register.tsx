@@ -77,8 +77,16 @@ export default function Register() {
         alert('Не удалось получить данные из Telegram. Откройте эту страницу через Telegram бота.')
       }
     } else {
-      // Fallback для браузера - показываем предупреждение
-      alert('Для регистрации откройте эту страницу через Telegram бота. Перейдите в бота и нажмите кнопку "Зарегистрироваться".')
+      // Fallback для браузера - показываем предупреждение с ссылкой на бота
+      const botUsername = '@BESTPRSystemBot' // Можно сделать динамическим из конфига
+      const botLink = `https://t.me/${botUsername.replace('@', '')}?start=register`
+      alert(
+        `Для регистрации через Telegram бота:\n\n` +
+        `1. Откройте бота: ${botUsername}\n` +
+        `2. Нажмите /register или кнопку "Зарегистрироваться"\n\n` +
+        `Или откройте эту страницу через Telegram WebApp.\n\n` +
+        `Ссылка на бота: ${botLink}`
+      )
     }
   }
 
@@ -194,6 +202,32 @@ export default function Register() {
           </div>
         )}
 
+        {/* Предупреждение если не в Telegram */}
+        {!window.Telegram?.WebApp && (
+          <div className={`p-4 bg-yellow-500/20 border border-yellow-500/50 rounded-lg`}>
+            <div className="flex items-start space-x-2">
+              <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-white text-sm font-medium mb-2">
+                  Для регистрации на сайте необходимо открыть эту страницу через Telegram бота
+                </p>
+                <p className="text-white/80 text-sm mb-3">
+                  Или зарегистрируйтесь прямо в боте:
+                </p>
+                <a
+                  href="https://t.me/BESTPRSystemBot?start=register"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-2 text-best-primary hover:text-best-primary/80 text-sm font-medium underline"
+                >
+                  <span>Открыть бота</span>
+                  <span>→</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Кнопка регистрации */}
         <button
           onClick={handleTelegramAuth}
@@ -214,7 +248,9 @@ export default function Register() {
         </button>
 
         <p className={`text-white/60 text-sm text-center text-readable ${theme}`}>
-          Для регистрации необходимо открыть эту страницу через Telegram бота
+          {window.Telegram?.WebApp 
+            ? "Нажмите кнопку выше для завершения регистрации"
+            : "Откройте эту страницу через Telegram бота или зарегистрируйтесь прямо в боте"}
         </p>
       </div>
     </div>

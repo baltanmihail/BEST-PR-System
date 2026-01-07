@@ -254,7 +254,10 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться", url=settings.FRONTEND_URL),
+                    InlineKeyboardButton(text="📝 Зарегистрироваться в боте", callback_data="register_in_bot"),
+                ],
+                [
+                    InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
                 ],
             ]
         elif app_response.get("status") == "pending":
@@ -284,7 +287,10 @@ async def cmd_start(message: Message, state: FSMContext):
             
             keyboard.inline_keyboard = [
                 [
-                    InlineKeyboardButton(text="📝 Подать заявку", url=settings.FRONTEND_URL),
+                    InlineKeyboardButton(text="📝 Подать заявку в боте", callback_data="register_in_bot"),
+                ],
+                [
+                    InlineKeyboardButton(text="🌐 Подать заявку на сайте", url=settings.FRONTEND_URL + "/register"),
                 ],
             ]
         else:
@@ -309,7 +315,10 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться", url=settings.FRONTEND_URL),
+                    InlineKeyboardButton(text="📝 Зарегистрироваться в боте", callback_data="register_in_bot"),
+                ],
+                [
+                    InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
                 ],
             ]
     else:
@@ -985,12 +994,268 @@ async def cmd_notifications(message: Message, state: FSMContext):
     await message.answer(text)
 
 
+@router.message(Command("register"))
+async def cmd_register(message: Message, state: FSMContext):
+    """Команда /register - регистрация нового пользователя"""
+    user = message.from_user
+    
+    # Проверяем, не зарегистрирован ли уже пользователь
+    auth_data = {
+        "id": user.id,
+        "first_name": user.first_name,
+        "last_name": user.last_name or "",
+        "username": user.username or "",
+        "auth_date": int(message.date.timestamp()),
+    }
+    
+    auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+    
+    # Проверяем, авторизован ли пользователь
+    response = await call_api("POST", "/auth/telegram", data=auth_data)
+    
+    if "error" in response:
+        await message.answer(
+            "❌ Ошибка авторизации. Попробуйте позже или обратитесь к администратору."
+        )
+        return
+    
+    user_data = response.get("user", {})
+    
+    # Если пользователь уже активен, сообщаем об этом
+    if user_data.get("is_active", False):
+        await message.answer(
+            "✅ Ты уже зарегистрирован и активен в системе!\n\n"
+            "💡 Используй /start для доступа к функциям бота."
+        )
+        return
+    
+    # Если заявка на рассмотрении
+    access_token = response.get("access_token")
+    if access_token:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        app_response = await call_api("GET", "/moderation/my-application", headers=headers, silent_errors=[403])
+        
+        if app_response.get("status") == "pending":
+            await message.answer(
+                "⏳ Твоя заявка уже находится на рассмотрении!\n\n"
+                "Мы уведомим тебя, когда она будет одобрена.\n"
+                "Пока можешь просматривать задачи и рейтинг через /start."
+            )
+            return
+    
+    # Если пользователь ещё не зарегистрирован, начинаем процесс регистрации
+    await start_registration_flow(message, state, user, auth_data)
+
+
+async def start_registration_flow(message: Message, state: FSMContext, user, auth_data: dict):
+    """Начинает процесс регистрации пользователя в боте"""
+    try:
+        # Получаем соглашение
+        agreement_response = await call_api("GET", "/registration/agreement")
+        
+        if "error" in agreement_response:
+            await message.answer(
+                "❌ Ошибка при получении пользовательского соглашения. Попробуйте позже."
+            )
+            return
+        
+        agreement_content = agreement_response.get("content", "")
+        agreement_version = agreement_response.get("version", "1.0")
+        
+        # Сохраняем данные в состояние
+        await state.update_data(
+            registration_data={
+                "auth_data": auth_data,
+                "agreement_version": agreement_version,
+            }
+        )
+        
+        # Показываем соглашение и запрашиваем подтверждение
+        agreement_text = (
+            f"<b>📋 Регистрация в BEST PR System</b>\n\n"
+            f"Для регистрации тебе нужно:\n"
+            f"1️⃣ Дать согласие на обработку персональных данных\n"
+            f"2️⃣ Принять пользовательское соглашение\n\n"
+            f"<b>Пользовательское соглашение:</b>\n"
+            f"{agreement_content[:1000]}...\n\n"
+            f"💡 Используй кнопки ниже для подтверждения."
+        )
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Согласен и принять", callback_data="confirm_registration"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_registration"),
+            ],
+            [
+                InlineKeyboardButton(text="📖 Прочитать полное соглашение", url=settings.FRONTEND_URL + "/register"),
+            ],
+        ])
+        
+        await message.answer(agreement_text, reply_markup=keyboard, parse_mode="HTML")
+        
+    except Exception as e:
+        logger.error(f"Error in start_registration_flow: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при начале регистрации. Попробуйте позже или используй веб-интерфейс:\n"
+            f"🔗 {settings.FRONTEND_URL}/register"
+        )
+
+
+@router.callback_query(F.data == "register_in_bot")
+async def callback_register_in_bot(callback: CallbackQuery, state: FSMContext):
+    """Обработка нажатия кнопки 'Зарегистрироваться в боте'"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Проверяем, не зарегистрирован ли уже пользователь
+        auth_data = {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name or "",
+            "username": user.username or "",
+            "auth_date": int(callback.message.date.timestamp()),
+        }
+        
+        auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+        
+        # Проверяем авторизацию
+        response = await call_api("POST", "/auth/telegram", data=auth_data)
+        
+        if "error" in response:
+            await callback.message.answer(
+                "❌ Ошибка авторизации. Попробуйте позже или обратитесь к администратору."
+            )
+            return
+        
+        user_data = response.get("user", {})
+        
+        # Если пользователь уже активен
+        if user_data.get("is_active", False):
+            await callback.message.answer(
+                "✅ Ты уже зарегистрирован и активен в системе!\n\n"
+                "💡 Используй /start для доступа к функциям бота."
+            )
+            return
+        
+        # Если заявка на рассмотрении
+        access_token = response.get("access_token")
+        if access_token:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            app_response = await call_api("GET", "/moderation/my-application", headers=headers, silent_errors=[403])
+            
+            if app_response.get("status") == "pending":
+                await callback.message.answer(
+                    "⏳ Твоя заявка уже находится на рассмотрении!\n\n"
+                    "Мы уведомим тебя, когда она будет одобрена.\n"
+                    "Пока можешь просматривать задачи и рейтинг через /start."
+                )
+                return
+        
+        # Начинаем процесс регистрации
+        await start_registration_flow(callback.message, state, user, auth_data)
+        
+    except Exception as e:
+        logger.error(f"Error in callback_register_in_bot: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "confirm_registration")
+async def callback_confirm_registration(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение регистрации"""
+    try:
+        await callback.answer()
+        
+        data = await state.get_data()
+        registration_data = data.get("registration_data")
+        
+        if not registration_data:
+            await callback.message.answer(
+                "❌ Сессия регистрации истекла. Начни заново командой /register"
+            )
+            return
+        
+        auth_data = registration_data["auth_data"]
+        agreement_version = registration_data["agreement_version"]
+        
+        # Подготавливаем данные для регистрации
+        registration_request = {
+            "telegram_auth": auth_data,
+            "personal_data_consent": {
+                "consent": True,
+                "date": datetime.utcnow().isoformat()
+            },
+            "user_agreement": {
+                "accepted": True,
+                "version": agreement_version
+            }
+        }
+        
+        # Отправляем запрос на регистрацию
+        response = await call_api("POST", "/registration/register", data=registration_request)
+        
+        if "error" in response:
+            await callback.message.answer(
+                f"❌ Ошибка при регистрации: {response.get('error', 'Неизвестная ошибка')}\n\n"
+                f"Попробуй ещё раз или используй веб-интерфейс:\n"
+                f"🔗 {settings.FRONTEND_URL}/register"
+            )
+            return
+        
+        # Регистрация успешна
+        user_data = response.get("user", {})
+        access_token = response.get("access_token")
+        
+        # Сохраняем токен
+        await state.update_data(access_token=access_token)
+        
+        success_text = (
+            f"🎉 <b>Регистрация успешна!</b>\n\n"
+            f"✅ Твоя заявка отправлена на модерацию.\n\n"
+            f"Мы уведомим тебя, когда она будет одобрена.\n"
+            f"Пока ты можешь:\n"
+            f"• 👀 Просматривать доступные задачи\n"
+            f"• 🏆 Смотреть рейтинг участников\n"
+            f"• 📊 Изучать статистику системы\n\n"
+            f"💡 После одобрения ты сможешь брать задачи и оборудование!\n\n"
+            f"Используй /start для доступа к функциям бота."
+        )
+        
+        await callback.message.answer(success_text, parse_mode="HTML")
+        
+        # Очищаем данные регистрации
+        await state.update_data(registration_data=None)
+        
+    except Exception as e:
+        logger.error(f"Error in callback_confirm_registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "cancel_registration")
+async def callback_cancel_registration(callback: CallbackQuery, state: FSMContext):
+    """Отмена регистрации"""
+    try:
+        await callback.answer()
+        await callback.message.answer(
+            "❌ Регистрация отменена.\n\n"
+            f"Ты можешь зарегистрироваться позже через команду /register или на сайте:\n"
+            f"🔗 {settings.FRONTEND_URL}/register"
+        )
+        
+        # Очищаем данные регистрации
+        await state.update_data(registration_data=None)
+        
+    except Exception as e:
+        logger.error(f"Error in callback_cancel_registration: {e}")
+
+
 @router.message(Command("help"))
 async def cmd_help(message: Message):
     """Команда /help - помощь"""
     help_text = (
         "📖 Доступные команды:\n\n"
-        "/start - регистрация в системе\n"
+        "/start - авторизация и главное меню\n"
+        "/register - регистрация в системе\n"
         "/tasks - список моих задач\n"
         "/stats - моя статистика\n"
         "/leaderboard - рейтинг участников\n"
