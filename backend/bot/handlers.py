@@ -138,7 +138,16 @@ async def cmd_start(message: Message, state: FSMContext):
         headers = {"Authorization": f"Bearer {access_token}"}
         app_response = await call_api("GET", "/moderation/my-application", headers=headers)
         
-        if app_response.get("status") == "pending":
+        # Обрабатываем ошибку 403 (пользователь неактивен, заявки нет)
+        if "error" in app_response or app_response.get("status_code") == 403:
+            # Заявки ещё нет, пользователь только что зарегистрировался
+            welcome_text = (
+                f"👋 Привет, {user.first_name}!\n\n"
+                f"📝 Пожалуйста, заполни заявку на регистрацию через веб-интерфейс:\n"
+                f"https://best-pr-system.up.railway.app/\n\n"
+                f"После одобрения заявки ты получишь полный доступ к системе."
+            )
+        elif app_response.get("status") == "pending":
             welcome_text = (
                 f"👋 Привет, {user.first_name}!\n\n"
                 f"⏳ Твоя заявка на регистрацию находится на рассмотрении.\n"
