@@ -91,6 +91,20 @@ async def startup_event():
     logger.info("BEST PR System API starting up...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Database URL: {settings.DATABASE_URL[:20]}..." if len(settings.DATABASE_URL) > 20 else f"Database URL: {settings.DATABASE_URL}")
+    
+    # Инициализация структуры Google Drive (только в production)
+    if settings.ENVIRONMENT == "production" and settings.GOOGLE_CREDENTIALS_1_JSON:
+        try:
+            from app.services.drive_structure import drive_structure
+            structure = drive_structure.initialize_structure()
+            logger.info(f"✅ Google Drive структура инициализирована: {structure.get('bot_folder_id')}")
+            
+            # Сохраняем ID главной папки, если не задан
+            if not settings.GOOGLE_DRIVE_FOLDER_ID and structure.get('bot_folder_id'):
+                logger.info(f"💡 Установите GOOGLE_DRIVE_FOLDER_ID={structure.get('bot_folder_id')} для использования этой папки")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось инициализировать Google Drive структуру: {e}")
+            logger.warning("Файлы будут загружаться в папку, указанную в GOOGLE_DRIVE_FOLDER_ID")
 
 
 @app.on_event("shutdown")

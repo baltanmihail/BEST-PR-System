@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare, Send, CheckCircle2, AlertCircle, HelpCircle, Lightbulb, Paperclip, Link as LinkIcon, X } from 'lucide-react'
 import { supportApi } from '../services/support'
@@ -14,6 +14,7 @@ export default function Support() {
   const [message, setMessage] = useState('')
   const [link, setLink] = useState('')
   const [attachedFile, setAttachedFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
 
@@ -24,26 +25,23 @@ export default function Support() {
       setLink('')
       setAttachedFile(null)
       setSupportType(null)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
       queryClient.invalidateQueries({ queryKey: ['support'] })
     },
   })
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!message.trim() || !supportType) return
 
-    let fullMessage = message.trim()
-    if (link.trim()) {
-      fullMessage += `\n\n🔗 Ссылка: ${link.trim()}`
-    }
-    if (attachedFile) {
-      fullMessage += `\n\n📎 Прикреплён файл: ${attachedFile.name}`
-    }
-
     mutation.mutate({
-      message: fullMessage,
+      message: message.trim(),
       category: supportType === 'question' ? 'question' : 'suggestion',
-      contact: user?.telegram_username || user?.email || undefined,
+      contact: user?.telegram_username || user?.username || user?.email || undefined,
+      link: link.trim() || undefined,
+      file: attachedFile || undefined,
     })
   }
 
@@ -52,6 +50,9 @@ export default function Support() {
     if (file) {
       if (file.size > 10 * 1024 * 1024) { // 10MB
         alert('Файл слишком большой. Максимальный размер: 10MB')
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
         return
       }
       setAttachedFile(file)
@@ -143,7 +144,7 @@ export default function Support() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" encType="multipart/form-data">
           <div>
             <label className={`block text-white mb-2 text-readable ${theme}`}>
               Ваше сообщение *
@@ -185,28 +186,44 @@ export default function Support() {
                 </label>
                 <div className="flex items-center space-x-4">
                   <input
+                    ref={fileInputRef}
                     type="file"
                     onChange={handleFileChange}
                     className="hidden"
                     id="file-upload"
-                    accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png"
+                    accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.zip,.rar"
                   />
                   <label
                     htmlFor="file-upload"
-                    className={`flex-1 bg-white/10 border border-white/30 rounded-lg p-3 text-white cursor-pointer hover:bg-white/20 transition-all text-readable ${theme} text-center`}
+                    className={`flex-1 bg-white/10 border border-white/30 rounded-lg p-3 text-white cursor-pointer hover:bg-white/20 transition-all text-readable ${theme} text-center text-sm md:text-base`}
                   >
-                    {attachedFile ? attachedFile.name : 'Выберите файл (макс. 10MB)'}
+                    {attachedFile ? (
+                      <span className="truncate block max-w-xs mx-auto">{attachedFile.name}</span>
+                    ) : (
+                      'Выберите файл (макс. 10MB)'
+                    )}
                   </label>
                   {attachedFile && (
                     <button
                       type="button"
-                      onClick={() => setAttachedFile(null)}
-                      className="p-2 hover:bg-white/20 rounded-lg transition-all"
+                      onClick={() => {
+                        setAttachedFile(null)
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = ''
+                        }
+                      }}
+                      className="p-2 hover:bg-white/20 rounded-lg transition-all flex-shrink-0"
+                      aria-label="Удалить файл"
                     >
                       <X className="h-5 w-5 text-white" />
                     </button>
                   )}
                 </div>
+                {attachedFile && (
+                  <p className={`text-white/60 text-xs mt-1 text-readable ${theme}`}>
+                    Размер: {(attachedFile.size / (1024 * 1024)).toFixed(2)} MB
+                  </p>
+                )}
               </div>
             </>
           )}

@@ -21,17 +21,13 @@ export default function Cursor2() {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const modelRef = useRef<THREE.Object3D | null>(null)
   
-  const trailRefs = useRef<HTMLDivElement[]>([])
   const mousePos = useRef<Point>({ x: 0, y: 0 })
   const currentPos = useRef<Point>({ x: 0, y: 0 })
-  const trailPositions = useRef<Point[]>([])
   const animationFrameRef = useRef<number>()
   
   const hoverActionRef = useRef<HTMLElement | null>(null)
   const hoverSinceRef = useRef<number>(0)
   const lastPressRef = useRef<number>(0)
-
-  const trailLength = 0 // Убираем трейл для уменьшения нагрузки
 
   useEffect(() => {
     setEnabled(location.pathname === '/')
@@ -157,11 +153,10 @@ export default function Cursor2() {
     }
   }, [enabled, isMobile])
 
-  // Отслеживание движения мыши + трейл + idle-анимация
+  // Отслеживание движения мыши + idle-анимация
   useEffect(() => {
     if (!enabled || isMobile) return
 
-    trailPositions.current = Array.from({ length: trailLength }, () => ({ x: window.innerWidth / 2, y: window.innerHeight / 2 }))
     currentPos.current = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
     mousePos.current = { x: window.innerWidth / 2, y: window.innerHeight / 2 }
 
@@ -186,10 +181,14 @@ export default function Cursor2() {
       currentPos.current.x += (mousePos.current.x - currentPos.current.x) * lerpFactor
       currentPos.current.y += (mousePos.current.y - currentPos.current.y) * lerpFactor
 
-      // Обновляем позицию 3D-курсора (центрируем точно)
+      // Обновляем позицию 3D-курсора (центрируем точно через translate(-50%, -50%))
       if (containerRef.current) {
+        // Позиционируем точно на позиции мыши, transform сам центрирует через translate(-50%, -50%)
         containerRef.current.style.left = `${currentPos.current.x}px`
         containerRef.current.style.top = `${currentPos.current.y}px`
+        // Убеждаемся, что нет смещения
+        containerRef.current.style.marginLeft = '0'
+        containerRef.current.style.marginTop = '0'
       }
 
       // Трейл отключен для производительности
