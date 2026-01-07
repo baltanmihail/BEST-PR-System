@@ -40,6 +40,12 @@ async def run_api():
 
 async def run_bot():
     """Запуск Telegram бота"""
+    # Запускаем бота только в production, чтобы избежать конфликтов
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment != "production":
+        logger.info(f"⚠️ Бот не запускается в окружении '{environment}'. Запустите только в production.")
+        return
+    
     logger.info("🤖 Starting Telegram bot...")
     try:
         # Используем прямое создание бота и диспетчера
