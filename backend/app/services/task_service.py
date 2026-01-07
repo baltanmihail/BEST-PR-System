@@ -7,9 +7,10 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
 
-from app.models.task import Task, TaskType, TaskStatus, TaskPriority
+from app.models.task import Task, TaskType, TaskStatus, TaskPriority, TaskAssignment, TaskStage, StageStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
+from datetime import timedelta, datetime, timezone
 
 
 class TaskService:
@@ -75,7 +76,6 @@ class TaskService:
         task_id: UUID
     ) -> Optional[Task]:
         """Получить задачу по ID"""
-        from app.models.task import TaskAssignment
         query = select(Task).where(Task.id == task_id)
         query = query.options(
             selectinload(Task.stages),

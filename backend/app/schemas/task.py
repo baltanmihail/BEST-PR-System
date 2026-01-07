@@ -20,7 +20,9 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     """Схема для создания задачи"""
-    pass
+    stages: Optional[List[TaskStageCreate]] = Field(default=None, description="Этапы задачи (для Channel задач)")
+    requires_equipment: Optional[bool] = Field(default=False, description="Требуется ли оборудование (для Channel задач)")
+    script_ready: Optional[bool] = Field(default=True, description="Готов ли сценарий (если False, добавляется этап 'Сценарий')")
 
 
 class TaskUpdate(BaseModel):

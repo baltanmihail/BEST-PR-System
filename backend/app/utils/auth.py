@@ -7,12 +7,22 @@ from jose import JWTError, jwt
 from hashlib import sha256
 import hmac
 import time
+import os
 
 from app.config import settings
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
-    """Создать JWT токен"""
+    """
+    Создать JWT токен
+    
+    Args:
+        data: Данные для кодирования в токен
+        expires_delta: Время жизни токена
+    
+    Returns:
+        JWT токен
+    """
     to_encode = data.copy()
     
     if expires_delta:
@@ -22,11 +32,20 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    
     return encoded_jwt
 
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
-    """Проверить JWT токен"""
+    """
+    Проверить JWT токен
+    
+    Args:
+        token: JWT токен
+    
+    Returns:
+        Payload токена или None если невалиден
+    """
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
@@ -34,43 +53,48 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def verify_telegram_auth(auth_data: Dict[str, Any]) -> bool:
+def verify_telegram_auth(auth_data: dict) -> bool:
     """
-    Проверить данные авторизации от Telegram
+    Проверить данные авторизации от Telegram Web App
     
-    Telegram отправляет данные в формате:
-    {
-        "id": 123456789,
-        "first_name": "John",
-        "last_name": "Doe",
-        "username": "johndoe",
-        "auth_date": 1234567890,
-        "hash": "abc123..."
-    }
+    Args:
+        auth_data: Данные от Telegram (id, first_name, hash, auth_date, etc.)
     
-    Hash вычисляется как HMAC-SHA-256 от строки:
-    "id=<id>\nfirst_name=<first_name>\nlast_name=<last_name>\nusername=<username>\nauth_date=<auth_date>"
-    с ключом = SHA256(<bot_token>)
+    Returns:
+        True если данные валидны
     """
-    # Для упрощения в MVP пропускаем проверку hash
-    # В продакшене нужно реализовать полную проверку
-    # Проверяем только наличие обязательных полей
-    required_fields = ["id", "first_name", "auth_date"]
+    # ВРЕМЕННО: для тестирования в development можно отключить проверку
+    if os.getenv("ENVIRONMENT", "production") == "development":
+        # Проверяем только наличие обязательных полей
+        required_fields = ["id", "first_name", "auth_date", "hash"]
+        return all(field in auth_data for field in required_fields)
     
-    for field in required_fields:
-        if field not in auth_data:
-            return False
-    
-    # Проверяем, что auth_date не слишком старый (например, не старше 1 дня)
-    auth_date = auth_data.get("auth_date", 0)
-    current_time = int(time.time())
-    if current_time - auth_date > 86400:  # 24 часа
+    # Реальная проверка для production
+    if "hash" not in auth_data:
         return False
     
-    return True
-
-
-def get_current_user_dependency():
-    """Dependency для получения текущего пользователя из токена"""
-    # Будет реализовано позже
-    pass
+    received_hash = auth_data.pop("hash")
+    auth_date = auth_data.get("auth_date", 0)
+    
+    # Проверка времени (не старше 24 часов)
+    current_time = int(time.time())
+    if abs(current_time - auth_date) > 86400:  # 24 часа
+        return False
+    
+    # Создаём строку для проверки
+    data_check_string = "\n".join(
+        f"{key}={value}" for key, value in sorted(auth_data.items())
+    )
+    
+    # Получаем секретный ключ от Telegram Bot API
+    secret_key = sha256(settings.TELEGRAM_BOT_TOKEN.encode()).digest()
+    
+    # Вычисляем hash
+    calculated_hash = hmac.new(
+        secret_key,
+        data_check_string.encode(),
+        sha256
+    ).hexdigest()
+    
+    # Сравниваем
+    return calculated_hash == received_hash
