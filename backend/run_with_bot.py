@@ -29,13 +29,49 @@ async def run_api():
         "app.main:app",
         host=host,
         port=port,
-        reload=os.getenv("ENVIRONMENT", "development") == "development",
-        log_level=os.getenv("LOG_LEVEL", "info").lower()
+        reload=False,  # Отключаем reload на Railway для стабильности
+        log_level=os.getenv("LOG_LEVEL", "info").lower(),
+        access_log=True,
+        timeout_keep_alive=30
     )
     server = uvicorn.Server(config)
     
     logger.info(f"🚀 Starting API server on {host}:{port}")
-    await server.serve()
+    logger.info(f"🔗 API будет доступен на http://{host}:{port}")
+    logger.info(f"📚 Документация: http://{host}:{port}/docs")
+    logger.info(f"💚 Health check: http://{host}:{port}/health")
+    
+    try:
+        await server.serve()
+    except Exception as e:
+        logger.error(f"❌ API server error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise
+
+
+async def wait_for_api(max_attempts=30, delay=2):
+    """Ждём, пока API станет доступен"""
+    import httpx
+    port = int(os.getenv("PORT", 8080))
+    url = f"http://localhost:{port}/health"
+    
+    for attempt in range(max_attempts):
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get(url)
+                if response.status_code == 200:
+                    logger.info("✅ API готов к работе")
+                    return True
+        except Exception:
+            pass
+        
+        if attempt < max_attempts - 1:
+            logger.info(f"⏳ Ожидание запуска API... (попытка {attempt + 1}/{max_attempts})")
+            await asyncio.sleep(delay)
+    
+    logger.warning("⚠️ API не ответил, но продолжаем запуск бота...")
+    return False
 
 
 async def run_bot():
@@ -45,6 +81,9 @@ async def run_bot():
     if environment != "production":
         logger.info(f"⚠️ Бот не запускается в окружении '{environment}'. Запустите только в production.")
         return
+    
+    # Ждём, пока API запустится
+    await wait_for_api()
     
     logger.info("🤖 Starting Telegram bot...")
     try:
@@ -72,10 +111,19 @@ async def run_bot():
 
 async def main():
     """Запуск API и бота параллельно"""
-    # Запускаем API и бота параллельно
+    # Сначала запускаем API, затем с задержкой - бота
+    api_task = asyncio.create_task(run_api())
+    
+    # Даём API время на запуск
+    await asyncio.sleep(3)
+    
+    # Запускаем бота
+    bot_task = asyncio.create_task(run_bot())
+    
+    # Ждём завершения обеих задач
     await asyncio.gather(
-        run_api(),
-        run_bot(),
+        api_task,
+        bot_task,
         return_exceptions=True
     )
 

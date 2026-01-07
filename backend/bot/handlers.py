@@ -30,14 +30,17 @@ def get_api_url():
     environment = os.getenv('ENVIRONMENT', 'development')
     port = os.getenv('PORT', '8080')
     
-    if environment == 'production' and 'railway' in settings.DATABASE_URL.lower():
+    if environment == 'production':
         # На Railway в одном сервисе используем localhost
         # Если нужен внешний URL - установите API_URL в переменных окружения
-        return f'http://localhost:{port}' + settings.API_V1_PREFIX
+        api_url_local = f'http://localhost:{port}' + settings.API_V1_PREFIX
+        logger.info(f"🔗 API URL для бота: {api_url_local}")
+        return api_url_local
     
     return 'http://localhost:8000' + settings.API_V1_PREFIX
 
 API_URL = get_api_url()
+logger.info(f"📡 Bot will use API URL: {API_URL}")
 
 
 def generate_telegram_hash(data: dict, bot_token: str) -> str:
@@ -73,7 +76,7 @@ async def call_api(method: str, endpoint: str, data: Optional[dict] = None, head
     logger.debug(f"Calling API: {method} {url}")
     
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:  # Увеличил таймаут до 30 секунд
+        async with httpx.AsyncClient(timeout=30.0) as client:
             if method.upper() == "GET":
                 response = await client.get(url, headers=headers)
             elif method.upper() == "POST":
@@ -83,6 +86,10 @@ async def call_api(method: str, endpoint: str, data: Optional[dict] = None, head
             
             response.raise_for_status()
             return response.json() if response.content else {}
+    except httpx.ConnectError as e:
+        logger.error(f"API connection error: {e}. URL: {url}")
+        logger.error("Возможно, API ещё не запустился. Попробуйте позже.")
+        return {"error": "API недоступен. Попробуйте позже."}
     except httpx.HTTPStatusError as e:
         logger.error(f"API error: {e.response.status_code} - {e.response.text}")
         return {"error": f"API error: {e.response.status_code}"}
