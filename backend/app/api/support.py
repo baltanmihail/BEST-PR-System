@@ -13,8 +13,6 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.notification import NotificationType
 from app.services.notification_service import NotificationService
-from app.services.google_service import GoogleService
-from app.services.drive_structure import drive_structure
 from app.utils.permissions import get_current_user, OptionalUser
 
 router = APIRouter(prefix="/support", tags=["support"])
@@ -74,31 +72,48 @@ async def create_support_request(
                     detail="Файл слишком большой. Максимальный размер: 10MB"
                 )
             
-            # Определяем MIME тип
-            mime_type = file.content_type or "application/octet-stream"
+            # Пытаемся загрузить в Google Drive (если credentials доступны)
+            try:
+                # Импортируем только при необходимости (lazy import)
+                from app.services.google_service import GoogleService
+                from app.services.drive_structure import DriveStructureService
+                drive_structure = DriveStructureService()
+                
+                # Определяем MIME тип
+                mime_type = file.content_type or "application/octet-stream"
+                
+                # Загружаем в Google Drive
+                support_folder_id = drive_structure.get_support_folder_id()
+                google_service = GoogleService()
+                
+                # Формируем имя файла с информацией о пользователе
+                filename = f"{user_name}_{file.filename}".replace(" ", "_")
+                uploaded_file_id = google_service.upload_file(
+                    file_content=file_content,
+                    filename=filename,
+                    mime_type=mime_type,
+                    folder_id=support_folder_id
+                )
+                
+                # Делаем файл доступным по ссылке
+                file_url = google_service.get_shareable_link(uploaded_file_id)
+                full_message += f"\n\n📎 Прикреплён файл: {file.filename}\n🔗 {file_url}"
+                
+                logger.info(f"✅ Файл загружен в Google Drive: {uploaded_file_id}")
+            except ValueError as e:
+                # Google credentials не найдены
+                logger.warning(f"⚠️ Google credentials не найдены, файл не загружен: {e}")
+                full_message += f"\n\n📎 Прикреплён файл: {file.filename} (файл не загружен в Google Drive - credentials не найдены)"
+            except Exception as e:
+                logger.error(f"❌ Ошибка загрузки файла в Google Drive: {e}")
+                full_message += f"\n\n📎 Прикреплён файл: {file.filename} (ошибка загрузки в Google Drive)"
             
-            # Загружаем в Google Drive
-            support_folder_id = drive_structure.get_support_folder_id()
-            google_service = GoogleService()
-            
-            # Формируем имя файла с информацией о пользователе
-            filename = f"{user_name}_{file.filename}".replace(" ", "_")
-            uploaded_file_id = google_service.upload_file(
-                file_content=file_content,
-                filename=filename,
-                mime_type=mime_type,
-                folder_id=support_folder_id
-            )
-            
-            # Делаем файл доступным по ссылке
-            file_url = google_service.get_shareable_link(uploaded_file_id)
-            full_message += f"\n\n📎 Прикреплён файл: {file.filename}\n🔗 {file_url}"
-            
-            logger.info(f"✅ Файл загружен в Google Drive: {uploaded_file_id}")
-            
+        except HTTPException:
+            # Пере-поднимаем HTTPException (например, для размера файла)
+            raise
         except Exception as e:
-            logger.error(f"❌ Ошибка загрузки файла: {e}")
-            # Не прерываем отправку запроса, если файл не загрузился
+            logger.error(f"❌ Неожиданная ошибка при работе с файлом: {e}")
+            full_message += f"\n\n📎 Прикреплён файл: {file.filename} (ошибка обработки файла)"
     
     # Находим всех координаторов и VP4PR для уведомления
     from app.models.user import UserRole

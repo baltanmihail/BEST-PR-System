@@ -21,10 +21,22 @@ class DriveStructureService:
     """Сервис для управления структурой папок в Google Drive"""
     
     def __init__(self):
-        self.google_service = GoogleService()
+        self.google_service: Optional[GoogleService] = None
         self._bot_folder_id: Optional[str] = None
         self._support_folder_id: Optional[str] = None
         self._files_folder_id: Optional[str] = None
+        self._initialized = False
+    
+    def _get_google_service(self) -> GoogleService:
+        """Ленивая инициализация GoogleService"""
+        if self.google_service is None:
+            try:
+                self.google_service = GoogleService()
+            except ValueError as e:
+                logger.warning(f"⚠️ Google credentials не найдены: {e}")
+                logger.warning("Google Drive функции будут недоступны. Добавьте GOOGLE_CREDENTIALS_*_JSON в переменные окружения.")
+                raise
+        return self.google_service
     
     def initialize_structure(self) -> dict:
         """
@@ -40,8 +52,14 @@ class DriveStructureService:
         
         Returns:
             Словарь с ID папок
+        
+        Raises:
+            ValueError: Если Google credentials не найдены
         """
         try:
+            # Проверяем наличие credentials
+            self._get_google_service()
+            
             logger.info("📁 Инициализация структуры папок Google Drive...")
             
             # 1. Создаём главную папку бота в папке координаторов
@@ -85,12 +103,18 @@ class DriveStructureService:
             if not settings.GOOGLE_DRIVE_FOLDER_ID:
                 logger.info(f"💡 Сохраните GOOGLE_DRIVE_FOLDER_ID={bot_folder_id} в переменные окружения")
             
+            self._initialized = True
             logger.info("✅ Структура папок Google Drive инициализирована")
             return structure
             
+        except ValueError as e:
+            logger.warning(f"⚠️ Google credentials не найдены, пропускаем инициализацию Google Drive: {e}")
+            logger.warning("💡 Для использования Google Drive функций добавьте GOOGLE_CREDENTIALS_*_JSON в переменные окружения")
+            return {}
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации структуры папок: {e}")
-            raise
+            logger.warning("Google Drive функции будут недоступны")
+            return {}
     
     def _get_or_create_bot_folder(self) -> str:
         """Получить или создать главную папку бота"""
@@ -100,9 +124,12 @@ class DriveStructureService:
             self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
             return settings.GOOGLE_DRIVE_FOLDER_ID
         
+        # Получаем Google Service
+        google_service = self._get_google_service()
+        
         # Ищем существующую папку в папке координаторов
         try:
-            drive_service = self.google_service._get_drive_service()
+            drive_service = google_service._get_drive_service()
             
             # Ищем папку с нужным именем в папке координаторов
             query = f"name='{BOT_FOLDER_NAME}' and '{COORDINATORS_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -122,7 +149,7 @@ class DriveStructureService:
             
             # Создаём новую папку
             logger.info(f"Создаём новую папку '{BOT_FOLDER_NAME}' в папке координаторов...")
-            folder_id = self.google_service.create_folder(
+            folder_id = google_service.create_folder(
                 BOT_FOLDER_NAME,
                 parent_folder_id=COORDINATORS_FOLDER_ID
             )
@@ -135,7 +162,7 @@ class DriveStructureService:
             logger.warning("Попытка создать папку напрямую...")
             # Fallback: создаём папку напрямую
             try:
-                folder_id = self.google_service.create_folder(
+                folder_id = google_service.create_folder(
                     BOT_FOLDER_NAME,
                     parent_folder_id=COORDINATORS_FOLDER_ID
                 )
@@ -147,8 +174,9 @@ class DriveStructureService:
     
     def _get_or_create_folder(self, folder_name: str, parent_folder_id: str) -> str:
         """Получить или создать подпапку"""
+        google_service = self._get_google_service()
         try:
-            drive_service = self.google_service._get_drive_service()
+            drive_service = google_service._get_drive_service()
             
             # Ищем существующую папку
             query = f"name='{folder_name}' and '{parent_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -164,7 +192,7 @@ class DriveStructureService:
                 return folders[0]['id']
             
             # Создаём новую папку
-            return self.google_service.create_folder(
+            return google_service.create_folder(
                 folder_name,
                 parent_folder_id=parent_folder_id
             )
@@ -172,7 +200,7 @@ class DriveStructureService:
         except Exception as e:
             logger.error(f"Ошибка при поиске/создании папки '{folder_name}': {e}")
             # Fallback: создаём папку напрямую
-            return self.google_service.create_folder(
+            return google_service.create_folder(
                 folder_name,
                 parent_folder_id=parent_folder_id
             )
@@ -199,5 +227,6 @@ class DriveStructureService:
         return self._bot_folder_id
 
 
-# Singleton instance
-drive_structure = DriveStructureService()
+# Singleton instance НЕ создаём при импорте - пусть создаётся лениво
+# Это позволяет избежать ошибок при отсутствии Google credentials
+# drive_structure = DriveStructureService()  # Удалено - создаём только при необходимости

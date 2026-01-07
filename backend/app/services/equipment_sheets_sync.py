@@ -10,7 +10,6 @@ import logging
 
 from app.models.equipment import EquipmentRequest, Equipment
 from app.models.user import User
-from app.services.google_service import GoogleService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,14 @@ class EquipmentSheetsSync:
     EQUIPMENT_SHEETS_ID = "1nNqA_cvUnzPADO3DcwD6ldzHIwnghR7ypKuzec4bk0I"
     
     def __init__(self):
-        self.google_service = GoogleService()
+        self.google_service: Optional[GoogleService] = None
+    
+    def _get_google_service(self):
+        """Ленивая инициализация GoogleService"""
+        from app.services.google_service import GoogleService
+        if self.google_service is None:
+            self.google_service = GoogleService()
+        return self.google_service
     
     async def log_equipment_request(
         self,
@@ -78,7 +84,7 @@ class EquipmentSheetsSync:
             ]
             
             # Записываем в Google Sheets
-            self.google_service.append_sheet(
+            self._get_google_service().append_sheet(
                 range_name="Заявки на оборудку!A:H",
                 values=row_data,
                 sheet_id=self.EQUIPMENT_SHEETS_ID
@@ -120,7 +126,7 @@ class EquipmentSheetsSync:
         """Найти номер строки оборудования в листе 'Вся оборудка'"""
         try:
             # Читаем лист "Вся оборудка"
-            values = self.google_service.read_sheet(
+            values = self._get_google_service().read_sheet(
                 range_name="Вся оборудка!A:D",
                 sheet_id=self.EQUIPMENT_SHEETS_ID
             )
@@ -140,7 +146,7 @@ class EquipmentSheetsSync:
         """Обновить статус заявки в листе 'Заявки на оборудку'"""
         try:
             # Читаем все заявки
-            values = self.google_service.read_sheet(
+            values = self._get_google_service().read_sheet(
                 range_name="Заявки на оборудку!A:H",
                 sheet_id=self.EQUIPMENT_SHEETS_ID
             )
@@ -150,7 +156,7 @@ class EquipmentSheetsSync:
             for i, row in enumerate(values[1:], start=2):
                 if len(row) > 0 and row[0] == request_id_short:
                     # Обновляем статус (колонка H)
-                    self.google_service.write_sheet(
+                    self._get_google_service().write_sheet(
                         range_name=f"Заявки на оборудку!H{i}",
                         values=[[new_status]],
                         sheet_id=self.EQUIPMENT_SHEETS_ID
@@ -186,7 +192,7 @@ class EquipmentSheetsSync:
                 ]
             ]
             
-            self.google_service.append_sheet(
+            self._get_google_service().append_sheet(
                 range_name="История оборудки!A:F",
                 values=row_data,
                 sheet_id=self.EQUIPMENT_SHEETS_ID
@@ -221,7 +227,7 @@ class EquipmentSheetsSync:
         """
         try:
             # Читаем лист "Вся оборудка"
-            values = self.google_service.read_sheet(
+            values = self._get_google_service().read_sheet(
                 range_name="Вся оборудка!A:D",
                 sheet_id=self.EQUIPMENT_SHEETS_ID
             )
