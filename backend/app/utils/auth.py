@@ -77,16 +77,22 @@ def verify_telegram_auth(auth_data: dict) -> bool:
     
     # Реальная проверка для production
     if "hash" not in auth_data or not auth_data.get("hash"):
+        import logging
+        logging.warning("Telegram auth: hash is missing")
         return False
     
     # Создаём копию, чтобы не изменять исходный словарь
-    data_copy = {k: v for k, v in auth_data.items() if k != "hash"}
+    # Исключаем None значения и пустые строки
+    data_copy = {k: v for k, v in auth_data.items() if k != "hash" and v is not None and v != ""}
     received_hash = auth_data.get("hash")
     auth_date = auth_data.get("auth_date", 0)
     
     # Проверка времени (не старше 24 часов)
     current_time = int(time.time())
-    if abs(current_time - auth_date) > 86400:  # 24 часа
+    time_diff = abs(current_time - auth_date)
+    if time_diff > 86400:  # 24 часа
+        import logging
+        logging.warning(f"Telegram auth: auth_date too old. Diff: {time_diff} seconds")
         return False
     
     # Проверяем наличие токена бота

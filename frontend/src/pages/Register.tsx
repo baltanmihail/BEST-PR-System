@@ -49,19 +49,64 @@ export default function Register() {
     // Telegram WebApp доступен только в Telegram
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp
-      const initData = tg.initDataUnsafe
+      const initDataUnsafe = tg.initDataUnsafe
+      const initDataString = tg.initData || ''
 
-      if (initData && initData.user) {
+      if (initDataUnsafe && initDataUnsafe.user) {
+        // Парсим initData строку для получения hash и auth_date
+        let hash = ''
+        let authDate = Math.floor(Date.now() / 1000) // Fallback на текущее время
+        
+        if (initDataString) {
+          // Парсим URL-encoded строку initData
+          const params = new URLSearchParams(initDataString)
+          hash = params.get('hash') || ''
+          
+          const authDateStr = params.get('auth_date')
+          if (authDateStr) {
+            authDate = parseInt(authDateStr, 10)
+          }
+        }
+
+        // Если auth_date не найден, пробуем взять из initDataUnsafe
+        if (initDataUnsafe.auth_date !== undefined) {
+          authDate = initDataUnsafe.auth_date
+        }
+
+        // Формируем данные для регистрации
+        const telegramAuth: RegistrationRequest['telegram_auth'] = {
+          id: initDataUnsafe.user.id,
+          first_name: initDataUnsafe.user.first_name || '',
+          auth_date: authDate,
+          hash: hash,
+        }
+
+        // Добавляем опциональные поля только если они есть
+        if (initDataUnsafe.user.last_name) {
+          telegramAuth.last_name = initDataUnsafe.user.last_name
+        }
+        if (initDataUnsafe.user.username) {
+          telegramAuth.username = initDataUnsafe.user.username
+        }
+        if (initDataUnsafe.user.photo_url) {
+          telegramAuth.photo_url = initDataUnsafe.user.photo_url
+        }
+
+        // Проверяем наличие обязательных данных
+        if (!hash) {
+          console.error('Hash is missing from Telegram initData', { initDataString, initDataUnsafe })
+          alert('Ошибка: не удалось получить данные авторизации из Telegram. Убедитесь, что страница открыта через Telegram бота.')
+          return
+        }
+
+        if (!authDate || authDate === 0) {
+          console.error('Auth date is missing or invalid', { authDate, initDataUnsafe })
+          alert('Ошибка: не удалось получить дату авторизации из Telegram.')
+          return
+        }
+
         const registrationData: RegistrationRequest = {
-          telegram_auth: {
-            id: initData.user.id,
-            first_name: initData.user.first_name || '',
-            last_name: initData.user.last_name,
-            username: initData.user.username,
-            photo_url: initData.user.photo_url,
-            auth_date: Math.floor(Date.now() / 1000),
-            hash: tg.initData || '',
-          },
+          telegram_auth: telegramAuth,
           personal_data_consent: {
             consent: consentAccepted,
             date: new Date().toISOString(),
@@ -71,6 +116,12 @@ export default function Register() {
             version: agreementData?.version || '1.0',
           },
         }
+
+        console.log('Sending registration request', { 
+          telegram_id: telegramAuth.id, 
+          has_hash: !!hash, 
+          auth_date: authDate 
+        })
 
         registrationMutation.mutate(registrationData)
       } else {
@@ -179,13 +230,25 @@ export default function Register() {
         {/* Ошибки */}
         {registrationMutation.error && (
           <div className={`p-4 bg-red-500/20 border border-red-500/50 rounded-lg`}>
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="h-5 w-5 text-red-400" />
-              <p className="text-white text-sm">
-                {registrationMutation.error instanceof Error
-                  ? registrationMutation.error.message
-                  : 'Произошла ошибка при регистрации'}
-              </p>
+            <div className="flex items-start space-x-2">
+              <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-white text-sm font-medium mb-1">
+                  Ошибка при регистрации
+                </p>
+                <p className="text-white/80 text-sm">
+                  {registrationMutation.error instanceof Error
+                    ? registrationMutation.error.message
+                    : (registrationMutation.error as any)?.response?.data?.detail || 
+                      (registrationMutation.error as any)?.message ||
+                      'Произошла ошибка при регистрации. Убедитесь, что страница открыта через Telegram бота.'}
+                </p>
+                {!(registrationMutation.error as any)?.response?.data?.detail?.includes('Telegram') && (
+                  <p className="text-white/60 text-xs mt-2">
+                    💡 Попробуйте зарегистрироваться через бота: /register
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -49,10 +49,17 @@ async def register(
     
     # Валидация данных Telegram
     auth_data = registration.telegram_auth.model_dump()
+    
+    # Логируем для отладки (без чувствительных данных)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
+    
     if not verify_telegram_auth(auth_data):
+        logger.warning(f"Telegram auth verification failed for telegram_id: {auth_data.get('id')}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Telegram authentication data"
+            detail="Invalid Telegram authentication data. Please open this page through Telegram bot."
         )
     
     telegram_id = auth_data.get("id")
