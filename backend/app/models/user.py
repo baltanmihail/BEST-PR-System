@@ -1,7 +1,8 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator, validates
+from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator
+from sqlalchemy.orm import validates
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
