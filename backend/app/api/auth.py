@@ -57,10 +57,12 @@ async def auth_telegram(
         if not user:
             # Создаём нового пользователя (неактивного, требует модерации)
             # Согласие и пользовательское соглашение будут добавлены позже через отдельный endpoint
+            from app.models.user import UserRole
             user = User(
                 telegram_id=telegram_id,
                 username=username,
                 full_name=full_name,
+                role=UserRole.NOVICE,  # Явно указываем роль
                 is_active=False,  # Требует модерации
                 personal_data_consent=False,
                 user_agreement_accepted=False

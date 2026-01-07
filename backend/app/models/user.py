@@ -2,7 +2,7 @@
 Модель пользователя
 """
 from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -30,7 +30,7 @@ class User(Base):
     telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
     username = Column(String, nullable=True)
     full_name = Column(String, nullable=False)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.NOVICE)
+    role = Column(PG_ENUM(UserRole, name='userrole', create_type=False), nullable=False, default=UserRole.NOVICE, server_default='novice')
     level = Column(Integer, nullable=False, default=1)
     points = Column(Integer, nullable=False, default=0, index=True)
     streak_days = Column(Integer, nullable=False, default=0)
