@@ -71,11 +71,21 @@ def generate_telegram_hash(data: dict, bot_token: str) -> str:
     return calculated_hash
 
 
-async def call_api(method: str, endpoint: str, data: Optional[dict] = None, headers: Optional[dict] = None) -> dict:
-    """Вызов API endpoint"""
+async def call_api(method: str, endpoint: str, data: Optional[dict] = None, headers: Optional[dict] = None, silent_errors: Optional[list[int]] = None) -> dict:
+    """Вызов API endpoint
+    
+    Args:
+        method: HTTP метод (GET, POST, etc.)
+        endpoint: API endpoint
+        data: Данные для POST запроса
+        headers: HTTP заголовки
+        silent_errors: Список HTTP статусов, которые не нужно логировать как ошибки (например, [403, 404])
+    """
     url = f"{API_URL}{endpoint}"
     
     logger.debug(f"Calling API: {method} {url}")
+    
+    silent_statuses = silent_errors or []
     
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -93,8 +103,15 @@ async def call_api(method: str, endpoint: str, data: Optional[dict] = None, head
         logger.error("Возможно, API ещё не запустился. Попробуйте позже.")
         return {"error": "API недоступен. Попробуйте позже."}
     except httpx.HTTPStatusError as e:
-        logger.error(f"API error: {e.response.status_code} - {e.response.text}")
-        return {"error": f"API error: {e.response.status_code}"}
+        status_code = e.response.status_code
+        # Для silent_errors не логируем как ошибку (например, 403 для неактивных пользователей - это ожидаемо)
+        if status_code in silent_statuses:
+            logger.debug(f"API returned expected status {status_code} for {url}: {e.response.text}")
+            # Возвращаем только status_code, без "error", чтобы код мог корректно обработать это
+            return {"status_code": status_code}
+        else:
+            logger.error(f"API error: {status_code} - {e.response.text}")
+            return {"error": f"API error: {status_code}", "status_code": status_code}
     except Exception as e:
         logger.error(f"API call error: {e}")
         return {"error": str(e)}
@@ -209,7 +226,8 @@ async def cmd_start(message: Message, state: FSMContext):
     if not is_active:
         # Незарегистрированный пользователь
         headers = {"Authorization": f"Bearer {access_token}"}
-        app_response = await call_api("GET", "/moderation/my-application", headers=headers)
+        # 403 для неактивных пользователей - это ожидаемо, не логируем как ошибку
+        app_response = await call_api("GET", "/moderation/my-application", headers=headers, silent_errors=[403])
         
         greeting = get_welcome_greeting(user.first_name, "unregistered")
         
@@ -257,7 +275,6 @@ async def cmd_start(message: Message, state: FSMContext):
         elif app_response.get("status") == "rejected":
             reason = app_response.get("application_data", {}).get("rejection_reason", "не указана")
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> заявка отклонена ❌\n"
@@ -329,7 +346,6 @@ async def cmd_start(message: Message, state: FSMContext):
             ]
         elif "coordinator" in user_role:
             welcome_text = (
-                f"{header_title}\n"
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Позиция:</b> {role_title}\n\n"
@@ -549,7 +565,7 @@ async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
     for i, user in enumerate(leaderboard[:10], 1):
         medal = medals[i-1] if i <= 3 else f"{i}."
         text += (
-            f"{medal} {user.get('full_name', 'Unknown')}\n"
+            f"{medal} {user.get('name', user.get('full_name', 'Unknown'))}\n"
             f"   ⭐ {user.get('points', 0)} баллов | "
             f"Уровень {user.get('level', 1)}\n\n"
         )
@@ -846,7 +862,7 @@ async def cmd_leaderboard(message: Message, state: FSMContext):
     for i, user in enumerate(leaderboard[:10], 1):
         medal = medals[i-1] if i <= 3 else f"{i}."
         text += (
-            f"{medal} {user.get('full_name', 'Unknown')}\n"
+            f"{medal} {user.get('name', user.get('full_name', 'Unknown'))}\n"
             f"   ⭐ {user.get('points', 0)} баллов | "
             f"Уровень {user.get('level', 1)} | "
             f"✅ {user.get('completed_tasks', 0)} задач\n\n"
