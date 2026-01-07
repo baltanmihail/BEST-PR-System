@@ -1,7 +1,7 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator
+from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator, validates
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
@@ -33,20 +33,23 @@ class UserRoleType(TypeDecorator):
     def load_dialect_impl(self, dialect):
         """Используем PostgreSQL ENUM для PostgreSQL"""
         if dialect.name == 'postgresql':
-            return dialect.type_descriptor(PG_ENUM(UserRole, name='userrole', create_type=False))
+            # Возвращаем PG_ENUM, но TypeDecorator всё равно будет вызывать process_bind_param
+            return dialect.type_descriptor(PG_ENUM(UserRole, name='userrole', create_type=False, values_callable=lambda x: [e.value for e in UserRole]))
         else:
             return dialect.type_descriptor(String(50))
     
     def process_bind_param(self, value, dialect):
-        """Конвертируем enum в его значение (строку)"""
+        """Конвертируем enum в его значение (строку) - ВАЖНО: вызывается ДО передачи в БД"""
         if value is None:
             return None
         if isinstance(value, UserRole):
-            return value.value  # Возвращаем значение enum'а ("novice"), а не имя ("NOVICE")
+            # Возвращаем значение enum'а ("novice"), а не имя ("NOVICE")
+            return value.value
+        # Если уже строка, возвращаем как есть
         return str(value) if value else None
     
     def process_result_value(self, value, dialect):
-        """Конвертируем строку обратно в enum"""
+        """Конвертируем строку обратно в enum при чтении из БД"""
         if value is None:
             return None
         if isinstance(value, str):
@@ -81,6 +84,17 @@ class User(Base):
     user_agreement_accepted = Column(Boolean, nullable=False, default=False)
     agreement_version = Column(String, nullable=True)  # Версия соглашения
     agreement_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    
+    @validates('role')
+    def validate_role(self, key, value):
+        """Валидация и конвертация роли - гарантируем, что передаётся строка"""
+        if value is None:
+            return None
+        if isinstance(value, UserRole):
+            # Конвертируем enum в его значение (строку)
+            return value.value
+        # Если уже строка, возвращаем как есть
+        return str(value) if value else None
     
     def __repr__(self):
         return f"<User {self.telegram_id} ({self.full_name})>"

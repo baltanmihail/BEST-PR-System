@@ -58,11 +58,12 @@ async def auth_telegram(
             # Создаём нового пользователя (неактивного, требует модерации)
             # Согласие и пользовательское соглашение будут добавлены позже через отдельный endpoint
             from app.models.user import UserRole
+            # Явно передаём значение enum'а (строку), а не сам enum
             user = User(
                 telegram_id=telegram_id,
                 username=username,
                 full_name=full_name,
-                role=UserRole.NOVICE,  # Явно указываем роль
+                role=UserRole.NOVICE,  # TypeDecorator сам конвертирует в "novice"
                 is_active=False,  # Требует модерации
                 personal_data_consent=False,
                 user_agreement_accepted=False
