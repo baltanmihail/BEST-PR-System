@@ -21,22 +21,43 @@ def upgrade():
     op.execute("""
         DO $$ 
         BEGIN
-            -- Добавляем 'moderation_request' если его нет
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_enum 
-                WHERE enumlabel = 'moderation_request' 
-                AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
-            ) THEN
-                ALTER TYPE notification_type ADD VALUE 'moderation_request';
-            END IF;
-            
-            -- Добавляем 'support_request' если его нет
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_enum 
-                WHERE enumlabel = 'support_request' 
-                AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
-            ) THEN
-                ALTER TYPE notification_type ADD VALUE 'support_request';
+            -- Сначала проверяем, существует ли ENUM notification_type
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'notification_type') THEN
+                -- Если ENUM не существует, создаём его со всеми значениями
+                CREATE TYPE notification_type AS ENUM (
+                    'task_assigned',
+                    'task_completed',
+                    'task_deadline',
+                    'equipment_request',
+                    'equipment_approved',
+                    'equipment_rejected',
+                    'moderation_request',
+                    'moderation_approved',
+                    'moderation_rejected',
+                    'new_task',
+                    'task_review',
+                    'achievement_unlocked',
+                    'support_request'
+                );
+            ELSE
+                -- Если ENUM существует, добавляем только новые значения
+                -- Добавляем 'moderation_request' если его нет
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_enum 
+                    WHERE enumlabel = 'moderation_request' 
+                    AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
+                ) THEN
+                    ALTER TYPE notification_type ADD VALUE 'moderation_request';
+                END IF;
+                
+                -- Добавляем 'support_request' если его нет
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_enum 
+                    WHERE enumlabel = 'support_request' 
+                    AND enumtypid = (SELECT oid FROM pg_type WHERE typname = 'notification_type')
+                ) THEN
+                    ALTER TYPE notification_type ADD VALUE 'support_request';
+                END IF;
             END IF;
         END $$;
     """)
