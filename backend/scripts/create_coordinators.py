@@ -48,9 +48,9 @@ COORDINATORS = [
         "is_active": True,
     },
     {
-        "telegram_id": 1281345523,
-        "username": "timplooo",
-        "full_name": "Тимофей Плошкин",
+        "telegram_id": 8359020564,  # Временный тестовый аккаунт
+        "username": "test_prfr",
+        "full_name": "Тест PR-FR",
         "role": UserRole.COORDINATOR_PRFR,
         "is_active": True,
     },

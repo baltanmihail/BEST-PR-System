@@ -3,9 +3,11 @@
 """
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile
+from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from typing import Optional
+from pathlib import Path
 import httpx
 import logging
 
@@ -98,6 +100,36 @@ async def call_api(method: str, endpoint: str, data: Optional[dict] = None, head
         return {"error": str(e)}
 
 
+def get_welcome_greeting(user_name: str, role: str, points: int = 0) -> str:
+    """Генерирует вариативное приветствие"""
+    import random
+    
+    greetings = [
+        f"👋 Привет, {user_name}!",
+        f"🎉 Добро пожаловать, {user_name}!",
+        f"🚀 Рады видеть, {user_name}!",
+        f"✨ Здравствуй, {user_name}!",
+    ]
+    
+    if role == "vp4pr":
+        return random.choice([
+            f"👑 Приветствую, {user_name}!",
+            f"🎯 Добро пожаловать, {user_name}!",
+        ])
+    elif "coordinator" in role:
+        return random.choice([
+            f"💼 Привет, {user_name}!",
+            f"🎯 Здравствуй, {user_name}!",
+        ])
+    elif points > 1000:
+        return random.choice([
+            f"⭐ Привет, чемпион {user_name}!",
+            f"🏆 Здравствуй, {user_name}!",
+        ])
+    else:
+        return random.choice(greetings)
+
+
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext):
     """Команда /start - регистрация/авторизация пользователя"""
@@ -130,64 +162,218 @@ async def cmd_start(message: Message, state: FSMContext):
     # Сохраняем токен для последующих запросов
     await state.update_data(access_token=access_token)
     
-    # Проверяем статус активации
+    # Проверяем статус активации и роль
     is_active = user_data.get("is_active", False)
+    user_role = user_data.get("role", "novice")
+    points = user_data.get("points", 0)
+    
+    # Путь к приветственному фото
+    # Пробуем разные пути для локальной разработки и Railway
+    base_path = Path(__file__).parent.parent.parent
+    welcome_photo_path = None
+    
+    # Варианты путей
+    possible_paths = [
+        base_path / "BEST logos" / "best_welcome.jpg",  # Локально
+        base_path.parent / "BEST logos" / "best_welcome.jpg",  # Альтернативный локальный
+        Path("/app") / "BEST logos" / "best_welcome.jpg",  # Railway
+        Path("/app/backend") / ".." / "BEST logos" / "best_welcome.jpg",  # Railway альтернативный
+    ]
+    
+    for path in possible_paths:
+        if path.exists():
+            welcome_photo_path = path
+            break
+    
+    # Создаём клавиатуру с инлайн-кнопками
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
     
     if not is_active:
-        # Получаем статус заявки
+        # Незарегистрированный пользователь
         headers = {"Authorization": f"Bearer {access_token}"}
         app_response = await call_api("GET", "/moderation/my-application", headers=headers)
         
-        # Обрабатываем ошибку 403 (пользователь неактивен, заявки нет)
+        greeting = get_welcome_greeting(user.first_name, "unregistered")
+        
         if "error" in app_response or app_response.get("status_code") == 403:
-            # Заявки ещё нет, пользователь только что зарегистрировался
+            # Заявки ещё нет
             welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
-                f"📝 Пожалуйста, заполни заявку на регистрацию через веб-интерфейс:\n"
-                f"https://best-pr-system.up.railway.app/\n\n"
-                f"После одобрения заявки ты получишь полный доступ к системе."
+                f"{greeting}\n\n"
+                f"🎯 Добро пожаловать в BEST PR System!\n\n"
+                f"📋 Ты можешь:\n"
+                f"• 👀 Просматривать доступные задачи\n"
+                f"• 🏆 Смотреть рейтинг участников\n"
+                f"• 📊 Изучать статистику системы\n\n"
+                f"💡 Для взятия задач и работы с оборудованием нужно зарегистрироваться."
             )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                ],
+                [
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
+                ],
+                [
+                    InlineKeyboardButton(text="📝 Зарегистрироваться", url="https://best-pr-system.up.railway.app/"),
+                ],
+            ]
         elif app_response.get("status") == "pending":
             welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
-                f"⏳ Твоя заявка на регистрацию находится на рассмотрении.\n"
+                f"{greeting}\n\n"
+                f"⏳ Твоя заявка на рассмотрении.\n"
                 f"Мы уведомим тебя, когда она будет одобрена!\n\n"
-                f"💡 Пока можешь заполнить заявку через веб-интерфейс:\n"
-                f"https://best-pr-system.up.railway.app/"
+                f"💡 Пока можешь просматривать доступные задачи и рейтинг."
             )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                ],
+            ]
         elif app_response.get("status") == "rejected":
             reason = app_response.get("application_data", {}).get("rejection_reason", "не указана")
             welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
+                f"{greeting}\n\n"
                 f"❌ Твоя заявка была отклонена.\n"
                 f"Причина: {reason}\n\n"
-                f"💡 Ты можешь подать новую заявку через веб-интерфейс."
+                f"💡 Ты можешь подать новую заявку."
             )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📝 Подать заявку", url="https://best-pr-system.up.railway.app/"),
+                ],
+            ]
         else:
             welcome_text = (
-                f"👋 Привет, {user.first_name}!\n\n"
-                f"📝 Пожалуйста, заполни заявку на регистрацию через веб-интерфейс:\n"
-                f"https://best-pr-system.up.railway.app/\n\n"
-                f"После одобрения заявки ты получишь полный доступ к системе."
+                f"{greeting}\n\n"
+                f"🎯 Добро пожаловать в BEST PR System!\n\n"
+                f"📋 Ты можешь:\n"
+                f"• 👀 Просматривать доступные задачи\n"
+                f"• 🏆 Смотреть рейтинг участников\n"
+                f"• 📊 Изучать статистику системы\n\n"
+                f"💡 Для взятия задач и работы с оборудованием нужно зарегистрироваться."
             )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                ],
+                [
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
+                ],
+                [
+                    InlineKeyboardButton(text="📝 Зарегистрироваться", url="https://best-pr-system.up.railway.app/"),
+                ],
+            ]
     else:
-        welcome_text = (
-            f"👋 Привет, {user.first_name}!\n\n"
-            f"✅ Добро пожаловать в BEST PR System!\n\n"
-            f"📊 Твоя статистика:\n"
-            f"• Уровень: {user_data.get('level', 1)}\n"
-            f"• Баллы: {user_data.get('points', 0)}\n"
-            f"• Роль: {user_data.get('role', 'novice')}\n\n"
-            f"💡 Используй команды:\n"
-            f"/tasks - мои задачи\n"
-            f"/stats - статистика\n"
-            f"/leaderboard - рейтинг\n"
-            f"/equipment - оборудование\n"
-            f"/notifications - уведомления\n"
-            f"/help - помощь"
-        )
+        # Зарегистрированный пользователь
+        greeting = get_welcome_greeting(user.first_name, user_role, points)
+        
+        if user_role == "vp4pr":
+            welcome_text = (
+                f"{greeting}\n\n"
+                f"👑 Добро пожаловать в панель управления!\n\n"
+                f"📊 Статистика:\n"
+                f"• Уровень: {user_data.get('level', 1)}\n"
+                f"• Баллы: {points}\n"
+                f"• Выполнено задач: {user_data.get('completed_tasks', 0)}\n\n"
+                f"💼 Доступные функции управления системой."
+            )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Мои задачи", callback_data="my_tasks"),
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
+                ],
+                [
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                    InlineKeyboardButton(text="⚙️ Управление", callback_data="admin_panel"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
+                    InlineKeyboardButton(text="📦 Оборудование", callback_data="equipment"),
+                ],
+            ]
+        elif "coordinator" in user_role:
+            welcome_text = (
+                f"{greeting}\n\n"
+                f"💼 Добро пожаловать, координатор!\n\n"
+                f"📊 Твоя статистика:\n"
+                f"• Уровень: {user_data.get('level', 1)}\n"
+                f"• Баллы: {points}\n"
+                f"• Выполнено задач: {user_data.get('completed_tasks', 0)}\n\n"
+                f"🎯 Управляй задачами и модерацией."
+            )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="my_tasks"),
+                    InlineKeyboardButton(text="✅ Модерация", callback_data="moderation"),
+                ],
+                [
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
+                ],
+            ]
+        else:
+            # Обычный зарегистрированный пользователь
+            welcome_text = (
+                f"{greeting}\n\n"
+                f"✅ Добро пожаловать в BEST PR System!\n\n"
+                f"📊 Твоя статистика:\n"
+                f"• Уровень: {user_data.get('level', 1)}\n"
+                f"• Баллы: {points}\n"
+                f"• Роль: {user_role}\n"
+                f"• Выполнено: {user_data.get('completed_tasks', 0)} задач\n"
+                f"• 🏆 Ачивок: {user_data.get('achievements_count', 0)}\n\n"
+                f"💡 Выбери действие ниже:"
+            )
+            
+            keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(text="📋 Мои задачи", callback_data="my_tasks"),
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
+                ],
+                [
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                    InlineKeyboardButton(text="📦 Оборудование", callback_data="equipment"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
+                ],
+            ]
     
-    await message.answer(welcome_text)
+    # Отправляем фото с текстом и кнопками
+    try:
+        if welcome_photo_path and welcome_photo_path.exists():
+            photo = FSInputFile(str(welcome_photo_path))
+            await message.answer_photo(
+                photo=photo,
+                caption=welcome_text,
+                reply_markup=keyboard
+            )
+        else:
+            # Если фото нет, отправляем только текст
+            logger.info(f"Welcome photo not found at {welcome_photo_path}, sending text only")
+            await message.answer(
+                welcome_text,
+                reply_markup=keyboard
+            )
+    except Exception as e:
+        logger.error(f"Error sending welcome message: {e}")
+        # Fallback - отправляем только текст
+        await message.answer(
+            welcome_text,
+            reply_markup=keyboard
+        )
 
 
 @router.message(Command("tasks"))
@@ -276,6 +462,291 @@ async def cmd_stats(message: Message, state: FSMContext):
     )
     
     await message.answer(stats_text)
+
+
+@router.callback_query(F.data == "view_tasks")
+async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
+    """Просмотр задач (для незарегистрированных)"""
+    # Получаем публичные задачи
+    response = await call_api("GET", "/public/tasks?limit=5")
+    
+    if "error" in response or not response.get("items"):
+        await callback.answer("❌ Ошибка при загрузке задач.", show_alert=True)
+        return
+    
+    tasks = response.get("items", [])[:5]
+    text = "📋 Доступные задачи:\n\n"
+    
+    for i, task in enumerate(tasks, 1):
+        text += f"{i}. {task.get('title', 'Без названия')}\n"
+        text += f"   Тип: {task.get('type', 'unknown')}\n\n"
+    
+    text += "💡 Для взятия задачи зарегистрируйся!"
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "view_leaderboard")
+async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
+    """Просмотр рейтинга (публичный)"""
+    response = await call_api("GET", "/public/leaderboard?limit=10")
+    
+    if "error" in response or not response:
+        await callback.answer("❌ Ошибка при загрузке рейтинга.", show_alert=True)
+        return
+    
+    leaderboard = response if isinstance(response, list) else []
+    
+    if not leaderboard:
+        await callback.message.answer("📊 Рейтинг пока пуст.")
+        await callback.answer()
+        return
+    
+    text = "🏆 ТОП-10 участников:\n\n"
+    medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
+    
+    for i, user in enumerate(leaderboard[:10], 1):
+        medal = medals[i-1] if i <= 3 else f"{i}."
+        text += (
+            f"{medal} {user.get('full_name', 'Unknown')}\n"
+            f"   ⭐ {user.get('points', 0)} баллов | "
+            f"Уровень {user.get('level', 1)}\n\n"
+        )
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "view_stats")
+async def callback_view_stats(callback: CallbackQuery, state: FSMContext):
+    """Просмотр статистики системы (публичный)"""
+    response = await call_api("GET", "/public/stats")
+    
+    if "error" in response:
+        await callback.answer("❌ Ошибка при загрузке статистики.", show_alert=True)
+        return
+    
+    stats = response
+    text = (
+        f"📊 Статистика системы:\n\n"
+        f"👥 Пользователей: {stats.get('total_users', 0)}\n"
+        f"📋 Всего задач: {stats.get('total_tasks', 0)}\n"
+        f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+        f"⭐ Всего баллов: {stats.get('total_points', 0)}\n"
+    )
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "my_tasks")
+async def callback_my_tasks(callback: CallbackQuery, state: FSMContext):
+    """Мои задачи (для зарегистрированных)"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = await call_api("GET", "/tasks", headers=headers)
+    
+    if "error" in response:
+        await callback.answer("❌ Ошибка при загрузке задач.", show_alert=True)
+        return
+    
+    tasks = response.get("items", [])
+    active_tasks = [t for t in tasks if t.get("status") not in ["completed", "cancelled"]]
+    
+    if not active_tasks:
+        await callback.message.answer("✅ Все задачи выполнены!")
+        await callback.answer()
+        return
+    
+    text = f"📋 Твои активные задачи ({len(active_tasks)}):\n\n"
+    
+    for i, task in enumerate(active_tasks[:10], 1):
+        status_emoji = {
+            "draft": "📝", "open": "🟢", "assigned": "👤",
+            "in_progress": "⚙️", "review": "👁️",
+        }.get(task.get("status"), "❓")
+        
+        text += (
+            f"{i}. {status_emoji} {task.get('title', 'Без названия')}\n"
+            f"   Тип: {task.get('type', 'unknown')}\n\n"
+        )
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "my_stats")
+async def callback_my_stats(callback: CallbackQuery, state: FSMContext):
+    """Моя статистика"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    stats_response = await call_api("GET", "/gamification/stats", headers=headers)
+    
+    if "error" in stats_response:
+        await callback.answer("❌ Ошибка при загрузке статистики.", show_alert=True)
+        return
+    
+    stats = stats_response
+    stats_text = (
+        f"📊 Твоя статистика:\n\n"
+        f"🎯 Уровень: {stats.get('level', 1)}\n"
+        f"⭐ Баллы: {stats.get('points', 0)}\n"
+        f"👤 Роль: {stats.get('role', 'novice')}\n"
+        f"📋 Активных задач: {stats.get('active_tasks', 0)}\n"
+        f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+        f"🏆 Ачивок: {stats.get('achievements_count', 0)}"
+    )
+    
+    await callback.message.answer(stats_text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "equipment")
+async def callback_equipment(callback: CallbackQuery, state: FSMContext):
+    """Оборудование - требует регистрации"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.answer("⚠️ Для работы с оборудованием нужно зарегистрироваться!", show_alert=True)
+        await callback.message.answer(
+            "📦 Работа с оборудованием доступна только зарегистрированным пользователям.\n\n"
+            "💡 Зарегистрируйся через веб-интерфейс:\n"
+            "https://best-pr-system.up.railway.app/"
+        )
+        return
+    
+    # Проверяем, активен ли пользователь
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_response = await call_api("GET", "/auth/me", headers=headers)
+    
+    if "error" in user_response or not user_response.get("is_active"):
+        await callback.answer("⚠️ Для работы с оборудованием нужно быть активным пользователем!", show_alert=True)
+        return
+    
+    # Получаем оборудование
+    equipment_response = await call_api("GET", "/equipment", headers=headers)
+    
+    if "error" in equipment_response:
+        await callback.answer("❌ Ошибка при загрузке оборудования.", show_alert=True)
+        return
+    
+    equipment_list = equipment_response.get("items", [])
+    
+    if not equipment_list:
+        await callback.message.answer("📦 Оборудование пока не добавлено.")
+        await callback.answer()
+        return
+    
+    text = "📦 Доступное оборудование:\n\n"
+    for i, eq in enumerate(equipment_list[:10], 1):
+        status_emoji = {
+            "available": "✅",
+            "rented": "🔴",
+            "maintenance": "🔧",
+            "broken": "❌",
+        }.get(eq.get("status"), "❓")
+        
+        text += f"{i}. {status_emoji} {eq.get('name', 'Unknown')}\n"
+        text += f"   Категория: {eq.get('category', 'unknown')}\n\n"
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "notifications")
+async def callback_notifications(callback: CallbackQuery, state: FSMContext):
+    """Уведомления"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = await call_api("GET", "/notifications?limit=5", headers=headers)
+    
+    if "error" in response:
+        await callback.answer("❌ Ошибка при загрузке уведомлений.", show_alert=True)
+        return
+    
+    notifications = response.get("items", [])
+    
+    if not notifications:
+        await callback.message.answer("🔔 У тебя нет уведомлений.")
+        await callback.answer()
+        return
+    
+    text = "🔔 Последние уведомления:\n\n"
+    for notif in notifications[:5]:
+        emoji = "🔴" if notif.get("is_read") == False else "⚪"
+        text += f"{emoji} {notif.get('title', 'Без названия')}\n"
+        text += f"   {notif.get('message', '')[:50]}...\n\n"
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "moderation")
+async def callback_moderation(callback: CallbackQuery, state: FSMContext):
+    """Модерация (только для координаторов)"""
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.answer("⚠️ Сначала выполните /start для авторизации.", show_alert=True)
+        return
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    response = await call_api("GET", "/moderation/applications", headers=headers)
+    
+    if "error" in response:
+        await callback.answer("❌ Ошибка при загрузке заявок.", show_alert=True)
+        return
+    
+    applications = response.get("items", [])
+    pending = [a for a in applications if a.get("status") == "pending"]
+    
+    if not pending:
+        await callback.message.answer("✅ Нет заявок на рассмотрении.")
+        await callback.answer()
+        return
+    
+    text = f"📋 Заявки на модерацию ({len(pending)}):\n\n"
+    for i, app in enumerate(pending[:5], 1):
+        user_name = app.get("application_data", {}).get("full_name", "Unknown")
+        text += f"{i}. 👤 {user_name}\n"
+        text += f"   Статус: ожидает рассмотрения\n\n"
+    
+    text += "💡 Используй веб-интерфейс для одобрения/отклонения."
+    
+    await callback.message.answer(text)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_panel")
+async def callback_admin_panel(callback: CallbackQuery, state: FSMContext):
+    """Админ-панель (только для VP4PR)"""
+    await callback.message.answer(
+        "⚙️ Панель управления доступна через веб-интерфейс:\n"
+        "https://best-pr-system.up.railway.app/\n\n"
+        "💡 Там ты можешь управлять всеми аспектами системы."
+    )
+    await callback.answer()
 
 
 @router.message(Command("leaderboard"))

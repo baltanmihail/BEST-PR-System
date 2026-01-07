@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    TELEGRAM_ADMIN_IDS: Union[str, int, List[int]] = os.getenv("TELEGRAM_ADMIN_IDS", "5079636941")
+    TELEGRAM_ADMIN_IDS: Union[str, int, List[int]] = os.getenv("TELEGRAM_ADMIN_IDS", "")
     
     @field_validator('TELEGRAM_ADMIN_IDS', mode='before')
     @classmethod
@@ -35,18 +35,19 @@ class Settings(BaseSettings):
         if isinstance(v, int):
             return [v]
         if isinstance(v, str):
-            if not v:
-                return [5079636941]
+            if not v or not v.strip():
+                return []  # Пустой список, если не задано
             # Если строка с запятыми - разбиваем
             if "," in v:
-                return [int(id.strip()) for id in v.split(",") if id.strip()]
+                ids = [int(id.strip()) for id in v.split(",") if id.strip()]
+                return ids if ids else []
             else:
                 # Один ID
                 try:
                     return [int(v.strip())]
                 except ValueError:
-                    return [5079636941]
-        return [5079636941]
+                    return []  # Пустой список при ошибке парсинга
+        return []  # Пустой список по умолчанию
     
     # Google
     GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")

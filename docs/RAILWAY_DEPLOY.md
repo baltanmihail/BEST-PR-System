@@ -15,7 +15,7 @@ git status
 git add .
 
 # Создайте коммит
-git commit -m "Тг работает"
+git commit -m "Больше админов"
 
 # Отправьте в GitHub
 git push origin main

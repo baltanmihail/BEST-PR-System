@@ -40,6 +40,7 @@ python scripts/create_coordinators.py
 | Олег Сычёв | @Art1fex | Channel Coordinator | 1014621744 |
 | Ксения Зайцева | @KsuZay | Design Coordinator | 796652169 |
 | Тимофей Плошкин | @timplooo | PR-FR Coordinator | 1281345523 |
+| Тест PR-FR | @test_prfr | PR-FR Coordinator (тест) | 8359020564 |
 
 ---
 
