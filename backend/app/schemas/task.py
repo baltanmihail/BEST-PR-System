@@ -2,10 +2,13 @@
 Pydantic схемы для задач
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from uuid import UUID
 from app.models.task import TaskType, TaskPriority, TaskStatus, StageStatus, AssignmentStatus
+
+if TYPE_CHECKING:
+    from typing import ForwardRef
 
 
 class TaskBase(BaseModel):
@@ -20,7 +23,7 @@ class TaskBase(BaseModel):
 
 class TaskCreate(TaskBase):
     """Схема для создания задачи"""
-    stages: Optional[List[TaskStageCreate]] = Field(default=None, description="Этапы задачи (для Channel задач)")
+    stages: Optional[List["TaskStageCreate"]] = Field(default=None, description="Этапы задачи (для Channel задач)")
     requires_equipment: Optional[bool] = Field(default=False, description="Требуется ли оборудование (для Channel задач)")
     script_ready: Optional[bool] = Field(default=True, description="Готов ли сценарий (если False, добавляется этап 'Сценарий')")
 
@@ -108,3 +111,7 @@ class TaskDetailResponse(TaskResponse):
     """Детальная схема задачи с этапами и назначениями"""
     stages: List[TaskStageResponse] = []
     assignments: List[TaskAssignmentResponse] = []
+
+
+# Обновляем модель для корректной работы forward references
+TaskCreate.model_rebuild()
