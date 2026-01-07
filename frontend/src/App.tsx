@@ -5,6 +5,10 @@ import Home from './pages/Home'
 import Tasks from './pages/Tasks'
 import Stats from './pages/Stats'
 import Leaderboard from './pages/Leaderboard'
+import Support from './pages/Support'
+import Notifications from './pages/Notifications'
+import Activity from './pages/Activity'
+import Gallery from './pages/Gallery'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +29,10 @@ function App() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/activity" element={<Activity />} />
+            <Route path="/gallery" element={<Gallery />} />
           </Routes>
         </Layout>
       </BrowserRouter>

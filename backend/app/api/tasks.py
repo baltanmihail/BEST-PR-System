@@ -90,6 +90,19 @@ async def create_task(
         created_by=current_user.id
     )
     
+    # Логируем создание задачи (публично, без имени координатора)
+    from app.services.activity_service import ActivityService
+    try:
+        await ActivityService.log_task_created(
+            db=db,
+            task_id=task.id,
+            task_title=task.title,
+            task_type=task.type.value
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to log activity: {e}")
+    
     return TaskResponse.model_validate(task)
 
 
@@ -308,6 +321,19 @@ async def assign_task(
         import logging
         logging.error(f"Failed to send notification: {e}")
     
+    # Логируем активность
+    from app.services.activity_service import ActivityService
+    try:
+        await ActivityService.log_task_assigned(
+            db=db,
+            user_id=current_user.id,
+            task_id=task.id,
+            task_title=task.title
+        )
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to log activity: {e}")
+    
     await db.commit()
     await db.refresh(task)
     
@@ -430,6 +456,34 @@ async def complete_task(
                 task_id=task.id,
                 task_title=task.title
             )
+            
+            # Логируем активность
+            from app.services.activity_service import ActivityService
+            await ActivityService.log_task_completed(
+                db=db,
+                user_id=current_user.id,
+                task_id=task.id,
+                task_title=task.title
+            )
+            
+            # Логируем достижения
+            for achievement in new_achievements:
+                achievement_names = {
+                    "first_task": "🎯 Первая кровь",
+                    "speedster": "⚡ Скорострел",
+                    "reliable": "🛡️ Надёжный",
+                    "director": "🎬 Режиссёр",
+                    "designer": "🖌️ Дизайнер",
+                    "smm_guru": "📢 SMM-гур",
+                    "helper": "🤝 Помощник",
+                    "unstoppable": "🔥 Неудержимый"
+                }
+                await ActivityService.log_achievement_unlocked(
+                    db=db,
+                    user_id=current_user.id,
+                    achievement_type=achievement.achievement_type,
+                    achievement_name=achievement_names.get(achievement.achievement_type, achievement.achievement_type)
+                )
         except Exception as e:
             # Логируем ошибку, но не прерываем процесс
             import logging

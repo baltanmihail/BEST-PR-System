@@ -18,11 +18,13 @@ class NotificationType(str, enum.Enum):
     EQUIPMENT_REQUEST = "equipment_request"
     EQUIPMENT_APPROVED = "equipment_approved"
     EQUIPMENT_REJECTED = "equipment_rejected"
+    MODERATION_REQUEST = "moderation_request"  # Новая заявка на регистрацию (для админа)
     MODERATION_APPROVED = "moderation_approved"
     MODERATION_REJECTED = "moderation_rejected"
     NEW_TASK = "new_task"
     TASK_REVIEW = "task_review"
     ACHIEVEMENT_UNLOCKED = "achievement_unlocked"
+    SUPPORT_REQUEST = "support_request"  # Запрос в поддержку (для админа)
 
 
 class Notification(Base):

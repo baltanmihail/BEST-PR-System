@@ -1,13 +1,17 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Calendar, Trophy, Settings } from 'lucide-react'
+import { Home, CheckSquare, Calendar, Trophy, Settings, MessageSquare, Bell, Activity, Image } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
+import { useAuthStore } from '../../store/authStore'
 
 const navigation = [
   { name: 'Главная', href: '/', icon: Home },
   { name: 'Задачи', href: '/tasks', icon: CheckSquare },
-  { name: 'Календарь', href: '/calendar', icon: Calendar },
-  { name: 'Рейтинг', href: '/rating', icon: Trophy },
-  { name: 'Настройки', href: '/settings', icon: Settings },
+  { name: 'Рейтинг', href: '/leaderboard', icon: Trophy },
+  { name: 'Статистика', href: '/stats', icon: Trophy },
+  { name: 'Активность', href: '/activity', icon: Activity },
+  { name: 'Галерея', href: '/gallery', icon: Image },
+  { name: 'Уведомления', href: '/notifications', icon: Bell },
+  { name: 'Поддержка', href: '/support', icon: MessageSquare },
 ]
 
 export default function Sidebar() {

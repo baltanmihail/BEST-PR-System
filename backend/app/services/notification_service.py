@@ -164,15 +164,87 @@ class NotificationService:
         db: AsyncSession,
         user_id: UUID
     ):
-        """Уведомить об одобрении заявки"""
+        """Уведомить об одобрении заявки с мотивирующим сообщением"""
+        # Получаем информацию о координаторах
+        from app.models.user import UserRole
+        coordinators_query = select(User).where(
+            User.role.in_([
+                UserRole.COORDINATOR_SMM,
+                UserRole.COORDINATOR_DESIGN, 
+                UserRole.COORDINATOR_CHANNEL,
+                UserRole.COORDINATOR_PRFR,
+                UserRole.VP4PR
+            ])
+        )
+        coord_result = await db.execute(coordinators_query)
+        coordinators = coord_result.scalars().all()
+        
+        coord_info = "\n".join([
+            f"• {coord.full_name} ({coord.role.value.replace('coordinator_', '').upper() if 'coordinator' in coord.role.value else coord.role.value.upper()})"
+            for coord in coordinators[:5]  # Показываем до 5 координаторов
+        ])
+        
+        message = f"""🎉 Добро пожаловать в команду BEST Moscow!
+
+Ваша заявка одобрена, теперь вы можете брать задачи и участвовать в проектах.
+
+📋 Важно знать:
+• Следите за дедлайнами - они критичны для успеха проекта
+• Координаторы помогут вам разобраться с задачами
+• Не стесняйтесь задавать вопросы - мы всегда готовы помочь
+
+👥 Наши координаторы:
+{coord_info if coord_info else "• Информация о координаторах доступна в разделе 'Помощь'"}
+
+💬 Есть вопросы? Напишите координатору вашего направления или мне лично. Также можете прочитать раздел "Помощь" для детальной информации.
+
+Удачи в работе! 🚀"""
+        
         await NotificationService.create_notification(
             db=db,
             user_id=user_id,
             notification_type=NotificationType.MODERATION_APPROVED,
-            title="Заявка одобрена",
-            message="Ваша заявка на регистрацию одобрена! Добро пожаловать в BEST PR System!",
+            title="🎉 Добро пожаловать в команду!",
+            message=message,
             data=None
         )
+    
+    @staticmethod
+    async def notify_moderation_request(
+        db: AsyncSession,
+        user_id: UUID,
+        user_name: str,
+        user_telegram_id: int
+    ):
+        """Уведомить админа о новой заявке на регистрацию"""
+        # Находим всех координаторов и VP4PR
+        from app.models.user import UserRole
+        admins_query = select(User).where(
+            User.role.in_([
+                UserRole.COORDINATOR_SMM,
+                UserRole.COORDINATOR_DESIGN,
+                UserRole.COORDINATOR_CHANNEL, 
+                UserRole.COORDINATOR_PRFR,
+                UserRole.VP4PR
+            ])
+        )
+        admins_result = await db.execute(admins_query)
+        admins = admins_result.scalars().all()
+        
+        # Отправляем уведомление всем админам
+        for admin in admins:
+            await NotificationService.create_notification(
+                db=db,
+                user_id=admin.id,
+                notification_type=NotificationType.MODERATION_REQUEST,
+                title="Новая заявка на регистрацию",
+                message=f"Пользователь {user_name} (@{user_telegram_id}) подал заявку на регистрацию. Можете уточнить детали в личном чате перед одобрением.",
+                data={
+                    "user_id": str(user_id),
+                    "user_name": user_name,
+                    "user_telegram_id": user_telegram_id
+                }
+            )
     
     @staticmethod
     async def notify_moderation_rejected(

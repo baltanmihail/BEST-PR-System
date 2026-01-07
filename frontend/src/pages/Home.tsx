@@ -1,11 +1,13 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Sparkles, ArrowRight, Target, Trophy } from 'lucide-react'
+import { Sparkles, ArrowRight, Target, Trophy, CheckSquare, Users, TrendingUp } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../services/tasks'
+import { publicApi } from '../services/public'
 import { useAuthStore } from '../store/authStore'
 import { useEffect } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
+import MotivationalChat from '../components/MotivationalChat'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -17,15 +19,26 @@ export default function Home() {
     fetchUser()
   }, [fetchUser])
 
-  // Загружаем задачи для статистики
+  const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
+  const isRegistered = user && user.is_active
+  const isUnregistered = !user || !user.is_active
+
+  // Загружаем данные в зависимости от роли
   const { data: tasksData } = useQuery({
     queryKey: ['tasks', 'stats'],
     queryFn: () => tasksApi.getTasks({ limit: 100 }),
+    enabled: !!user,
   })
 
-  const activeTasksCount = tasksData?.items.filter(
+  const { data: publicStats } = useQuery({
+    queryKey: ['public', 'stats'],
+    queryFn: () => publicApi.getStats(),
+    enabled: isUnregistered,
+  })
+
+  const activeTasksCount = tasksData?.items?.filter(
     (task) => task.status !== 'completed' && task.status !== 'cancelled'
-  ).length || 0
+  ).length || publicStats?.active_tasks || 0
 
   const heroParallax = useParallaxHover(10) // Главное окно - оставляем как есть
   const card1Parallax = useParallaxHover(15) // Усилил параллакс
@@ -34,7 +47,9 @@ export default function Home() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      {/* Hero Section */}
+      <MotivationalChat />
+      
+      {/* Hero Section - разный контент для разных ролей */}
       <div 
         ref={heroParallax.ref}
         style={{ transform: heroParallax.transform }}
@@ -42,23 +57,54 @@ export default function Home() {
       >
         <div className="flex items-center space-x-3 mb-4">
           <Sparkles className="h-8 w-8" />
-          <h1 className={`text-4xl font-bold text-readable ${theme}`}>Добро пожаловать в BEST PR System!</h1>
+          <h1 className={`text-4xl font-bold text-readable ${theme}`}>
+            {isCoordinator
+              ? 'Панель координатора'
+              : isRegistered
+              ? `Добро пожаловать, ${user?.full_name || 'участник'}!`
+              : 'Добро пожаловать в BEST PR System!'}
+          </h1>
         </div>
         <p className={`text-xl text-white text-readable ${theme} mb-6`}>
-          Система управления задачами PR-отдела с геймификацией и прогрессивным раскрытием функционала
+          {isCoordinator
+            ? 'Управляйте задачами, модерацией и командой'
+            : isRegistered
+            ? 'Система управления задачами PR-отдела с геймификацией'
+            : 'Присоединяйся к команде PR-отдела! Смотри задачи, зарабатывай баллы, развивайся!'}
         </p>
-        <Link
-          to="/tasks"
-          data-cursor-action="view-tasks"
-          className="inline-flex items-center space-x-2 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30"
-        >
-          <span>Посмотреть задачи</span>
-          <ArrowRight className="h-5 w-5" />
-        </Link>
+        {isUnregistered && (
+          <div className="flex items-center space-x-4">
+            <Link
+              to="/tasks"
+              data-cursor-action="view-tasks"
+              className="inline-flex items-center space-x-2 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30"
+            >
+              <span>Посмотреть задачи</span>
+              <ArrowRight className="h-5 w-5" />
+            </Link>
+            <button
+              onClick={() => navigate('/tasks')}
+              className="inline-flex items-center space-x-2 bg-best-primary text-white px-6 py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all"
+            >
+              <span>Зарегистрироваться</span>
+              <ArrowRight className="h-5 w-5" />
+            </button>
+          </div>
+        )}
+        {isRegistered && (
+          <Link
+            to="/tasks"
+            data-cursor-action="view-tasks"
+            className="inline-flex items-center space-x-2 bg-white/20 text-white px-6 py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30"
+          >
+            <span>Посмотреть задачи</span>
+            <ArrowRight className="h-5 w-5" />
+          </Link>
+        )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Stats Cards - разный контент для разных ролей */}
+      <div className={`grid ${isCoordinator ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1 md:grid-cols-3'} gap-6 mb-8`}>
         <div 
           ref={card1Parallax.ref}
           style={{ transform: card1Parallax.transform }}
@@ -117,6 +163,26 @@ export default function Home() {
             <h3 className={`text-white font-medium text-readable ${theme}`}>Топ</h3>
           </Link>
         </div>
+        
+        {isCoordinator && (
+          <div
+            className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover cursor-pointer hover:scale-105 transition-transform`}
+            onClick={() => navigate('/notifications')}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="relative">
+                <Users className="h-7 w-7 text-best-secondary drop-shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                <div className="absolute inset-0 h-7 w-7 text-best-secondary blur-md opacity-50">
+                  <Users className="h-full w-full" />
+                </div>
+              </div>
+              <span className={`text-3xl font-bold text-white text-readable ${theme}`}>
+                {publicStats?.participants_count || 0}
+              </span>
+            </div>
+            <h3 className={`text-white font-medium text-readable ${theme}`}>Участников</h3>
+          </div>
+        )}
       </div>
 
       {/* Quick Actions */}

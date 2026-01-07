@@ -15,7 +15,7 @@ git status
 git add .
 
 # Создайте коммит
-git commit -m "Добавлены API endpoints для задач, календаря и Telegram бота"
+git commit -m "Что-то добавлено"
 
 # Отправьте в GitHub
 git push origin main

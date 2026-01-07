@@ -56,11 +56,14 @@ async def auth_telegram(
         
         if not user:
             # Создаём нового пользователя (неактивного, требует модерации)
+            # Согласие и пользовательское соглашение будут добавлены позже через отдельный endpoint
             user = User(
                 telegram_id=telegram_id,
                 username=username,
                 full_name=full_name,
-                is_active=False  # Требует модерации
+                is_active=False,  # Требует модерации
+                personal_data_consent=False,
+                user_agreement_accepted=False
             )
             db.add(user)
             await db.commit()
@@ -68,7 +71,7 @@ async def auth_telegram(
             
             # Создаём заявку на модерацию
             from app.services.moderation_service import ModerationService
-            await ModerationService.create_user_application(
+            application = await ModerationService.create_user_application(
                 db=db,
                 user_id=user.id,
                 application_data={
@@ -78,6 +81,18 @@ async def auth_telegram(
                     "source": "telegram_auth"
                 }
             )
+            
+            # Уведомляем админов о новой заявке
+            from app.services.notification_service import NotificationService
+            try:
+                await NotificationService.notify_moderation_request(
+                    db=db,
+                    user_id=user.id,
+                    user_name=full_name,
+                    user_telegram_id=telegram_id
+                )
+            except Exception as e:
+                logger.error(f"Failed to send moderation request notification: {e}")
         else:
             # Обновляем данные существующего пользователя
             user.username = username

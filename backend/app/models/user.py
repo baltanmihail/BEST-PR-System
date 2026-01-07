@@ -38,6 +38,13 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
+    # Согласие на обработку персональных данных
+    personal_data_consent = Column(Boolean, nullable=False, default=False)
+    consent_date = Column(DateTime(timezone=True), nullable=True)
+    # Пользовательское соглашение
+    user_agreement_accepted = Column(Boolean, nullable=False, default=False)
+    agreement_version = Column(String, nullable=True)  # Версия соглашения
+    agreement_accepted_at = Column(DateTime(timezone=True), nullable=True)
     
     def __repr__(self):
         return f"<User {self.telegram_id} ({self.full_name})>"

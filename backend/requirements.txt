@@ -53,3 +53,11 @@ httpx==0.25.2
 black==23.11.0
 isort==5.12.0
 mypy==1.7.1
+
+# AI Providers (опционально, установите нужный)
+# Для GigaChat:
+# gigachat==0.1.0  # или актуальная версия
+# Для OpenAI:
+# openai==1.12.0
+# Для Claude (Anthropic):
+# anthropic==0.18.1

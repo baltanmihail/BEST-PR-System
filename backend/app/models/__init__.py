@@ -11,6 +11,7 @@ from app.models.telegram import TelegramChat
 from app.models.moderation import ModerationQueue
 from app.models.activity import ActivityLog
 from app.models.notification import Notification
+from app.models.task_suggestion import TaskSuggestion
 
 __all__ = [
     "User",
@@ -27,4 +28,5 @@ __all__ = [
     "ModerationQueue",
     "ActivityLog",
     "Notification",
+    "TaskSuggestion",
 ]
