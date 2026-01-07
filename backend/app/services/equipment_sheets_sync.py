@@ -22,7 +22,7 @@ class EquipmentSheetsSync:
     EQUIPMENT_SHEETS_ID = "1nNqA_cvUnzPADO3DcwD6ldzHIwnghR7ypKuzec4bk0I"
     
     def __init__(self):
-        self.google_service: Optional[GoogleService] = None
+        self.google_service = None  # Type: Optional[GoogleService] (lazy import)
     
     def _get_google_service(self):
         """Ленивая инициализация GoogleService"""
