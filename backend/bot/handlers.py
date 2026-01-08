@@ -2133,6 +2133,12 @@ async def callback_ask_question(callback: CallbackQuery, state: FSMContext):
 @router.message(F.text)
 async def handle_text_message(message: Message, state: FSMContext):
     """Обработка текстовых сообщений (онбординг, вопросы и т.д.)"""
+    # Если это группа/супергруппа и сообщение не начинается с команды - игнорируем
+    is_group = message.chat.type in ("group", "supergroup")
+    if is_group and not message.text.startswith("/"):
+        # В группах обрабатываем только команды, обычные сообщения игнорируем
+        return
+    
     user = message.from_user
     text = message.text
     
@@ -2266,14 +2272,22 @@ async def handle_text_message(message: Message, state: FSMContext):
         return
     
     # Если это не онбординг и не вопрос, обрабатываем как неизвестную команду
-    await message.answer(
-        "❓ Неизвестная команда. Используйте /help для списка доступных команд."
-    )
+    # Но только в личном чате, в группах мы уже вернулись выше
+    if not is_group:
+        await message.answer(
+            "❓ Неизвестная команда. Используйте /help для списка доступных команд."
+        )
 
 
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений (не текст)"""
+    # В группах игнорируем неизвестные сообщения (не команды)
+    is_group = message.chat.type in ("group", "supergroup")
+    if is_group:
+        return
+    
+    # В личном чате отвечаем
     await message.answer(
         "❓ Неизвестная команда. Используйте /help для списка доступных команд."
     )

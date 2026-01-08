@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, ChevronRight, ChevronLeft, MapPin } from 'lucide-react'
 import { useThemeStore } from '../store/themeStore'
-import { useAuthStore } from '../store/authStore'
 
 export type TourStep = {
   id: string

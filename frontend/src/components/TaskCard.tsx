@@ -4,7 +4,7 @@ import { Task } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { useQuery } from '@tanstack/react-query'
-import { telegramChatsApi } from '../services/telegramChats'
+import { telegramChatsApi, TaskChatResponse } from '../services/telegramChats'
 
 const typeLabels = {
   smm: 'SMM',
@@ -40,7 +40,7 @@ export default function TaskCard({ task }: TaskCardProps) {
   const { user } = useAuthStore()
   
   // Получаем информацию о чате задачи
-  const { data: taskChat } = useQuery({
+  const { data: taskChat } = useQuery<TaskChatResponse>({
     queryKey: ['task-chat', task.id],
     queryFn: () => telegramChatsApi.getTaskChat(task.id),
     enabled: !!user?.is_active,

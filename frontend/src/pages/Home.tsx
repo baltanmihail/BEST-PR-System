@@ -10,7 +10,7 @@ import { useThemeStore } from '../store/themeStore'
 import ChatWidget from '../components/ChatWidget'
 import TourGuide from '../components/TourGuide'
 import { useTour } from '../hooks/useTour'
-import { telegramChatsApi } from '../services/telegramChats'
+import { telegramChatsApi, GeneralChatResponse } from '../services/telegramChats'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -23,17 +23,17 @@ export default function Home() {
   }, [fetchUser])
 
   const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
-  const isRegistered = user && user.is_active
+  const isRegistered = !!(user && user.is_active)
   const isUnregistered = !user || !user.is_active
   
   // Хук для тура
   const { steps, isActive, completeTour, stopTour } = useTour()
   
   // Получаем информацию об общем чате
-  const { data: generalChat } = useQuery({
+  const { data: generalChat } = useQuery<GeneralChatResponse, Error>({
     queryKey: ['general-chat'],
     queryFn: telegramChatsApi.getGeneralChat,
-    enabled: isRegistered,
+    enabled: isRegistered === true,
   })
 
   // Загружаем данные в зависимости от роли
