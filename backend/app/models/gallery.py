@@ -28,7 +28,7 @@ class GalleryItem(Base):
     description = Column(Text, nullable=True)  # Описание проекта
     
     # Категория и теги
-    category = Column(SQLEnum(GalleryCategory, name="gallery_category"), nullable=False, default=GalleryCategory.FINAL, index=True)
+    category = Column(Enum(GalleryCategory, name="gallery_category"), nullable=False, default=GalleryCategory.FINAL, index=True)
     tags = Column(ARRAY(String), nullable=True)  # Дополнительные теги
     
     # Связи

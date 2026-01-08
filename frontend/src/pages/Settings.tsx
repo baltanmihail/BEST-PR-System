@@ -488,7 +488,7 @@ export default function Settings() {
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Управление пользователями (только для VP4PR) */}
