@@ -66,8 +66,9 @@ class Settings(BaseSettings):
         origin.strip()
         for origin in os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:3000,http://localhost:5173"
+            "http://localhost:3000,http://localhost:5173,https://best-pr-system.up.railway.app"
         ).split(",")
+        if origin.strip()  # Игнорируем пустые значения
     ]
     
     # Frontend URL (для ссылок в боте и уведомлениях)

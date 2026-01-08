@@ -90,6 +90,7 @@ async def docs_redirect():
 async def startup_event():
     """Выполняется при запуске приложения"""
     logger.info("BEST PR System API starting up...")
+    logger.info(f"🌐 CORS allowed origins: {settings.CORS_ORIGINS}")
     
     # Проверка QR code модуля
     try:
