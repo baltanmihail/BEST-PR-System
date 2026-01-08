@@ -46,7 +46,7 @@ function AppContent() {
     // Проверяем, открыт ли сайт через Telegram WebApp
     const isTelegramWebApp = window.Telegram?.WebApp
     
-    if (isTelegramWebApp && !user) {
+    if (isTelegramWebApp && !user && window.Telegram) {
       const tg = window.Telegram.WebApp
       const initDataUnsafe = tg.initDataUnsafe
       

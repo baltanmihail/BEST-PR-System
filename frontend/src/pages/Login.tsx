@@ -40,7 +40,7 @@ export default function Login() {
     const isTelegramWebApp = window.Telegram?.WebApp
     
     // Если открыт через Telegram WebApp и пользователь не авторизован
-    if (isTelegramWebApp && !user) {
+    if (isTelegramWebApp && !user && window.Telegram) {
       const tg = window.Telegram.WebApp
       const initDataUnsafe = tg.initDataUnsafe
       

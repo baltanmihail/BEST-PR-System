@@ -32,7 +32,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && pip list | grep -E "(qrcode|Pillow)" && exit 1)
 
 # Копирование картинки приветствия
-COPY "BEST logos/" "/app/BEST logos/"
+# Создаём директорию и копируем файл (пробелы в пути требуют специального синтаксиса)
+RUN mkdir -p "/app/BEST logos"
+COPY ["BEST logos/best_welcome.jpg", "/app/BEST logos/best_welcome.jpg"]
 
 # Копирование остальных файлов бэкенда
 COPY backend/ .
