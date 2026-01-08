@@ -56,7 +56,7 @@ export default function TaskCard({ task }: TaskCardProps) {
     queryFn: async () => {
       if (!task.example_project_ids || task.example_project_ids.length === 0) return []
       const results = await Promise.all(
-        task.example_project_ids.map((id) => galleryApi.getGallery({ limit: 1 }))
+        task.example_project_ids.map(() => galleryApi.getGallery({ limit: 1 }))
       )
       return results.flatMap((r) => r.items)
     },
