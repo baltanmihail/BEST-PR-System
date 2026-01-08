@@ -2,8 +2,8 @@
 Конфигурация приложения
 """
 from pydantic_settings import BaseSettings
-from pydantic import field_validator, model_validator
-from typing import List, Union, Any
+from pydantic import field_validator
+from typing import List, Union
 import os
 
 
@@ -61,34 +61,6 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_4_JSON: str = os.getenv("GOOGLE_CREDENTIALS_4_JSON", "")
     GOOGLE_CREDENTIALS_5_JSON: str = os.getenv("GOOGLE_CREDENTIALS_5_JSON", "")
     
-    # CORS - используем model_validator для перехвата до парсинга
-    CORS_ORIGINS: List[str] = []
-    
-    @model_validator(mode='before')
-    @classmethod
-    def parse_cors_origins_before(cls, data: Any) -> Any:
-        """Парсинг CORS_ORIGINS из строки с запятыми до парсинга Pydantic"""
-        if isinstance(data, dict):
-            # Если CORS_ORIGINS есть в данных как строка, парсим её
-            if 'CORS_ORIGINS' in data and isinstance(data['CORS_ORIGINS'], str):
-                cors_str = data['CORS_ORIGINS'].strip()
-                if cors_str:
-                    data['CORS_ORIGINS'] = [origin.strip() for origin in cors_str.split(",") if origin.strip()]
-                else:
-                    data['CORS_ORIGINS'] = [
-                        "http://localhost:3000",
-                        "http://localhost:5173",
-                        "https://best-pr-system.up.railway.app"
-                    ]
-            # Если CORS_ORIGINS нет, используем дефолтное значение
-            elif 'CORS_ORIGINS' not in data:
-                data['CORS_ORIGINS'] = [
-                    "http://localhost:3000",
-                    "http://localhost:5173",
-                    "https://best-pr-system.up.railway.app"
-                ]
-        return data
-    
     # Frontend URL (для ссылок в боте и уведомлениях)
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
     
@@ -101,6 +73,29 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+    
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        """
+        CORS_ORIGINS - парсится вручную из переменной окружения
+        НЕ объявляем как поле Pydantic, чтобы избежать автоматического JSON парсинга
+        """
+        cors_str = os.getenv(
+            "CORS_ORIGINS",
+            "http://localhost:3000,http://localhost:5173,https://best-pr-system.up.railway.app"
+        )
+        if not cors_str or not cors_str.strip():
+            return [
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "https://best-pr-system.up.railway.app"
+            ]
+        origins = [origin.strip() for origin in cors_str.split(",") if origin.strip()]
+        return origins if origins else [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://best-pr-system.up.railway.app"
+        ]
 
 
 settings = Settings()
