@@ -22,8 +22,17 @@ api.interceptors.request.use((config) => {
 
 // Обработка ошибок
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Логируем успешные ответы для отладки (только в development)
+    if (import.meta.env.DEV) {
+      console.log('API Response:', response.config.method?.toUpperCase(), response.config.url, response.status, response.data)
+    }
+    return response
+  },
   (error) => {
+    // Логируем ошибки для отладки
+    console.error('API Error:', error.config?.method?.toUpperCase(), error.config?.url, error.response?.status, error.response?.data)
+    
     if (error.response?.status === 401) {
       // Токен истёк или невалиден
       localStorage.removeItem('access_token')

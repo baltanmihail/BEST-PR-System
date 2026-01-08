@@ -38,9 +38,19 @@ export default function Login() {
   // Генерация QR-кода
   const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
     queryKey: ['qr-generate'],
-    queryFn: () => qrAuthApi.generate(),
+    queryFn: async () => {
+      try {
+        const data = await qrAuthApi.generate()
+        console.log('QR data received:', data)
+        return data
+      } catch (error) {
+        console.error('QR generation failed:', error)
+        throw error
+      }
+    },
     enabled: !sessionToken,
     retry: 2,
+    retryDelay: 1000,
   })
 
   // Устанавливаем токен когда QR-код сгенерирован
@@ -148,8 +158,14 @@ export default function Login() {
                 Ошибка генерации QR-кода
               </p>
               <p className={`text-xs text-center mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                Попробуйте обновить страницу
+                {qrError instanceof Error ? qrError.message : 'Попробуйте обновить страницу'}
               </p>
+              <button
+                onClick={handleRefreshQR}
+                className={`mt-2 text-xs px-3 py-1 rounded ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900'}`}
+              >
+                Обновить
+              </button>
             </div>
           ) : (
             <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed rounded-lg">

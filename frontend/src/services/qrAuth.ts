@@ -25,13 +25,35 @@ export interface QRStatusResponse {
 export const qrAuthApi = {
   // Генерация QR-кода
   generate: async (): Promise<QRGenerateResponse> => {
-    const response = await api.post<QRGenerateResponse>('/auth/qr/generate')
-    return response.data
+    try {
+      const response = await api.post<QRGenerateResponse>('/auth/qr/generate')
+      console.log('QR generate response:', response.data)
+      
+      // Проверяем, что qr_code присутствует и имеет правильный формат
+      if (!response.data.qr_code) {
+        throw new Error('QR code not found in response')
+      }
+      
+      if (!response.data.qr_code.startsWith('data:image/')) {
+        throw new Error('Invalid QR code format')
+      }
+      
+      return response.data
+    } catch (error: any) {
+      console.error('QR generate error:', error)
+      console.error('Error response:', error.response?.data)
+      throw error
+    }
   },
 
   // Проверка статуса
   getStatus: async (session_token: string): Promise<QRStatusResponse> => {
-    const response = await api.get<QRStatusResponse>(`/auth/qr/status/${session_token}`)
-    return response.data
+    try {
+      const response = await api.get<QRStatusResponse>(`/auth/qr/status/${session_token}`)
+      return response.data
+    } catch (error: any) {
+      console.error('QR status error:', error)
+      throw error
+    }
   },
 }
