@@ -76,7 +76,7 @@ export default function Cursor2() {
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-    renderer.setSize(40, 40)
+    renderer.setSize(32, 32) // Вернули размер как было
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
@@ -102,13 +102,16 @@ export default function Cursor2() {
           '/3d_mouse_cursor.glb',
           (gltf) => {
             const model = gltf.scene
-            model.scale.set(0.35, 0.35, 0.35)
+            model.scale.set(0.3, 0.3, 0.3) // Нормальный размер
             model.rotation.set(0, 5.4, 0)
             
-            // Центрируем модель (важно для правильного позиционирования)
+            // Центрируем модель точно (важно для правильного позиционирования)
             const box = new THREE.Box3().setFromObject(model)
             const center = box.getCenter(new THREE.Vector3())
             model.position.sub(center) // Перемещаем модель так, чтобы её центр был в (0,0,0)
+            
+            // Убеждаемся, что модель точно по центру
+            model.position.set(0, 0, 0)
 
             model.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -183,19 +186,21 @@ export default function Cursor2() {
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate)
 
-      // Плавное следование (lerp) - точное центрирование (увеличена скорость для уменьшения задержки)
-      const lerpFactor = 0.35 // Было 0.18, увеличено до 0.35 для быстрого отклика
+      // Плавное следование (lerp) - точное центрирование
+      const lerpFactor = 0.45 // Оптимальный баланс между плавностью и отзывчивостью
       currentPos.current.x += (mousePos.current.x - currentPos.current.x) * lerpFactor
       currentPos.current.y += (mousePos.current.y - currentPos.current.y) * lerpFactor
 
-      // Обновляем позицию 3D-курсора (центрируем точно через translate(-50%, -50%))
+      // Обновляем позицию 3D-курсора с точным центрированием
       if (containerRef.current) {
-        // Позиционируем точно на позиции мыши, transform сам центрирует через translate(-50%, -50%)
         containerRef.current.style.left = `${currentPos.current.x}px`
         containerRef.current.style.top = `${currentPos.current.y}px`
-        // Убеждаемся, что нет смещения
+        containerRef.current.style.transform = 'translate(-50%, -50%)'
         containerRef.current.style.marginLeft = '0'
         containerRef.current.style.marginTop = '0'
+        containerRef.current.style.transformOrigin = 'center center'
+        // Улучшаем точность позиционирования
+        containerRef.current.style.willChange = 'transform'
       }
 
       // Трейл отключен для производительности
@@ -240,9 +245,10 @@ export default function Cursor2() {
         ref={containerRef}
         className="fixed pointer-events-none z-[9999]"
         style={{
-          width: '40px',
-          height: '40px',
+          width: '32px',
+          height: '32px',
           transform: 'translate(-50%, -50%)', // Центрируем точно на позиции мыши
+          willChange: 'transform',
         }}
       />
 

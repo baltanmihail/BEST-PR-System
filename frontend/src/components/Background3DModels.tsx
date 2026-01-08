@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 interface ModelConfig {
@@ -24,6 +24,7 @@ export default function Background3DModels() {
   const modelTimeOffsetsRef = useRef<number[]>([]) // Разные задержки для каждой модели
   const modelScrollSpeedsRef = useRef<number[]>([]) // Разные скорости скролла для каждой модели
   const modelScrollOffsetsRef = useRef<number[]>([]) // Накопленное смещение для каждой модели (не сбрасывается)
+  const [isMobile, setIsMobile] = useState(false)
 
   // Конфигурация для 2 моделей (слева и справа) - с разными параметрами для разнообразия
   const getModelsConfig = (): ModelConfig[] => [
@@ -45,9 +46,24 @@ export default function Background3DModels() {
     },
   ]
 
+  // Проверка на мобильное устройство
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent))
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
+    
+    // На мобильных устройствах также показываем модели, но с оптимизированными настройками
+    if (isMobile) {
+      console.log('Мобильное устройство обнаружено - используем оптимизированную версию с летающим блейдом')
+    }
 
     // Создаём сцену
     const scene = new THREE.Scene()
@@ -390,14 +406,14 @@ export default function Background3DModels() {
       }
       rendererRef.current?.dispose()
     }
-  }, [])
+  }, [isMobile]) // Добавляем isMobile в зависимости
 
   return (
     <div
       ref={containerRef}
       className="fixed inset-0 pointer-events-none z-0"
       style={{ 
-        opacity: 0.9,
+        opacity: isMobile ? 0.7 : 0.9, // Немного прозрачнее на мобильных
         mixBlendMode: 'normal', // Для правильного наложения
       }}
     />

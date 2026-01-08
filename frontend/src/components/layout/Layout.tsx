@@ -5,7 +5,9 @@ import Sidebar from './Sidebar'
 import Background3DModels from '../Background3DModels'
 import StaticCursor3D from '../StaticCursor3D'
 import Cursor2 from '../Cursor2'
+import TourGuide from '../TourGuide'
 import { useThemeStore } from '../../store/themeStore'
+import { useTour } from '../../hooks/useTour'
 
 interface LayoutProps {
   children: ReactNode
@@ -15,6 +17,7 @@ export default function Layout({ children }: LayoutProps) {
   const mainRef = useRef<HTMLElement>(null)
   const { theme } = useThemeStore()
   const location = useLocation()
+  const { steps, isActive, completeTour, stopTour } = useTour()
 
   useEffect(() => {
     const handleWheel = (_e: WheelEvent) => {
@@ -63,6 +66,16 @@ export default function Layout({ children }: LayoutProps) {
           </div>
         </main>
       </div>
+      
+      {/* Гайд - работает на всех страницах */}
+      {isActive && steps.length > 0 && (
+        <TourGuide
+          steps={steps}
+          onComplete={completeTour}
+          onSkip={stopTour}
+          showSkip={true}
+        />
+      )}
     </div>
   )
 }

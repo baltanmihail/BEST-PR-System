@@ -1,11 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import { tourApi } from '../services/tour'
 import { useAuthStore } from '../store/authStore'
 import { TourStep } from '../components/TourGuide'
 
 export function useTour() {
   const { user } = useAuthStore()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [steps, setSteps] = useState<TourStep[]>([])
   const [isActive, setIsActive] = useState(false)
@@ -34,8 +36,9 @@ export function useTour() {
     },
   })
 
+  // Функции создания шагов вынесены вне useCallback для использования в зависимостях
   // Создаём шаги гайда для главной страницы
-  const createHomeTourSteps = (): TourStep[] => {
+  const createHomeTourSteps = useCallback((): TourStep[] => {
     return [
       {
         id: 'hero',
@@ -80,10 +83,10 @@ export function useTour() {
         position: 'top',
       },
     ]
-  }
+  }, [])
 
   // Создаём шаги гайда для страницы задач
-  const createTasksTourSteps = (): TourStep[] => {
+  const createTasksTourSteps = useCallback((): TourStep[] => {
     return [
       {
         id: 'tasks-header',
@@ -107,15 +110,179 @@ export function useTour() {
         position: 'top',
       },
     ]
-  }
+  }, [])
 
-  const startTour = (tourType: 'home' | 'tasks' = 'home') => {
+  // Автоматически определяем тип тура по текущей странице
+  const getTourTypeFromPath = useCallback((path: string): string => {
+    if (path === '/') return 'home'
+    if (path === '/tasks') return 'tasks'
+    if (path === '/calendar') return 'calendar'
+    if (path === '/gallery') return 'gallery'
+    if (path === '/equipment') return 'equipment'
+    if (path === '/settings') return 'settings'
+    if (path === '/users') return 'users'
+    if (path === '/support') return 'support'
+    return 'home'
+  }, [])
+
+  // Создаём шаги гайда для календаря
+  const createCalendarTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'calendar-header',
+        target: '[data-tour="calendar-header"]',
+        title: 'Календарь',
+        content: 'Здесь вы можете увидеть все задачи и события на выбранный период. Используйте навигацию для перемещения по датам.',
+        position: 'bottom',
+      },
+      {
+        id: 'calendar-views',
+        target: '[data-tour="calendar-views"]',
+        title: 'Представления',
+        content: 'Выберите удобное представление: Месяц, Неделя, Таймлайн, График работ или Доски (Kanban). Каждое представление покажет данные по-разному.',
+        position: 'bottom',
+      },
+      {
+        id: 'calendar-filters',
+        target: '[data-tour="calendar-filters"]',
+        title: 'Фильтры',
+        content: 'Фильтруйте задачи по типу (SMM, Design, Channel, PR-FR) и настраивайте уровень детализации отображения.',
+        position: 'bottom',
+      },
+      {
+        id: 'calendar-sync',
+        target: '[data-tour="calendar-sync"]',
+        title: 'Синхронизация',
+        content: 'Координаторы могут синхронизировать календарь с Google Sheets для создания отчётов и таблиц.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
+  // Создаём шаги гайда для галереи
+  const createGalleryTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'gallery-header',
+        target: '[data-tour="gallery-header"]',
+        title: 'Галерея проектов',
+        content: 'Здесь собраны все завершённые проекты PR-отдела. Вы можете просматривать работы участников, изучать примеры и вдохновляться!',
+        position: 'bottom',
+      },
+      {
+        id: 'gallery-filters',
+        target: '[data-tour="gallery-filters"]',
+        title: 'Фильтры',
+        content: 'Фильтруйте проекты по категориям: фото, видео, финальные работы или работы в процессе. Используйте теги для поиска.',
+        position: 'bottom',
+      },
+      {
+        id: 'gallery-item',
+        target: '[data-tour="gallery-item"]',
+        title: 'Карточка проекта',
+        content: 'Нажмите на карточку проекта, чтобы увидеть подробную информацию, метрики (просмотры, лайки) и связанные файлы.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
+  // Создаём шаги гайда для оборудования
+  const createEquipmentTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'equipment-header',
+        target: '[data-tour="equipment-header"]',
+        title: 'Оборудование',
+        content: 'Здесь вы можете просмотреть доступное оборудование для съёмок и подать заявку на аренду.',
+        position: 'bottom',
+      },
+      {
+        id: 'equipment-list',
+        target: '[data-tour="equipment-list"]',
+        title: 'Список оборудования',
+        content: 'Посмотрите доступные камеры, объективы, световое оборудование и другие инструменты. Координаторы могут добавлять новое оборудование.',
+        position: 'bottom',
+      },
+      {
+        id: 'equipment-request',
+        target: '[data-tour="equipment-request"]',
+        title: 'Заявка на аренду',
+        content: 'Выберите оборудование и даты аренды. После подачи заявки координатор рассмотрит её и уведомит вас о решении.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
+  // Создаём шаги гайда для настроек
+  const createSettingsTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'settings-profile',
+        target: '[data-tour="settings-profile"]',
+        title: 'Профиль',
+        content: 'Здесь вы можете редактировать свой профиль: добавить фото, описание, контакты, навыки и портфолио работ.',
+        position: 'bottom',
+      },
+      {
+        id: 'settings-theme',
+        target: '[data-tour="settings-theme"]',
+        title: 'Настройки',
+        content: 'Переключайте тему оформления (светлая/тёмная) для комфортной работы в любое время суток.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
+  // Создаём шаги гайда для мониторинга (координаторы)
+  const createUsersTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'users-header',
+        target: '[data-tour="users-header"]',
+        title: 'Мониторинг пользователей',
+        content: 'Этот раздел доступен только координаторам. Здесь вы можете управлять пользователями системы.',
+        position: 'bottom',
+      },
+      {
+        id: 'users-search',
+        target: '[data-tour="users-search"]',
+        title: 'Поиск',
+        content: 'Ищите пользователей по имени, username или email. Используйте фильтры для быстрого поиска.',
+        position: 'bottom',
+      },
+      {
+        id: 'users-actions',
+        target: '[data-tour="users-actions"]',
+        title: 'Действия',
+        content: 'Вы можете блокировать/разблокировать пользователей, изменять баллы, просматривать статистику и экспортировать данные.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
+  const startTour = useCallback((tourType?: string) => {
+    // Если тип не указан, определяем автоматически по текущему пути
+    const type = tourType || getTourTypeFromPath(location.pathname)
     let tourSteps: TourStep[] = []
     
-    if (tourType === 'home') {
+    if (type === 'home') {
       tourSteps = createHomeTourSteps()
-    } else if (tourType === 'tasks') {
+    } else if (type === 'tasks') {
       tourSteps = createTasksTourSteps()
+    } else if (type === 'calendar') {
+      tourSteps = createCalendarTourSteps()
+    } else if (type === 'gallery') {
+      tourSteps = createGalleryTourSteps()
+    } else if (type === 'equipment') {
+      tourSteps = createEquipmentTourSteps()
+    } else if (type === 'settings') {
+      tourSteps = createSettingsTourSteps()
+    } else if (type === 'users') {
+      tourSteps = createUsersTourSteps()
+    } else if (type === 'support') {
+      tourSteps = createSupportTourSteps()
+    } else {
+      tourSteps = createHomeTourSteps()
     }
 
     // Проверяем, что все элементы существуют
@@ -128,9 +295,34 @@ export function useTour() {
       setSteps(validSteps)
       setIsActive(true)
     } else {
-      console.warn('Tour elements not found on page')
+      console.warn(`Tour elements not found on page: ${type}`, tourSteps.map(s => s.target))
     }
-  }
+  }, [location.pathname, getTourTypeFromPath, createHomeTourSteps, createTasksTourSteps, createCalendarTourSteps, createGalleryTourSteps, createEquipmentTourSteps, createSettingsTourSteps, createUsersTourSteps, createSupportTourSteps])
+
+  // Автоматически запускаем гайд только при первом посещении главной страницы (не навязчиво)
+  useEffect(() => {
+    // Запускаем гайд только если:
+    // 1. Пользователь зарегистрирован
+    // 2. Гайд ещё не был пройден
+    // 3. Гайд не активен сейчас
+    // 4. Мы на главной странице (для первого знакомства)
+    // 5. Не на страницах логина/регистрации
+    if (
+      user && 
+      user.is_active && 
+      !tourStatus?.tour_completed && 
+      !isActive && 
+      location.pathname === '/' &&
+      location.pathname !== '/login' && 
+      location.pathname !== '/register'
+    ) {
+      // Небольшая задержка для загрузки элементов на странице
+      const timer = setTimeout(() => {
+        startTour('home')
+      }, 1500) // Увеличена задержка для гарантированной загрузки всех элементов
+      return () => clearTimeout(timer)
+    }
+  }, [location.pathname, user, tourStatus?.tour_completed, isActive, startTour])
 
   const stopTour = () => {
     setIsActive(false)

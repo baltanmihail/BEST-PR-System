@@ -8,7 +8,6 @@ import { useEffect } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
 import ChatWidget from '../components/ChatWidget'
-import TourGuide from '../components/TourGuide'
 import { useTour } from '../hooks/useTour'
 import { telegramChatsApi, GeneralChatResponse } from '../services/telegramChats'
 import { onboardingApi } from '../services/onboarding'
@@ -85,8 +84,8 @@ export default function Home() {
   const isRegistered = !!(user && user.is_active)
   const isUnregistered = !user || !user.is_active
   
-  // Хук для тура
-  const { steps, isActive, completeTour, stopTour } = useTour()
+  // Хук для тура (используется в Layout)
+  const { } = useTour()
   
   // Получаем информацию об общем чате
   const { data: generalChat } = useQuery<GeneralChatResponse, Error>({
@@ -141,14 +140,6 @@ export default function Home() {
   return (
     <div className="max-w-7xl mx-auto">
       <ChatWidget />
-      {isActive && (
-        <TourGuide
-          steps={steps}
-          onComplete={completeTour}
-          onSkip={stopTour}
-          showSkip={true}
-        />
-      )}
       
       {/* Hero Section - разный контент для разных ролей */}
       <div 

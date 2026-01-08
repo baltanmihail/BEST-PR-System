@@ -109,9 +109,19 @@ export default function ChatWidget() {
   }
 
   return (
-    <div
-      className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-50 border border-white/30`}
-    >
+    <>
+      {/* Backdrop overlay - как на hyper3d.ai */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998] transition-opacity duration-300"
+        onClick={() => setIsOpen(false)}
+        style={{ pointerEvents: isOpen ? 'auto' : 'none', opacity: isOpen ? 1 : 0 }}
+      />
+      {/* Чат виджет - поверх всего */}
+      <div
+        className={`fixed bottom-1/2 right-1/2 translate-x-1/2 translate-y-1/2 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
+        style={{ pointerEvents: isOpen ? 'auto' : 'none', opacity: isOpen ? 1 : 0, transform: isOpen ? 'translate(50%, 50%) scale(1)' : 'translate(50%, 50%) scale(0.95)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
       {/* Заголовок */}
       <div className="flex items-center justify-between p-4 border-b border-white/20">
         <div className="flex items-center space-x-2">
@@ -201,5 +211,6 @@ export default function ChatWidget() {
         </p>
       </div>
     </div>
+    </>
   )
 }

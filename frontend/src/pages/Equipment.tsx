@@ -172,7 +172,7 @@ export default function Equipment() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8" data-tour="equipment-header">
         <div className="flex items-center space-x-4">
           <Link
             to="/"
@@ -228,7 +228,7 @@ export default function Equipment() {
 
       {/* Форма заявки */}
       {showRequestForm && selectedEquipment && (
-        <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-best-primary/50`}>
+        <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-best-primary/50`} data-tour="equipment-request">
           <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
             Заявка на аренду: {selectedEquipment.name}
           </h2>
@@ -320,7 +320,7 @@ export default function Equipment() {
 
       {/* Список оборудования */}
       {!isLoading && equipmentData && equipmentData.items && Array.isArray(equipmentData.items) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" data-tour="equipment-list">
           {equipmentData.items.map((equipment: Equipment) => (
             <div
               key={equipment.id}

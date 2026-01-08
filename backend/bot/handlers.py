@@ -420,23 +420,23 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 f"• 🏆 Зарабатывать баллы и подниматься в рейтинге\n"
                 f"• 🎬 Бронировать оборудование для съёмок\n"
                 f"• 💼 Развиваться вместе с командой энтузиастов\n\n"
-                f"💡 <b>Хочешь узнать больше?</b>\n"
-                f"Перейди на сайт и посмотри, что у нас есть!"
+                f"📝 <b>Как зарегистрироваться?</b>\n"
+                f"1. Перейди на сайт по ссылке ниже\n"
+                f"2. Отсканируй QR-код для входа\n"
+                f"3. Заполни форму регистрации\n"
+                f"4. Дождись одобрения заявки координатором\n\n"
+                f"💡 После регистрации ты сможешь брать задачи, бронировать оборудование и участвовать в рейтинге!"
             )
             
             keyboard.inline_keyboard = [
                 [
                     InlineKeyboardButton(
-                        text="🌐 Изучить сайт", 
-                        url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
+                        text="🌐 Перейти на сайт для регистрации", 
+                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}&auto_register=true"
                     ),
                 ],
                 [
-                    InlineKeyboardButton(text="💬 Рассказать о себе", callback_data="onboarding_start"),
-                    InlineKeyboardButton(text="❓ Задать вопрос", callback_data="ask_question"),
-                ],
-                [
-                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                    InlineKeyboardButton(text="📋 Посмотреть задачи", callback_data="view_tasks"),
                     InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
                 ],
             ]

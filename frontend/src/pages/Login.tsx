@@ -72,6 +72,18 @@ export default function Login() {
   const telegramId = urlParams.get('telegram_id')
   const username = urlParams.get('username')
   const firstName = urlParams.get('first_name')
+  const autoRegister = urlParams.get('auto_register') === 'true'
+  
+  // Автоматически показываем форму регистрации если пользователь перешёл с бота
+  useEffect(() => {
+    if (autoRegister && fromBot && telegramId && !user && statusData?.status === 'confirmed' && statusData.access_token) {
+      // Небольшая задержка перед редиректом на регистрацию
+      const timer = setTimeout(() => {
+        navigate('/register?from=bot&auto=true')
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [autoRegister, fromBot, telegramId, user, statusData, navigate])
 
   // Генерация QR-кода с параметрами, если пользователь перешёл через бота
   const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
@@ -168,22 +180,22 @@ export default function Login() {
   }
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      <div className={`max-w-md w-full ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-lg shadow-lg p-8`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900`}>
+      <div className={`max-w-md w-full glass-enhanced ${theme} rounded-xl shadow-2xl p-8 border border-white/20`}>
         <div className="flex items-center justify-between mb-6">
-          <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+          <h1 className={`text-2xl font-bold text-white text-readable ${theme}`}>
             Вход в систему
           </h1>
           <Link
             to="/"
-            className={`p-2 rounded-lg hover:bg-opacity-10 ${theme === 'dark' ? 'hover:bg-white' : 'hover:bg-gray-900'}`}
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors"
           >
-            <ArrowLeft className={`w-5 h-5 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`} />
+            <ArrowLeft className="w-5 h-5 text-white" />
           </Link>
         </div>
 
         <div className="text-center mb-6">
-          <p className={`${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'} mb-4`}>
+          <p className="text-white/80 text-readable ${theme} mb-4">
             Отсканируйте QR-код через Telegram бота для входа
           </p>
         </div>
@@ -266,11 +278,11 @@ export default function Login() {
         </div>
 
         {/* Инструкции */}
-        <div className={`rounded-lg p-4 mb-6 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <h3 className={`font-semibold mb-2 ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+        <div className={`glass-enhanced ${theme} rounded-lg p-4 mb-6 border border-white/20`}>
+          <h3 className="font-semibold mb-2 text-white text-readable ${theme}">
             Как войти:
           </h3>
-          <ol className={`list-decimal list-inside space-y-1 text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
+          <ol className="list-decimal list-inside space-y-1 text-sm text-white/80 text-readable ${theme}">
             <li>
               Откройте Telegram бота{' '}
               <a
@@ -282,7 +294,7 @@ export default function Login() {
                 @BESTPRSystemBot
               </a>
             </li>
-            <li>Отсканируйте QR-код камерой телефона или нажмите на QR-код</li>
+            <li>Отсканируйте QR-код камерой телефона</li>
             <li>Бот откроется автоматически в Telegram</li>
             <li>Подтвердите вход в боте</li>
             <li>Вы автоматически войдёте на сайт</li>
@@ -290,8 +302,8 @@ export default function Login() {
         </div>
 
         {/* Пользовательское соглашение и обработка данных */}
-        <div className={`rounded-lg p-4 mb-6 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
-          <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+        <div className={`glass-enhanced ${theme} rounded-lg p-4 mb-6 border border-white/20`}>
+          <p className="text-xs text-white/60 text-readable ${theme}">
             Входя в систему, вы соглашаетесь с{' '}
             <button
               onClick={() => setShowAgreement(true)}
@@ -336,11 +348,7 @@ export default function Login() {
           <button
             onClick={handleRefreshQR}
             disabled={qrLoading}
-            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
-              theme === 'dark'
-                ? 'bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50'
-                : 'bg-gray-200 text-gray-900 hover:bg-gray-300 disabled:opacity-50'
-            }`}
+            className="w-full py-2 px-4 rounded-lg font-medium transition-colors bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 border border-white/20"
           >
             {qrLoading ? (
               <>
@@ -361,26 +369,26 @@ export default function Login() {
           onClick={() => setShowAgreement(false)}
         >
           <div 
-            className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto w-full shadow-xl`}
+            className="glass-enhanced ${theme} rounded-xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto w-full shadow-xl border border-white/30"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+              <h2 className="text-2xl font-bold text-white text-readable ${theme}">
                 Пользовательское соглашение
               </h2>
               <button
                 onClick={() => setShowAgreement(false)}
-                className={`${theme === 'dark' ? 'text-white/70 hover:text-white' : 'text-gray-600 hover:text-gray-900'} text-2xl leading-none`}
+                className="text-white/70 hover:text-white text-2xl leading-none transition-colors"
               >
                 ×
               </button>
             </div>
-            <div className={`${theme === 'dark' ? 'text-white/80' : 'text-gray-700'} text-sm whitespace-pre-wrap`}>
+            <div className="text-white/80 text-sm whitespace-pre-wrap text-readable ${theme}">
               {agreementContent || 'Загрузка...'}
             </div>
             <button
               onClick={() => setShowAgreement(false)}
-              className={`mt-4 w-full ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white py-2 px-4 rounded-lg transition-all`}
+              className="mt-4 w-full bg-best-primary hover:bg-best-primary/80 text-white py-2 px-4 rounded-lg transition-all"
             >
               Закрыть
             </button>

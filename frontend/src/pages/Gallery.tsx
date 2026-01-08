@@ -51,7 +51,7 @@ export default function Gallery() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       <div className={`glass-enhanced ${theme} rounded-2xl p-8 mb-8 text-white`}>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6" data-tour="gallery-header">
           <div>
             <div className="flex items-center space-x-3 mb-2">
               <Image className="h-8 w-8 text-best-primary" />
@@ -66,7 +66,7 @@ export default function Gallery() {
         </div>
 
         {/* Фильтры */}
-        <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex flex-wrap items-center gap-3 mb-6" data-tour="gallery-filters">
           <Filter className="h-5 w-5 text-white/60" />
           <button
             onClick={() => setSelectedCategory('all')}
@@ -104,11 +104,12 @@ export default function Gallery() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <div
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
                 className={`p-4 rounded-lg bg-white/10 border border-white/20 hover:bg-white/15 transition-all cursor-pointer card-3d`}
+                data-tour={index === 0 ? "gallery-item" : undefined}
               >
                 {item.thumbnail_url && (
                   <img

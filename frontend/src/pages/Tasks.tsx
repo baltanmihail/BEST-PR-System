@@ -56,7 +56,7 @@ export default function Tasks() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6" data-tour="tasks-header">
         <div>
           <h1 className={`text-3xl font-bold text-white flex items-center space-x-2 text-readable ${theme}`}>
             <CheckSquare className="h-8 w-8 text-white" style={{ 
@@ -66,7 +66,10 @@ export default function Tasks() {
           </h1>
           <p className={`text-white mt-1 text-readable ${theme}`}>Управление задачами PR-отдела</p>
         </div>
-        <button className="flex items-center space-x-2 bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30">
+        <button 
+          className="flex items-center space-x-2 bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30"
+          data-tour="task-filters"
+        >
           <Filter className="h-5 w-5" />
           <span>Фильтры</span>
         </button>
@@ -98,8 +101,10 @@ export default function Tasks() {
       )}
 
       <div className="grid grid-cols-1 gap-4">
-        {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} />
+        {tasks.map((task, index) => (
+          <div key={task.id} data-tour={index === 0 ? "task-card" : undefined}>
+            <TaskCard task={task} />
+          </div>
         ))}
       </div>
     </div>

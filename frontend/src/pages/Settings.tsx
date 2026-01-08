@@ -117,7 +117,7 @@ export default function Settings() {
       </div>
 
       {/* Редактирование профиля */}
-      <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6 mb-6`}>
+      <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6 mb-6`} data-tour="settings-profile">
         <div className="flex items-center justify-between mb-4">
           <h2 className={`text-xl font-semibold text-white text-readable ${theme}`}>
             Мой профиль

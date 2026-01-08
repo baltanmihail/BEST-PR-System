@@ -77,6 +77,7 @@ export default function Header() {
               onClick={toggleTheme}
               className="text-white/90 hover:text-white transition-colors p-1.5 md:p-2 rounded-lg hover:bg-white/10 flex items-center justify-center"
               title={theme === 'dark' ? 'Переключить на светлую тему' : 'Переключить на тёмную тему'}
+              data-tour="settings-theme"
             >
               {theme === 'dark' ? (
                 <Sun className="h-4 w-4 md:h-5 md:w-5" />

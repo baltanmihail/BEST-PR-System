@@ -47,12 +47,20 @@ export default function TourGuide({ steps, onComplete, onSkip, showSkip = true }
     // Находим элемент
     const element = document.querySelector(step.target)
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      // Прокручиваем элемент в центр экрана, но не изменяем scroll страницы для header/sidebar
+      const rect = element.getBoundingClientRect()
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+      const elementTop = rect.top + scrollTop
+      const elementCenter = elementTop + rect.height / 2
+      const windowCenter = window.innerHeight / 2
+      const targetScroll = elementCenter - windowCenter
+      
+      window.scrollTo({ top: targetScroll, behavior: 'smooth' })
       
       // Небольшая задержка для завершения прокрутки
       setTimeout(() => {
         updateTooltipPosition(step)
-      }, 300)
+      }, 400)
     } else {
       updateTooltipPosition(step)
     }
@@ -165,20 +173,22 @@ export default function TourGuide({ steps, onComplete, onSkip, showSkip = true }
   const step = steps[currentStep]
   if (!step) return null
 
+  // Используем portal чтобы гайд не влиял на layout
   return (
-    <>
+    <div className="fixed inset-0 pointer-events-none z-[9997]" style={{ isolation: 'isolate' }}>
       {/* Overlay с затемнением */}
       <div
         ref={overlayRef}
-        className="fixed inset-0 bg-black/70 z-[9998] transition-opacity duration-300"
+        className="fixed inset-0 bg-black/70 pointer-events-auto transition-opacity duration-300"
         onClick={handleSkip}
+        style={{ zIndex: 9998 }}
       />
 
       {/* Tooltip с информацией */}
       <div
         ref={tooltipRef}
-        className={`fixed z-[9999] w-80 md:w-96 ${theme === 'dark' ? 'bg-gray-900' : 'bg-white'} rounded-xl shadow-2xl border-2 border-best-primary p-6 transition-all duration-300`}
-        style={{ top: 0, left: 0 }}
+        className={`fixed pointer-events-auto w-80 md:w-96 glass-enhanced ${theme} rounded-xl shadow-2xl border-2 border-best-primary p-6 transition-all duration-300`}
+        style={{ top: 0, left: 0, zIndex: 9999 }}
       >
         {/* Заголовок */}
         <div className="flex items-start justify-between mb-4">

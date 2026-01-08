@@ -36,8 +36,18 @@ export default function Calendar() {
       const day = start.getDay()
       start.setDate(start.getDate() - day)
       end.setDate(start.getDate() + 6)
+    } else if (view === 'timeline') {
+      // Таймлайн - показываем 6 месяцев (семестр)
+      start.setDate(1)
+      end.setMonth(end.getMonth() + 6)
+      end.setDate(0)
+    } else if (view === 'gantt') {
+      // Gantt - показываем 3 месяца
+      start.setDate(1)
+      end.setMonth(end.getMonth() + 3)
+      end.setDate(0)
     } else {
-      // timeline/gantt - показываем месяц
+      // fallback - месяц
       start.setDate(1)
       end.setMonth(end.getMonth() + 1)
       end.setDate(0)
@@ -89,8 +99,18 @@ export default function Calendar() {
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     } else if (view === 'week') {
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
+    } else if (view === 'timeline' || view === 'gantt') {
+      // Для таймлайна и gantt - перемещаемся на месяц
+      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     }
     setCurrentDate(newDate)
+  }
+  
+  const navigateToSemester = () => {
+    // Переход на семестр (6 месяцев вперед)
+    const semesterDate = new Date(currentDate)
+    semesterDate.setMonth(semesterDate.getMonth() + 6)
+    setCurrentDate(semesterDate)
   }
 
   const getViewTitle = () => {
@@ -103,14 +123,20 @@ export default function Calendar() {
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
       return `${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}`
+    } else if (view === 'timeline') {
+      return 'Таймлайн'
+    } else if (view === 'gantt') {
+      return 'График работ (Gantt)'
+    } else if (view === 'kanban') {
+      return 'Доски (Kanban)'
     }
-    return 'Таймлайн'
+    return ''
   }
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8" data-tour="calendar-header">
         <div className="flex items-center space-x-4">
           <Link
             to="/"
@@ -132,6 +158,7 @@ export default function Calendar() {
             onClick={() => syncToSheetsMutation.mutate()}
             disabled={syncToSheetsMutation.isPending}
             className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50"
+            data-tour="calendar-sync"
           >
             {syncToSheetsMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -160,6 +187,14 @@ export default function Calendar() {
             >
               Сегодня
             </button>
+            {(view === 'timeline' || view === 'gantt') && (
+              <button
+                onClick={navigateToSemester}
+                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm"
+              >
+                Семестр
+              </button>
+            )}
             <button
               onClick={() => navigateDate('next')}
               className="p-2 rounded-lg hover:bg-white/10 transition-all"
@@ -169,11 +204,14 @@ export default function Calendar() {
           </div>
 
           {/* Выбор представления */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2" data-tour="calendar-views">
             <span className="text-white/60 text-sm">Представление:</span>
             <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
               <button
-                onClick={() => setView('month')}
+                onClick={() => {
+                  setView('month')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
                   view === 'month'
                     ? 'bg-best-primary text-white'
@@ -184,7 +222,10 @@ export default function Calendar() {
                 Месяц
               </button>
               <button
-                onClick={() => setView('week')}
+                onClick={() => {
+                  setView('week')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
                   view === 'week'
                     ? 'bg-best-primary text-white'
@@ -195,7 +236,24 @@ export default function Calendar() {
                 Неделя
               </button>
               <button
-                onClick={() => setView('gantt')}
+                onClick={() => {
+                  setView('timeline')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
+                className={`px-3 py-1 rounded text-sm transition-all ${
+                  view === 'timeline'
+                    ? 'bg-best-primary text-white'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="h-4 w-4 inline mr-1" />
+                Таймлайн
+              </button>
+              <button
+                onClick={() => {
+                  setView('gantt')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
                   view === 'gantt'
                     ? 'bg-best-primary text-white'
@@ -203,10 +261,13 @@ export default function Calendar() {
                 }`}
               >
                 <BarChart3 className="h-4 w-4 inline mr-1" />
-                Gantt
+                График работ
               </button>
               <button
-                onClick={() => setView('kanban')}
+                onClick={() => {
+                  setView('kanban')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
                   view === 'kanban'
                     ? 'bg-best-primary text-white'
@@ -214,17 +275,20 @@ export default function Calendar() {
                 }`}
               >
                 <Grid3x3 className="h-4 w-4 inline mr-1" />
-                Kanban
+                Доски
               </button>
             </div>
           </div>
 
-          {/* Фильтр по ролям */}
-          <div className="flex items-center space-x-2">
-            <span className="text-white/60 text-sm">Роль:</span>
+          {/* Фильтр по типам задач */}
+          <div className="flex items-center space-x-2" data-tour="calendar-filters">
+            <span className="text-white/60 text-sm">Тип задач:</span>
             <select
               value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as CalendarRole | 'all')}
+              onChange={(e) => {
+                setSelectedRole(e.target.value as CalendarRole | 'all')
+                setCurrentDate(new Date()) // Сбрасываем на текущую дату
+              }}
               className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
             >
               <option value="all">Все</option>
@@ -241,7 +305,7 @@ export default function Calendar() {
             <select
               value={detailLevel}
               onChange={(e) => setDetailLevel(e.target.value as DetailLevel)}
-              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              className={`bg-gray-800 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
             >
               <option value="compact">Компактно</option>
               <option value="normal">Обычно</option>
@@ -262,6 +326,12 @@ export default function Calendar() {
             <KanbanView columns={calendarData.columns || []} theme={theme} />
           ) : view === 'gantt' ? (
             <GanttView tasks={calendarData.tasks || calendarData.all_items || []} theme={theme} />
+          ) : view === 'timeline' ? (
+            <TimelineView 
+              calendarData={calendarData} 
+              currentDate={currentDate}
+              theme={theme} 
+            />
           ) : (
             <MonthWeekView
               calendarData={calendarData}
@@ -406,6 +476,119 @@ function GanttView({ tasks, theme }: { tasks: any[]; theme: string }) {
           ))}
           {tasks.length === 0 && (
             <p className="text-white/60 text-center py-8">Нет задач для отображения</p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Компонент для Timeline представления
+function TimelineView({
+  calendarData,
+  currentDate,
+  theme,
+}: {
+  calendarData: any
+  currentDate: Date
+  theme: string
+}) {
+  // Собираем все задачи
+  const allTasks: any[] = []
+  const allEvents: any[] = []
+
+  if (calendarData.items) {
+    allTasks.push(...calendarData.items.filter((i: any) => i.type === 'task'))
+    allEvents.push(...calendarData.items.filter((i: any) => i.type === 'event'))
+  }
+
+  // Создаём временную шкалу на 6 месяцев
+  const months: Date[] = []
+  const startMonth = new Date(currentDate)
+  startMonth.setDate(1)
+  for (let i = 0; i < 6; i++) {
+    const month = new Date(startMonth)
+    month.setMonth(startMonth.getMonth() + i)
+    months.push(month)
+  }
+
+  return (
+    <div className="space-y-4 overflow-x-auto">
+      <h3 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+        Таймлайн на семестр
+      </h3>
+      <div className="min-w-[1200px]">
+        {/* Шкала месяцев */}
+        <div className="flex border-b-2 border-white/20 pb-2 mb-4">
+          {months.map((month, idx) => (
+            <div key={idx} className="flex-1 text-center">
+              <div className={`text-white font-semibold text-readable ${theme}`}>
+                {month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Задачи и события */}
+        <div className="space-y-2">
+          {allTasks.map((task, index) => (
+            <div
+              key={task.id || index}
+              className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
+            >
+              <div className="flex-1">
+                <div className="flex items-center space-x-2 mb-1">
+                  {task.color && (
+                    <div
+                      className="w-3 h-3 rounded"
+                      style={{ backgroundColor: task.color }}
+                    />
+                  )}
+                  <h4 className={`text-white font-medium text-readable ${theme}`}>
+                    {task.title}
+                  </h4>
+                </div>
+                <p className="text-white/60 text-sm">
+                  {task.start_date && task.end_date
+                    ? `${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`
+                    : task.due_date
+                    ? `Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}`
+                    : 'Без дедлайна'}
+                </p>
+              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                  task.status === 'completed'
+                    ? 'bg-green-500/20 text-green-400 border-green-500/50'
+                    : task.status === 'in_progress'
+                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
+                    : 'bg-blue-500/20 text-blue-400 border-blue-500/50'
+                }`}
+              >
+                {task.status || 'open'}
+              </span>
+            </div>
+          ))}
+          {allEvents.map((event, index) => (
+            <div
+              key={event.id || index}
+              className={`glass-enhanced ${theme} rounded-lg p-4 border-2 border-purple-500/50`}
+            >
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 rounded bg-purple-500" />
+                <h4 className={`text-white font-medium text-readable ${theme}`}>
+                  {event.name || event.title}
+                </h4>
+              </div>
+              <p className="text-white/60 text-sm mt-1">
+                {event.date_start || event.start_date
+                  ? `${new Date(event.date_start || event.start_date).toLocaleDateString('ru-RU')}${event.date_end || event.end_date ? ` - ${new Date(event.date_end || event.end_date).toLocaleDateString('ru-RU')}` : ''}`
+                  : 'Без даты'}
+              </p>
+            </div>
+          ))}
+          {allTasks.length === 0 && allEvents.length === 0 && (
+            <p className="text-white/60 text-center py-8">Нет данных на выбранный период</p>
           )}
         </div>
       </div>

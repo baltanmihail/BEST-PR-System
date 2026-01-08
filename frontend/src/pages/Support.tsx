@@ -65,15 +65,7 @@ export default function Support() {
   if (!supportType) {
     return (
       <div className="max-w-2xl mx-auto">
-        {isActive && (
-          <TourGuide
-            steps={steps}
-            onComplete={completeTour}
-            onSkip={stopTour}
-            showSkip={true}
-          />
-        )}
-        <div className={`glass-enhanced ${theme} rounded-2xl p-8 text-white`}>
+        <div className={`glass-enhanced ${theme} rounded-2xl p-8 text-white`} data-tour="support-header">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
               <MessageSquare className="h-8 w-8 text-best-primary" />
