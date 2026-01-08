@@ -62,13 +62,38 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_5_JSON: str = os.getenv("GOOGLE_CREDENTIALS_5_JSON", "")
     
     # CORS
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Парсинг CORS_ORIGINS из строки с запятыми или списка"""
+        if isinstance(v, list):
+            return [origin.strip() for origin in v if origin.strip()]
+        if isinstance(v, str):
+            if not v or not v.strip():
+                # Если пустая строка, используем дефолтное значение
+                return [
+                    "http://localhost:3000",
+                    "http://localhost:5173",
+                    "https://best-pr-system.up.railway.app"
+                ]
+            # Разбиваем строку по запятым
+            origins = [origin.strip() for origin in v.split(",") if origin.strip()]
+            return origins if origins else [
+                "http://localhost:3000",
+                "http://localhost:5173",
+                "https://best-pr-system.up.railway.app"
+            ]
+        # Если не строка и не список, возвращаем дефолтное значение
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://best-pr-system.up.railway.app"
+        ]
+    
     CORS_ORIGINS: List[str] = [
-        origin.strip()
-        for origin in os.getenv(
-            "CORS_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,https://best-pr-system.up.railway.app"
-        ).split(",")
-        if origin.strip()  # Игнорируем пустые значения
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "https://best-pr-system.up.railway.app"
     ]
     
     # Frontend URL (для ссылок в боте и уведомлениях)
