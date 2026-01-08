@@ -79,7 +79,7 @@ export default function Login() {
     queryFn: async () => {
       try {
         // Если пользователь перешёл через бота, передаём параметры в URL
-        let generateUrl = '/auth/qr/generate'
+        let urlParams = ''
         if (fromBot && telegramId) {
           const params = new URLSearchParams({
             from: 'bot',
@@ -87,10 +87,10 @@ export default function Login() {
           })
           if (username) params.append('username', username)
           if (firstName) params.append('first_name', firstName)
-          generateUrl += '?' + params.toString()
+          urlParams = '?' + params.toString()
         }
         
-        const data = await qrAuthApi.generate(generateUrl)
+        const data = await qrAuthApi.generate(urlParams)
         console.log('QR data received:', data)
         return data
       } catch (error) {

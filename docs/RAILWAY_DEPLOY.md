@@ -2,7 +2,7 @@
 cd "BEST PR System"
 git status
 git add .
-git commit -m "Ладно, теперь вход должен быть"
+git commit -m "Too cool to do drugs"
 git push origin main
 ```
 # 🚂 Railway Deployment Guide
