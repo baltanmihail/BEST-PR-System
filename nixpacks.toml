@@ -1,6 +1,9 @@
 [phases.setup]
 nixPkgs = [
   "python311",
+  "python311Packages.pip",
+  "python311Packages.setuptools",
+  "python311Packages.wheel",
   "libjpeg",
   "zlib",
   "libtiff",
@@ -13,8 +16,8 @@ nixPkgs = [
 
 [phases.install]
 cmds = [
-  "python -m pip install --upgrade pip setuptools wheel",
-  "python -m pip install --no-cache-dir -r backend/requirements.txt"
+  "pip install --upgrade pip setuptools wheel || python -m ensurepip --upgrade --default-pip",
+  "pip install --no-cache-dir -r backend/requirements.txt || python -m pip install --no-cache-dir -r backend/requirements.txt"
 ]
 
 [phases.build]
