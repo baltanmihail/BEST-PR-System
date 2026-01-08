@@ -74,6 +74,50 @@ async def wait_for_api(max_attempts=30, delay=2):
     return False
 
 
+async def run_reminders_scheduler():
+    """Фоновая задача для периодической отправки напоминаний о регистрации"""
+    # Запускаем планировщик только в production
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment != "production":
+        logger.info(f"⚠️ Reminders scheduler не запускается в окружении '{environment}'")
+        return
+    
+    # Ждём, пока API запустится
+    await wait_for_api()
+    
+    # Небольшая задержка для полной инициализации API
+    await asyncio.sleep(5)
+    
+    logger.info("⏰ Starting reminders scheduler (checking every 2 minutes)...")
+    
+    while True:
+        try:
+            import httpx
+            from app.config import settings
+            
+            port = int(os.getenv("PORT", 8080))
+            url = f"http://localhost:{port}{settings.API_V1_PREFIX}/onboarding/reminders/process"
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url)
+                if response.status_code == 200:
+                    data = response.json()
+                    sent_count = data.get("sent_count", 0)
+                    if sent_count > 0:
+                        logger.info(f"📨 Sent {sent_count} reminder(s)")
+                    # Логируем каждую проверку для отладки (можно убрать позже)
+                    logger.debug(f"⏰ Reminders check completed: {sent_count} sent")
+                else:
+                    logger.warning(f"⚠️ Failed to process reminders: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"❌ Error in reminders scheduler: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # Проверяем каждые 2 минуты
+        await asyncio.sleep(120)
+
+
 async def run_bot():
     """Запуск Telegram бота"""
     # Запускаем бота только в production, чтобы избежать конфликтов
@@ -169,7 +213,7 @@ async def main():
         logger.error(f"❌ Migration error: {e}")
         # Продолжаем запуск даже если миграции не выполнились
     
-    # Сначала запускаем API, затем с задержкой - бота
+    # Сначала запускаем API, затем с задержкой - бота и планировщик напоминаний
     api_task = asyncio.create_task(run_api())
     
     # Даём API время на запуск
@@ -178,10 +222,14 @@ async def main():
     # Запускаем бота
     bot_task = asyncio.create_task(run_bot())
     
-    # Ждём завершения обеих задач
+    # Запускаем планировщик напоминаний
+    reminders_task = asyncio.create_task(run_reminders_scheduler())
+    
+    # Ждём завершения всех задач
     await asyncio.gather(
         api_task,
         bot_task,
+        reminders_task,
         return_exceptions=True
     )
 

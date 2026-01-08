@@ -11,6 +11,7 @@ import ChatWidget from '../components/ChatWidget'
 import TourGuide from '../components/TourGuide'
 import { useTour } from '../hooks/useTour'
 import { telegramChatsApi, GeneralChatResponse } from '../services/telegramChats'
+import { onboardingApi } from '../services/onboarding'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -21,6 +22,30 @@ export default function Home() {
   useEffect(() => {
     fetchUser()
   }, [fetchUser])
+
+  // Инициализируем визит для незарегистрированных пользователей
+  useEffect(() => {
+    const initVisitForUnregistered = async () => {
+      // Получаем telegram_id из URL параметров или localStorage
+      const urlParams = new URLSearchParams(window.location.search)
+      const telegramId = urlParams.get('telegram_id') || localStorage.getItem('telegram_id')
+      
+      // Если пользователь не зарегистрирован и есть telegram_id, инициализируем визит
+      if ((!user || !user.is_active) && telegramId) {
+        try {
+          await onboardingApi.initVisit(telegramId)
+          // Сохраняем telegram_id для будущих визитов
+          if (!localStorage.getItem('telegram_id')) {
+            localStorage.setItem('telegram_id', telegramId)
+          }
+        } catch (error) {
+          console.error('Failed to init visit:', error)
+        }
+      }
+    }
+
+    initVisitForUnregistered()
+  }, [user])
 
   const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
   const isRegistered = !!(user && user.is_active)

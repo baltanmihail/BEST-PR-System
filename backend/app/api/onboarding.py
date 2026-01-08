@@ -1,7 +1,7 @@
 """
 API endpoints для онбординга новых пользователей
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -247,6 +247,58 @@ async def mark_reminder_sent(
         "success": True,
         "reminder_count": int(reminder.reminder_count)
     }
+
+
+@router.post("/init-visit", response_model=dict)
+async def init_visit(
+    telegram_id: str = Query(..., description="Telegram ID пользователя"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Инициализировать визит пользователя на сайте (создать запись OnboardingReminder)
+    Вызывается при первом посещении сайта
+    """
+    now = datetime.now(timezone.utc)
+    
+    # Проверяем, есть ли уже запись
+    result = await db.execute(
+        select(OnboardingReminder).where(
+            OnboardingReminder.telegram_id == telegram_id
+        )
+    )
+    reminder = result.scalar_one_or_none()
+    
+    if not reminder:
+        # Создаём новую запись
+        reminder = OnboardingReminder(
+            telegram_id=telegram_id,
+            first_visit_at=now,
+            last_visit_at=now,
+            time_on_site="0"
+        )
+        db.add(reminder)
+        await db.commit()
+        await db.refresh(reminder)
+        
+        logger.info(f"Created OnboardingReminder for telegram_id={telegram_id}")
+        
+        return {
+            "success": True,
+            "created": True,
+            "first_visit_at": reminder.first_visit_at.isoformat()
+        }
+    else:
+        # Обновляем время последнего визита
+        reminder.last_visit_at = now
+        await db.commit()
+        await db.refresh(reminder)
+        
+        return {
+            "success": True,
+            "created": False,
+            "first_visit_at": reminder.first_visit_at.isoformat() if reminder.first_visit_at else None,
+            "last_visit_at": reminder.last_visit_at.isoformat()
+        }
 
 
 @router.get("/reminders/pending", response_model=dict)

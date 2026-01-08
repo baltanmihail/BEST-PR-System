@@ -38,6 +38,7 @@ class OnboardingService:
         try:
             # Формируем персонализированное сообщение
             message = OnboardingService._build_reminder_message(
+                telegram_id=telegram_id,
                 reminder_count=reminder_count,
                 onboarding_data=onboarding_data
             )
@@ -75,6 +76,7 @@ class OnboardingService:
     
     @staticmethod
     def _build_reminder_message(
+        telegram_id: str,
         reminder_count: int,
         onboarding_data: Optional[Dict[str, Any]] = None
     ) -> str:
@@ -82,6 +84,7 @@ class OnboardingService:
         Построить персонализированное сообщение-напоминание
         
         Args:
+            telegram_id: Telegram ID пользователя
             reminder_count: Номер напоминания
             onboarding_data: Данные онбординга
         
@@ -113,7 +116,7 @@ class OnboardingService:
                 f"• 📝 Возможность брать интересные задачи\n"
                 f"• 🎬 Бронирование оборудования для съёмок\n"
                 f"• 🏆 Участие в рейтинге и получение баллов\n"
-                f"• 💡 Развитие вместе с командой профессионалов\n\n"
+                f"• 💡 Развитие вместе с командой энтузиастов\n\n"
                 f"🔐 <b>Регистрация займёт всего пару минут!</b>\n"
                 f"Просто отсканируй QR-код на сайте или перейди по ссылке ниже."
             )
@@ -174,13 +177,21 @@ class OnboardingService:
         
         sent_count = 0
         
+        logger.debug(f"Checking {len(reminders)} reminders for pending notifications")
+        
         for reminder in reminders:
             if not reminder.first_visit_at:
+                logger.debug(f"Skipping reminder for {reminder.telegram_id}: no first_visit_at")
                 continue
             
             time_since_first_visit = now - reminder.first_visit_at
             reminder_count = int(reminder.reminder_count or "0")
             time_on_site = int(reminder.time_on_site or "0")
+            
+            logger.debug(
+                f"Checking reminder for {reminder.telegram_id}: "
+                f"count={reminder_count}, time_since_first={time_since_first_visit}, time_on_site={time_on_site}"
+            )
             
             # Определяем интервалы для напоминаний (максимум 2-3)
             intervals = [
@@ -201,8 +212,9 @@ class OnboardingService:
             if reminder_count < max_reminders and reminder_count < len(intervals):
                 # Проверяем, прошло ли достаточно времени с последнего напоминания или первого визита
                 if reminder_count == 0:
-                    # Первое напоминание - через 3 минуты после первого визита, если провёл достаточно времени на сайте
-                    if time_since_first_visit >= intervals[0] and time_on_site >= 120:
+                    # Первое напоминание - через 3 минуты после первого визита
+                    # Убираем требование time_on_site >= 120, так как фронтенд может не отправлять эти данные
+                    if time_since_first_visit >= intervals[0]:
                         should_send = True
                 else:
                     # Последующие напоминания - через определённые интервалы
@@ -212,6 +224,11 @@ class OnboardingService:
                             should_send = True
             
             if should_send:
+                logger.info(
+                    f"Should send reminder #{reminder_count + 1} to {reminder.telegram_id}: "
+                    f"time_since_first={time_since_first_visit}, time_on_site={time_on_site}"
+                )
+                
                 # Получаем ответы онбординга для персонализации
                 response_result = await db.execute(
                     select(OnboardingResponse).where(
@@ -237,6 +254,9 @@ class OnboardingService:
                 
                 if sent:
                     sent_count += 1
+                    logger.info(f"✅ Successfully sent reminder #{reminder_count + 1} to {reminder.telegram_id}")
+                else:
+                    logger.warning(f"⚠️ Failed to send reminder #{reminder_count + 1} to {reminder.telegram_id}")
         
         logger.info(f"Processed {sent_count} pending reminders")
         return sent_count
