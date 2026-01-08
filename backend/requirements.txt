@@ -36,8 +36,8 @@ email-validator==2.1.0
 python-dotenv==1.0.0
 httpx==0.25.2
 aiofiles==23.2.1
-# QR code generation
-qrcode==7.4.2
+# QR code generation (requires system libraries: libjpeg, zlib, libtiff, freetype, etc.)
+qrcode[pil]==7.4.2
 Pillow==10.1.0
 
 # Date/Time

@@ -1,0 +1,23 @@
+[phases.setup]
+nixPkgs = [
+  "python311",
+  "libjpeg",
+  "zlib",
+  "libtiff",
+  "freetype",
+  "lcms2",
+  "libwebp",
+  "openjpeg",
+  "libimagequant"
+]
+
+[phases.install]
+cmds = [
+  "pip install --upgrade pip setuptools wheel",
+  "pip install --no-cache-dir -r backend/requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  "python -c 'import qrcode; from PIL import Image; print(\"✅ QR code dependencies OK\")' || echo '⚠️ QR code check failed - will retry during runtime'"
+]

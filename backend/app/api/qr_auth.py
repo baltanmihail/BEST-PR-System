@@ -15,10 +15,13 @@ import logging
 # Импорт qrcode с обработкой ошибок
 try:
     import qrcode
+    from PIL import Image
     QRCODE_AVAILABLE = True
-except ImportError:
+    logger.info("✅ QR code module loaded successfully")
+except ImportError as e:
     QRCODE_AVAILABLE = False
-    logging.warning("qrcode module not available. QR code generation will be disabled.")
+    logging.error(f"❌ QR code module not available: {e}")
+    logging.error("Please ensure qrcode and Pillow are installed with system dependencies")
 
 from app.database import get_db
 from app.models.qr_session import QRSession

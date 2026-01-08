@@ -90,6 +90,16 @@ async def docs_redirect():
 async def startup_event():
     """Выполняется при запуске приложения"""
     logger.info("BEST PR System API starting up...")
+    
+    # Проверка QR code модуля
+    try:
+        import qrcode
+        from PIL import Image
+        logger.info("✅ QR code module is available")
+    except ImportError as e:
+        logger.error(f"❌ QR code module is NOT available: {e}")
+        logger.error("⚠️ QR code authentication will be disabled")
+        logger.error("💡 To fix: Install system dependencies (libjpeg, zlib, etc.) and reinstall qrcode[pil]")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Database URL: {settings.DATABASE_URL[:20]}..." if len(settings.DATABASE_URL) > 20 else f"Database URL: {settings.DATABASE_URL}")
     
