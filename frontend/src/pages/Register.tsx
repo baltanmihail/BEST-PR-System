@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserPlus, AlertCircle, CheckCircle2, Loader2, ArrowLeft, MessageSquare, Key } from 'lucide-react'
+import { UserPlus, AlertCircle, CheckCircle2, Loader2, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { registrationApi, RegistrationRequest } from '../services/registration'
 
-type RegistrationMode = 'telegram' | 'code'
+type RegistrationMode = 'telegram'
 
 export default function Register() {
   const { theme } = useThemeStore()
@@ -19,10 +19,7 @@ export default function Register() {
   const [showAgreement, setShowAgreement] = useState(false)
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('telegram')
   
-  // Для регистрации через код
-  const [telegramInput, setTelegramInput] = useState<string>('') // Единое поле для ID или username
-  const [verificationCode, setVerificationCode] = useState<string>('')
-  const [codeRequested, setCodeRequested] = useState(false)
+  // Регистрация только через Telegram WebApp
 
   // Проверяем, не зарегистрирован ли уже пользователь
   useEffect(() => {
@@ -53,31 +50,15 @@ export default function Register() {
     },
   })
 
-  const codeRequestMutation = useMutation({
-    mutationFn: (data: { telegram_id?: number; telegram_username?: string }) => 
-      registrationApi.requestCode(data),
-    onSuccess: () => {
-      setCodeRequested(true)
-    },
-  })
-
-  const codeRegistrationMutation = useMutation({
-    mutationFn: (data: { code: string; personal_data_consent: any; user_agreement: any }) =>
-      registrationApi.registerWithCode(data),
-    onSuccess: (data) => {
-      if (data.access_token) {
-        login(data.access_token)
-        navigate('/')
-      }
-    },
-  })
-
-  // Автоматически определяем режим регистрации
+  // Регистрация доступна только через Telegram WebApp
   useEffect(() => {
     if (!window.Telegram?.WebApp) {
-      setRegistrationMode('code')
+      // Если не в Telegram, перенаправляем на страницу входа
+      navigate('/login')
+    } else {
+      setRegistrationMode('telegram')
     }
-  }, [])
+  }, [navigate])
 
   const handleTelegramAuth = () => {
     // Telegram WebApp доступен только в Telegram
@@ -271,249 +252,32 @@ export default function Register() {
           </div>
         )}
 
-        {/* Переключатель режима регистрации */}
-        {window.Telegram?.WebApp && (
-          <div className={`p-4 bg-white/5 rounded-lg border border-white/10`}>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setRegistrationMode('telegram')}
-                className={`flex-1 py-2 px-4 rounded-lg transition-all ${
-                  registrationMode === 'telegram'
-                    ? 'bg-best-primary text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Через Telegram</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setRegistrationMode('code')}
-                className={`flex-1 py-2 px-4 rounded-lg transition-all ${
-                  registrationMode === 'code'
-                    ? 'bg-best-primary text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <Key className="h-4 w-4" />
-                  <span>Через код</span>
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Форма регистрации через код */}
-        {registrationMode === 'code' && (
-          <div className="space-y-4">
-            {!codeRequested ? (
-              <>
-                <div>
-                  <label className={`block text-white text-sm font-medium mb-2 text-readable ${theme}`}>
-                    Telegram ID или Username
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Введите ID (123456789) или username (@username)"
-                    value={telegramInput}
-                    onChange={(e) => setTelegramInput(e.target.value)}
-                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary"
-                  />
-                  <p className="text-white/60 text-xs mt-2">
-                    💡 Бот автоматически определит, что вы ввели. Начните диалог с{' '}
-                    <a 
-                      href="https://t.me/BESTPRSystemBot" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-best-primary hover:underline"
-                    >
-                      @BESTPRSystemBot
-                    </a>
-                  </p>
-                  <details className="mt-2">
-                    <summary className="text-white/70 text-xs cursor-pointer hover:text-white">
-                      Как узнать свой Telegram ID?
-                    </summary>
-                    <div className="mt-2 p-3 bg-white/5 rounded-lg text-white/80 text-xs space-y-2">
-                      <p>• Начните диалог с ботом <a href="https://t.me/userinfobot" target="_blank" rel="noopener noreferrer" className="text-best-primary hover:underline">@userinfobot</a> - он покажет ваш ID</p>
-                      <p>• Или начните диалог с <a href="https://t.me/BESTPRSystemBot" target="_blank" rel="noopener noreferrer" className="text-best-primary hover:underline">@BESTPRSystemBot</a></p>
-                    </div>
-                  </details>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (!telegramInput.trim()) {
-                      alert('Введите Telegram ID или username')
-                      return
-                    }
-                    
-                    // Определяем, что введено: ID (только цифры) или username (начинается с @ или без)
-                    const input = telegramInput.trim()
-                    const isNumeric = /^\d+$/.test(input)
-                    
-                    if (isNumeric) {
-                      codeRequestMutation.mutate({
-                        telegram_id: parseInt(input),
-                        telegram_username: undefined,
-                      })
-                    } else {
-                      codeRequestMutation.mutate({
-                        telegram_id: undefined,
-                        telegram_username: input.replace('@', ''),
-                      })
-                    }
-                  }}
-                  disabled={codeRequestMutation.isPending || !telegramInput.trim()}
-                  className="w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {codeRequestMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Отправка кода...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Key className="h-5 w-5" />
-                      <span>Получить код в боте</span>
-                    </>
-                  )}
-                </button>
-
-                {codeRequestMutation.error && (
-                  <div className={`p-4 bg-red-500/20 border border-red-500/50 rounded-lg`}>
-                    <div className="flex items-center space-x-2">
-                      <AlertCircle className="h-5 w-5 text-red-400" />
-                      <p className="text-white text-sm">
-                        {(codeRequestMutation.error as any)?.response?.data?.detail || 
-                         'Ошибка при запросе кода. Проверьте Telegram ID или username.'}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {codeRequestMutation.isSuccess && (
-                  <div className={`p-4 bg-green-500/20 border border-green-500/50 rounded-lg`}>
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-400" />
-                      <p className="text-white text-sm">
-                        Код отправлен в Telegram бот! Проверьте сообщения от @BESTPRSystemBot
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className={`block text-white text-sm font-medium mb-2 text-readable ${theme}`}>
-                    Код из Telegram бота
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Введите 6-значный код"
-                    value={verificationCode}
-                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    className="w-full px-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-center text-2xl tracking-widest"
-                    maxLength={6}
-                  />
-                  <p className="text-white/60 text-xs mt-2 text-center">
-                    Код действителен в течение 10 минут
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => {
-                    if (verificationCode.length !== 6) {
-                      alert('Введите 6-значный код')
-                      return
-                    }
-                    
-                    codeRegistrationMutation.mutate({
-                      code: verificationCode,
-                      personal_data_consent: {
-                        consent: consentAccepted,
-                        date: new Date().toISOString(),
-                      },
-                      user_agreement: {
-                        accepted: agreementAccepted,
-                        version: agreementData?.version || '1.0',
-                      },
-                    })
-                  }}
-                  disabled={codeRegistrationMutation.isPending || verificationCode.length !== 6 || !agreementAccepted || !consentAccepted}
-                  className="w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {codeRegistrationMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Регистрация...</span>
-                    </>
-                  ) : (
-                    <>
-                      <UserPlus className="h-5 w-5" />
-                      <span>Зарегистрироваться</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  onClick={() => {
-                    setCodeRequested(false)
-                    setVerificationCode('')
-                    setTelegramInput('')
-                  }}
-                  className="w-full text-white/70 hover:text-white text-sm underline"
-                >
-                  Запросить новый код
-                </button>
-
-                {codeRegistrationMutation.error && (
-                  <div className={`p-4 bg-red-500/20 border border-red-500/50 rounded-lg`}>
-                    <div className="flex items-start space-x-2">
-                      <AlertCircle className="h-5 w-5 text-red-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-white text-sm font-medium mb-1">
-                          Ошибка при регистрации
-                        </p>
-                        <p className="text-white/80 text-sm">
-                          {(codeRegistrationMutation.error as any)?.response?.data?.detail || 
-                           'Неверный или истёкший код. Запросите новый код.'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {codeRegistrationMutation.isSuccess && (
-                  <div className={`p-4 bg-green-500/20 border border-green-500/50 rounded-lg`}>
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle2 className="h-5 w-5 text-green-400" />
-                      <p className="text-white text-sm">
-                        Регистрация успешна! Ваша заявка отправлена на модерацию.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Предупреждение если не в Telegram и режим через код */}
-        {!window.Telegram?.WebApp && registrationMode === 'code' && (
+        {/* Информация о регистрации */}
+        {!window.Telegram?.WebApp && (
           <div className={`p-4 bg-blue-500/20 border border-blue-500/50 rounded-lg`}>
             <div className="flex items-start space-x-2">
               <AlertCircle className="h-5 w-5 text-blue-400 mt-0.5" />
               <div className="flex-1">
                 <p className="text-white text-sm font-medium mb-2">
-                  Регистрация через код подтверждения
+                  Регистрация доступна только через Telegram
                 </p>
-                <p className="text-white/80 text-sm">
-                  Введите ваш Telegram ID или username, и мы отправим код подтверждения в бот @BESTPRSystemBot
+                <p className="text-white/80 text-sm mb-3">
+                  Для регистрации откройте эту страницу через Telegram бота{' '}
+                  <a 
+                    href="https://t.me/BESTPRSystemBot" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-best-primary hover:underline"
+                  >
+                    @BESTPRSystemBot
+                  </a>
                 </p>
+                <Link
+                  to="/login"
+                  className="inline-block text-best-primary hover:text-best-primary/80 text-sm underline"
+                >
+                  Или войдите через QR-код →
+                </Link>
               </div>
             </div>
           </div>

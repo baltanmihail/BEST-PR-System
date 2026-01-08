@@ -61,25 +61,15 @@ export default function Header() {
                 <User className="h-4 w-4 md:h-5 md:w-5" />
               </Link>
             ) : (
-              <>
-                <Link
-                  to="/login"
-                  className="text-white/90 hover:text-white transition-colors font-medium px-2 md:px-3 py-1.5 md:py-2 rounded-lg hover:bg-white/10 text-sm md:text-base"
-                  title="Вход"
-                >
-                  <span className="hidden sm:inline">Вход</span>
-                  <span className="sm:hidden">🔐</span>
-                </Link>
-                <div className="h-4 md:h-6 w-px bg-white/30" />
-                <Link
-                  to="/register"
-                  className="text-white/90 hover:text-white transition-colors font-medium px-2 md:px-3 py-1.5 md:py-2 rounded-lg hover:bg-white/10 text-sm md:text-base flex items-center space-x-1"
-                  title="Регистрация"
-                >
-                  <User className="h-4 w-4" />
-                  <span className="hidden sm:inline">Регистрация</span>
-                </Link>
-              </>
+              <Link
+                to="/login"
+                className="text-white/90 hover:text-white transition-colors font-medium px-2 md:px-3 py-1.5 md:py-2 rounded-lg hover:bg-white/10 text-sm md:text-base flex items-center space-x-1"
+                title="Вход"
+              >
+                <User className="h-4 w-4" />
+                <span className="hidden sm:inline">Вход</span>
+                <span className="sm:hidden">🔐</span>
+              </Link>
             )}
             
             <div className="h-4 md:h-6 w-px bg-white/30" />
