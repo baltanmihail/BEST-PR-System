@@ -213,7 +213,7 @@ export default function Home() {
         className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover-strong`}
       >
         <h2 className={`text-2xl font-bold text-white mb-4 text-readable ${theme}`}>Быстрые действия</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`grid ${isCoordinator ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'} gap-4`}>
           <Link
             to="/tasks"
             data-cursor-action="all-tasks"
@@ -222,14 +222,20 @@ export default function Home() {
             <span className="font-medium text-white">Посмотреть все задачи</span>
             <ArrowRight className="h-5 w-5 text-white" />
           </Link>
-          <button
-            data-cursor-action="create-task"
-            data-static-cursor-anchor="create-task"
-            className="flex items-center justify-between p-4 bg-white/20 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30"
-          >
-            <span className="font-medium text-white">Создать задачу</span>
-            <ArrowRight className="h-5 w-5 text-white" />
-          </button>
+          {isCoordinator && (
+            <button
+              data-cursor-action="create-task"
+              data-static-cursor-anchor="create-task"
+              onClick={() => {
+                // TODO: Добавить страницу создания задачи или модальное окно
+                alert('Функция создания задачи будет доступна в ближайшее время')
+              }}
+              className="flex items-center justify-between p-4 bg-white/20 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30"
+            >
+              <span className="font-medium text-white">Создать задачу</span>
+              <ArrowRight className="h-5 w-5 text-white" />
+            </button>
+          )}
         </div>
       </div>
     </div>

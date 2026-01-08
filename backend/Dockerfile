@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Копирование requirements.txt первым (для кэширования слоя Docker)
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # Установка Python зависимостей
 # Сначала устанавливаем Pillow (требует системные библиотеки, которые уже установлены)
@@ -31,8 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Проверка установки qrcode (отдельным шагом для лучшей диагностики)
 RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && pip list | grep -E "(qrcode|Pillow)" && exit 1)
 
-# Копирование остальных файлов
-COPY . .
+# Копирование остальных файлов бэкенда
+COPY backend/ .
 
 # Команда запуска (миграции выполняются в run_with_bot.py при запуске)
-CMD ["python", "run_with_bot.py"]
+# Используем абсолютный путь для надежности
+CMD ["python", "/app/run_with_bot.py"]
