@@ -36,8 +36,9 @@ email-validator==2.1.0
 python-dotenv==1.0.0
 httpx==0.25.2
 aiofiles==23.2.1
-qrcode[pil]==7.4.2  # QR code generation
-Pillow==10.1.0  # Image processing for QR codes
+# QR code generation
+qrcode==7.4.2
+Pillow==10.1.0
 
 # Date/Time
 python-dateutil==2.8.2

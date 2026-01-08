@@ -8,10 +8,17 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone, timedelta
 import secrets
-import qrcode
 import io
 import base64
 import logging
+
+# Импорт qrcode с обработкой ошибок
+try:
+    import qrcode
+    QRCODE_AVAILABLE = True
+except ImportError:
+    QRCODE_AVAILABLE = False
+    logging.warning("qrcode module not available. QR code generation will be disabled.")
 
 from app.database import get_db
 from app.models.qr_session import QRSession
@@ -60,6 +67,12 @@ async def generate_qr(
     Пользователь открывает эту страницу, получает QR-код,
     сканирует его через Telegram бота, подтверждает вход
     """
+    if not QRCODE_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="QR code generation is not available. Please install qrcode and Pillow packages."
+        )
+    
     # Генерируем уникальный токен сессии
     session_token = secrets.token_urlsafe(32)
     
@@ -138,7 +151,8 @@ async def get_qr_status(
     
     response = QRStatusResponse(
         status=qr_session.status,
-        session_id=str(qr_session.id)
+        session_id=str(qr_session.id),
+        session_token=session_token
     )
     
     # Если сессия подтверждена, возвращаем токен и данные пользователя

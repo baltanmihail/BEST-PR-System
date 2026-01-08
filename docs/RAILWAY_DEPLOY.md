@@ -2,7 +2,7 @@
 cd "BEST PR System"
 git status
 git add .
-git commit -m "QRизация"
+git commit -m "Деградация"
 git push origin main
 ```
 # 🚂 Railway Deployment Guide
