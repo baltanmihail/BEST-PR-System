@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Установка рабочей директории
 WORKDIR /app
 
-# Копирование requirements.txt
+# Копирование requirements.txt первым (для кэширования слоя Docker)
 COPY requirements.txt .
 
 # Установка Python зависимостей
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 COPY . .
 
 # Проверка установки qrcode
-RUN python -c "import qrcode; import PIL; print('QR code dependencies OK')" || echo "WARNING: QR code dependencies not installed"
+RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && exit 1)
 
 # Команда запуска
 CMD ["python", "run_with_bot.py"]
