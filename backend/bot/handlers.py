@@ -168,9 +168,142 @@ def format_role_title(role: str) -> str:
 
 
 @router.message(Command("start"))
-async def cmd_start(message: Message, state: FSMContext):
+async def cmd_start(message: Message, state: FSMContext, command: Command = None):
     """Команда /start - регистрация/авторизация пользователя"""
     user = message.from_user
+    
+    # Проверяем, есть ли параметр в команде (например, /start qr_TOKEN или /start qr_TOKEN_TELEGRAM_ID)
+    start_param = None
+    if message.text and len(message.text.split()) > 1:
+        start_param = message.text.split()[1]
+    
+    # Если параметр начинается с "qr_", это QR-код авторизация/регистрация
+    if start_param and start_param.startswith("qr_"):
+        # Парсим параметр: qr_TOKEN или qr_TOKEN_TELEGRAM_ID_USERNAME
+        parts = start_param.split("_")
+        if len(parts) >= 2:
+            qr_token = parts[1]  # Токен QR-сессии
+            
+            # Проверяем сессию через API
+            check_response = await call_api("GET", f"/auth/qr/status/{qr_token}")
+            
+            if "error" in check_response:
+                await message.answer(
+                    "❌ Не удалось проверить QR-код.\n\n"
+                    "Возможно, сессия истекла. Попробуйте отсканировать QR-код снова на сайте."
+                )
+                return
+            
+            # Если сессия уже подтверждена
+            if check_response.get("status") == "confirmed":
+                await message.answer(
+                    "✅ Этот QR-код уже использован.\n\n"
+                    "Если вы хотите войти снова, откройте страницу входа на сайте и отсканируйте новый QR-код."
+                )
+                return
+            
+            # Если сессия истекла
+            if check_response.get("status") == "expired":
+                await message.answer(
+                    "⏰ QR-код истёк.\n\n"
+                    "Пожалуйста, откройте страницу входа на сайте и отсканируйте новый QR-код."
+                )
+                return
+            
+            # Если сессия в статусе pending, обрабатываем QR-авторизацию
+            if check_response.get("status") == "pending":
+                # Сохраняем токен в состояние
+                await state.update_data(qr_token=qr_token)
+                
+                # Формируем данные пользователя
+                auth_data = {
+                    "id": user.id,
+                    "first_name": user.first_name or "User",
+                    "auth_date": int(message.date.timestamp()),
+                }
+                
+                if user.last_name:
+                    auth_data["last_name"] = user.last_name
+                if user.username:
+                    auth_data["username"] = user.username
+                
+                # Генерируем hash
+                auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+                
+                # Сохраняем данные для подтверждения
+                await state.update_data(qr_auth_data=auth_data)
+                
+                # Проверяем, есть ли данные пользователя в параметре (для упрощённой регистрации)
+                is_registration_qr = len(parts) >= 3 and str(user.id) == parts[2]
+                
+                # Показываем подтверждение
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="✅ Подтвердить вход", callback_data=f"qr_confirm_{qr_token}"),
+                        InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{qr_token}"),
+                    ]
+                ])
+                
+                # Получаем путь к приветственному фото
+                base_path = Path(__file__).parent.parent.parent
+                welcome_photo_path = None
+                possible_paths = [
+                    base_path / "BEST logos" / "best_welcome.jpg",
+                    base_path.parent / "BEST logos" / "best_welcome.jpg",
+                    Path("/app") / "BEST logos" / "best_welcome.jpg",
+                    Path("/app/backend") / ".." / "BEST logos" / "best_welcome.jpg",
+                    Path("/app") / "backend" / ".." / "BEST logos" / "best_welcome.jpg",
+                ]
+                for path in possible_paths:
+                    path_resolved = path.resolve()
+                    if path_resolved.exists():
+                        welcome_photo_path = path_resolved
+                        break
+                
+                if is_registration_qr:
+                    # Если это QR-код для регистрации, предлагаем зарегистрироваться прямо в боте
+                    keyboard.inline_keyboard.append([
+                        InlineKeyboardButton(
+                            text="📝 Зарегистрироваться", 
+                            callback_data=f"qr_register_{qr_token}"
+                        ),
+                    ])
+                    
+                    welcome_msg = (
+                        f"🚀 <b>Рады видеть, {user.first_name or 'друг'}!</b>\n\n"
+                        f"🎯 <b>Добро пожаловать в BEST PR System!</b>\n\n"
+                        f"Вы отсканировали QR-код для регистрации.\n\n"
+                        f"💡 <b>Что дальше?</b>\n"
+                        f"• 📝 Нажмите «Зарегистрироваться» для подачи заявки\n"
+                        f"• ✅ Или «Подтвердить вход», если уже зарегистрированы\n\n"
+                        f"⚠️ Если это не вы, нажмите «Отменить»."
+                    )
+                    
+                    if welcome_photo_path and welcome_photo_path.exists():
+                        await message.answer_photo(
+                            photo=FSInputFile(str(welcome_photo_path)),
+                            caption=welcome_msg,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                    else:
+                        await message.answer(
+                            welcome_msg,
+                            reply_markup=keyboard,
+                            parse_mode="HTML"
+                        )
+                else:
+                    # Обычное подтверждение входа
+                    await message.answer(
+                        f"🔐 <b>Подтверждение входа на сайт</b>\n\n"
+                        f"Вы хотите войти в аккаунт:\n"
+                        f"👤 <b>{user.first_name or 'Пользователь'}</b>\n\n"
+                        f"⚠️ Если это не вы, нажмите «Отменить».\n\n"
+                        f"Подтвердите вход:",
+                        reply_markup=keyboard,
+                        parse_mode="HTML"
+                    )
+                return
     
     # Подготавливаем данные для авторизации через Telegram
     # ВАЖНО: first_name обязателен, если его нет - используем "User"
@@ -274,49 +407,44 @@ async def cmd_start(message: Message, state: FSMContext):
         greeting = get_welcome_greeting(user.first_name, "unregistered")
         
         if "error" in app_response or app_response.get("status_code") == 403:
-            # Заявки ещё нет - оптимизированное сообщение для QR-регистрации
+            # Заявки ещё нет - новое приветственное сообщение с мотивацией
+            # Проверяем, перешёл ли пользователь с сайта (через параметр в URL или через отслеживание)
+            # Пока используем простую логику - если пользователь запустил бота, он мог перейти с сайта
+            
             welcome_text = (
-                f"{greeting}\n\n"
+                f"🚀 <b>Привет, {user.first_name or 'друг'}!</b>\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Статус:</b> гость (без регистрации)\n"
-                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
-                f"📋 <b>Доступно сейчас:</b>\n"
-                f"• 👀 Просматривать доступные задачи\n"
-                f"• 🏆 Смотреть рейтинг участников\n"
-                f"• 📊 Изучать статистику системы\n\n"
-                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться.\n\n"
-                f"🔐 <b>Самый простой способ:</b>\n"
-                f"1️⃣ Открой сайт: {settings.FRONTEND_URL}/login\n"
-                f"2️⃣ Отсканируй QR-код с камеры смартфона\n"
-                f"3️⃣ Подтверди вход здесь в боте\n"
-                f"4️⃣ Заполни заявку на регистрацию\n\n"
-                f"✨ Или перейди на сайт и зарегистрируйся через Telegram WebApp"
+                f"🎯 <b>Что это за система?</b>\n"
+                f"Это платформа для управления PR-отделом BEST Москва, где ты можешь:\n"
+                f"• 📝 Брать интересные задачи по SMM, дизайну и видеопроизводству\n"
+                f"• 🏆 Зарабатывать баллы и подниматься в рейтинге\n"
+                f"• 🎬 Бронировать оборудование для съёмок\n"
+                f"• 💼 Развиваться вместе с командой профессионалов\n\n"
+                f"💡 <b>Хочешь узнать больше?</b>\n"
+                f"Перейди на сайт и посмотри, что у нас есть!"
             )
             
             keyboard.inline_keyboard = [
                 [
-                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
-                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
-                ],
-                [
-                    InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
-                ],
-                [
                     InlineKeyboardButton(
-                        text="🔐 Войти через QR-код", 
-                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
+                        text="🌐 Изучить сайт", 
+                        url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
                     ),
                 ],
                 [
-                    InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
+                    InlineKeyboardButton(text="💬 Рассказать о себе", callback_data="onboarding_start"),
+                    InlineKeyboardButton(text="❓ Задать вопрос", callback_data="ask_question"),
+                ],
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
                 ],
             ]
         elif app_response.get("status") == "pending":
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
-                f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n"
-                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
+                f"🧭 <b>Статус:</b> заявка на рассмотрении ⏳\n\n"
                 f"Мы уведомим тебя, когда она будет одобрена.\n"
                 f"Пока можешь просматривать задачи и рейтинг."
             )
@@ -333,7 +461,6 @@ async def cmd_start(message: Message, state: FSMContext):
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> заявка отклонена ❌\n"
-                f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n"
                 f"📝 <b>Причина:</b> {reason}\n\n"
                 f"Ты можешь подать новую заявку."
             )
@@ -349,20 +476,15 @@ async def cmd_start(message: Message, state: FSMContext):
         else:
             # Fallback для неавторизированных
             welcome_text = (
-                f"{greeting}\n\n"
+                f"🚀 <b>Рады видеть, {user.first_name or 'друг'}!</b>\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
                 f"📋 <b>Доступно сейчас:</b>\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
-                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться.\n\n"
-                f"🔐 <b>Самый простой способ:</b>\n"
-                f"1️⃣ Открой сайт: {settings.FRONTEND_URL}/login\n"
-                f"2️⃣ Отсканируй QR-код с камеры смартфона\n"
-                f"3️⃣ Подтверди вход здесь в боте\n"
-                f"4️⃣ Заполни заявку на регистрацию\n\n"
-                f"✨ Или перейди на сайт и зарегистрируйся через Telegram WebApp"
+                f"💡 <b>Для взятия задач и бронирования оборудования</b> нужно зарегистрироваться.\n\n"
+                f"🌐 Перейди на сайт и отсканируй QR-код для регистрации:"
             )
             
             keyboard.inline_keyboard = [
@@ -375,12 +497,9 @@ async def cmd_start(message: Message, state: FSMContext):
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🔐 Войти через QR-код", 
+                        text="🌐 Перейти на сайт", 
                         url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
                     ),
-                ],
-                [
-                    InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
                 ],
             ]
     else:
@@ -1333,23 +1452,11 @@ async def cmd_help(message: Message):
     await message.answer(help_text)
 
 
-@router.message(Command("scan"))
-async def cmd_scan(message: Message):
-    """Команда /scan - сканирование QR-кода для входа на сайт"""
-    await message.answer(
-        "📱 <b>Сканирование QR-кода</b>\n\n"
-        "Чтобы войти на сайт:\n"
-        "1. Откройте страницу входа на сайте\n"
-        "2. Нажмите на QR-код или скопируйте ссылку\n"
-        "3. Отправьте ссылку сюда в бот\n\n"
-        "Или просто отправьте ссылку вида:\n"
-        "<code>bestpr://auth?token=...</code>",
-        parse_mode="HTML"
-    )
 
 
-@router.message(F.text.startswith("bestpr://auth"))
-async def handle_qr_auth(message: Message, state: FSMContext):
+# Убрали обработчик bestpr://auth, так как теперь QR-код содержит HTTPS ссылку на бота
+# @router.message(F.text.startswith("bestpr://auth"))
+async def handle_qr_auth_old(message: Message, state: FSMContext):
     """Обработка QR-кода авторизации"""
     try:
         user = message.from_user
@@ -1572,14 +1679,41 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
             # Получаем access_token из ответа подтверждения
             access_token = response.get("access_token")
             
+            # Сохраняем токен для последующих запросов
+            await state.update_data(access_token=access_token)
+            
             # Показываем уведомление (alert) поверх экрана
             await callback.answer(
                 "✅ Сессия запущена на устройстве!",
                 show_alert=True
             )
             
+            # Получаем данные пользователя для краткой сводки
+            headers = {"Authorization": f"Bearer {access_token}"}
+            user_response = await call_api("GET", "/auth/me", headers=headers)
+            user_data = user_response.get("user", {}) if "error" not in user_response else {}
+            
             # Формируем URL для возврата на сайт
-            site_url = settings.FRONTEND_URL
+            site_url = f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&logged_in=true"
+            
+            # Получаем статистику для сводки
+            stats_response = await call_api("GET", "/gamification/stats", headers=headers)
+            stats = stats_response if "error" not in stats_response else {}
+            
+            # Получаем активные задачи
+            tasks_response = await call_api("GET", "/tasks?limit=3", headers=headers)
+            active_tasks = tasks_response.get("items", [])[:3] if "error" not in tasks_response else []
+            
+            # Формируем краткую сводку
+            summary_parts = []
+            if stats.get("active_tasks", 0) > 0:
+                summary_parts.append(f"📋 Активных задач: {stats.get('active_tasks', 0)}")
+            if stats.get("points", 0) > 0:
+                summary_parts.append(f"⭐ Баллов: {stats.get('points', 0)}")
+            if stats.get("level", 1) > 1:
+                summary_parts.append(f"🎯 Уровень: {stats.get('level', 1)}")
+            
+            summary_text = "\n".join(summary_parts) if summary_parts else "Добро пожаловать обратно!"
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -1588,15 +1722,86 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
                         url=site_url
                     ),
                 ],
+                [
+                    InlineKeyboardButton(text="📋 Мои задачи", callback_data="my_tasks"),
+                    InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
+                ],
             ])
             
             # Отправляем сообщение с информацией и кнопкой
             await callback.message.answer(
-                "✅ <b>Сессия запущена на устройстве</b>\n\n"
-                "Вы успешно вошли в свой аккаунт на сайте.\n\n"
-                "🔔 Важные уведомления и изменения будут приходить сюда в бот.\n\n"
-                "Вы можете вернуться на сайт или продолжить работу здесь.",
+                f"✅ <b>Сессия запущена на устройстве</b>\n\n"
+                f"Вы успешно вошли в свой аккаунт на сайте.\n\n"
+                f"📊 <b>Краткая сводка:</b>\n"
+                f"{summary_text}\n\n"
+                f"🔔 Важные уведомления и изменения будут приходить сюда в бот.\n\n"
+                f"💡 <b>Как дела?</b> Всё идёт по плану? Если есть вопросы - пиши!",
                 reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            
+            # Спустя небольшое время (через 2 секунды) отправляем приветственное окно с краткой сводкой
+            import asyncio
+            await asyncio.sleep(2)
+            
+            # Получаем информацию о ключевых изменениях, задачах, рейтинге
+            # Получаем последние задачи
+            recent_tasks_text = ""
+            if active_tasks:
+                recent_tasks_text = "\n\n📋 <b>Твои активные задачи:</b>\n"
+                for i, task in enumerate(active_tasks[:3], 1):
+                    recent_tasks_text += f"{i}. {task.get('title', 'Без названия')[:40]}...\n"
+            
+            # Формируем приветственное сообщение с краткой сводкой
+            welcome_summary = (
+                f"👋 <b>Привет, {user_data.get('full_name', user.first_name or 'друг')}!</b>\n\n"
+                f"💡 <b>Краткая сводка:</b>\n"
+                f"• 📊 Твоя статистика: {stats.get('points', 0)} баллов, уровень {stats.get('level', 1)}\n"
+                f"• 📋 Активных задач: {stats.get('active_tasks', 0)}\n"
+                f"• ✅ Выполнено: {stats.get('completed_tasks', 0)} задач\n"
+                f"{recent_tasks_text}\n"
+                f"💬 <b>Как дела?</b> Всё идёт по плану? Если есть вопросы - пиши!\n\n"
+                f"🎯 <b>Помни:</b> ты важен для PR-отдела! Твоя работа помогает нам развиваться."
+            )
+            
+            # Получаем ссылку на общий чат
+            general_chat_link = None
+            try:
+                general_chat_response = await call_api("GET", "/telegram-chats/general", headers=headers)
+                if "error" not in general_chat_response and general_chat_response.get("exists") and general_chat_response.get("invite_link"):
+                    general_chat_link = general_chat_response.get("invite_link")
+            except Exception as e:
+                logger.warning(f"Could not get general chat link: {e}")
+            
+            keyboard_summary = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Открыть сайт",
+                        url=site_url
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(text="📋 Задачи", callback_data="my_tasks"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+                ],
+            ])
+            
+            # Добавляем кнопку на общий чат, если доступна
+            if general_chat_link:
+                keyboard_summary.inline_keyboard.append([
+                    InlineKeyboardButton(
+                        text="💬 Общий чат команды",
+                        url=general_chat_link
+                    ),
+                ])
+            
+            keyboard_summary.inline_keyboard.append([
+                InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
+            ])
+            
+            await callback.message.answer(
+                welcome_summary,
+                reply_markup=keyboard_summary,
                 parse_mode="HTML"
             )
         
@@ -1610,7 +1815,7 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("qr_register_"))
 async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
-    """Регистрация через QR-код (упрощённая)"""
+    """Регистрация через QR-код прямо в боте (упрощённая)"""
     try:
         await callback.answer()
         user = callback.from_user
@@ -1655,21 +1860,17 @@ async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
             )
             return
         
-        # Открываем страницу регистрации с данными пользователя и QR-токеном
-        registration_url = (
-            f"{settings.FRONTEND_URL}/register?"
-            f"from=bot&"
-            f"telegram_id={user.id}&"
-            f"username={user.username or ''}&"
-            f"first_name={user.first_name or ''}&"
-            f"qr_token={token}"
-        )
+        # Показываем пользовательское соглашение и запрашиваем подтверждение
+        # Получаем соглашение через API
+        agreement_response = await call_api("GET", "/registration/agreement")
+        agreement_content = agreement_response.get("content", "")
+        agreement_version = agreement_response.get("version", "1.0")
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📝 Перейти к регистрации", 
-                    url=registration_url
+                    text="✅ Принимаю и регистрируюсь", 
+                    callback_data=f"qr_register_confirm_{token}"
                 ),
             ],
             [
@@ -1677,21 +1878,155 @@ async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
             ],
         ])
         
+        # Показываем краткое соглашение и запрашиваем подтверждение
+        agreement_short = (
+            "• Пользовательское соглашение\n"
+            "• Согласие на обработку персональных данных\n\n"
+            "Нажимая «Принимаю и регистрируюсь», вы соглашаетесь с условиями."
+        )
+        
         await callback.message.edit_text(
             f"📝 <b>Регистрация через QR-код</b>\n\n"
-            f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
-            f"🆔 ID: <code>{user.id}</code>\n\n"
-            f"💡 <b>Преимущества регистрации через QR-код:</b>\n"
-            f"• ✅ Не нужно подтверждать Telegram ID\n"
-            f"• ✅ Данные уже заполнены\n"
-            f"• ✅ Просто согласитесь с условиями\n\n"
-            f"Нажмите кнопку ниже, чтобы перейти к регистрации:",
+            f"👤 <b>{user.first_name or 'Пользователь'}</b>\n\n"
+            f"Для завершения регистрации необходимо принять:\n"
+            f"{agreement_short}",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        # Сохраняем версию соглашения в состоянии
+        await state.update_data(agreement_version=agreement_version)
+        
+    except Exception as e:
+        logger.error(f"Error in QR registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("qr_register_accept_"))
+async def callback_qr_register_accept(callback: CallbackQuery, state: FSMContext):
+    """Принятие соглашений и завершение регистрации"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Извлекаем токен из callback_data
+        token = callback.data.replace("qr_register_accept_", "")
+        
+        # Получаем данные из состояния
+        data = await state.get_data()
+        full_name = data.get("full_name")
+        
+        if not full_name:
+            await callback.message.answer(
+                "❌ Ошибка: ФИО не найдено. Пожалуйста, начните регистрацию заново."
+            )
+            return
+        
+        # Регистрируем пользователя через API с ФИО
+        register_response = await call_api("POST", "/registration/register-from-bot", data={
+            "qr_token": token,
+            "full_name": full_name
+        })
+        
+        if "error" in register_response:
+            await callback.message.answer(
+                f"❌ Ошибка регистрации: {register_response.get('error', 'Неизвестная ошибка')}\n\n"
+                "Попробуйте отсканировать QR-код снова."
+            )
+            return
+        
+        # Успешная регистрация
+        await callback.message.edit_text(
+            "✅ <b>Регистрация успешна!</b>\n\n"
+            "Ваша заявка отправлена на рассмотрение модераторам.\n\n"
+            "🔔 Мы уведомим вас, когда заявка будет одобрена.\n\n"
+            "Пока вы можете просматривать задачи и рейтинг.",
+            parse_mode="HTML"
+        )
+        
+        # Показываем кнопки для просмотра задач и рейтинга + автоматическое перенаправление на сайт
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Перейти на сайт", 
+                    url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&registered=true"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
+            ],
+        ])
+        
+        await callback.message.answer(
+            "💡 <b>Что дальше?</b>\n\n"
+            "Пока ваша заявка на рассмотрении, вы можете:\n"
+            "• 🌐 Изучить сайт и посмотреть доступные функции\n"
+            "• 👀 Просматривать доступные задачи\n"
+            "• 🏆 Смотреть рейтинг участников\n"
+            "• 📊 Изучать статистику системы\n\n"
+            "🎯 <b>После одобрения заявки</b> вам станут доступны:\n"
+            "• Взятие задач\n"
+            "• Бронирование оборудования\n"
+            "• Участие в рейтинге",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(
+            qr_token=None, 
+            qr_auth_data=None,
+            registration_step=None,
+            full_name=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error confirming QR registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("qr_register_read_"))
+async def callback_qr_register_read(callback: CallbackQuery, state: FSMContext):
+    """Просмотр соглашений перед регистрацией"""
+    try:
+        await callback.answer()
+        
+        # Получаем соглашение через API
+        agreement_response = await call_api("GET", "/registration/agreement")
+        agreement_content = agreement_response.get("content", "")
+        agreement_title = agreement_response.get("title", "Пользовательское соглашение")
+        
+        # Показываем краткую версию соглашения
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Принимаю и продолжаю", 
+                    callback_data=f"qr_register_accept_{callback.data.replace('qr_register_read_', '')}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{callback.data.replace('qr_register_read_', '')}"),
+            ],
+        ])
+        
+        # Показываем первые 1000 символов соглашения
+        content_preview = agreement_content[:1000] + "..." if len(agreement_content) > 1000 else agreement_content
+        
+        await callback.message.edit_text(
+            f"📄 <b>{agreement_title}</b>\n\n"
+            f"{content_preview}\n\n"
+            f"💡 <b>Также вы даёте согласие на обработку персональных данных</b>\n\n"
+            f"Нажмите «Принимаю и продолжаю» для завершения регистрации:",
             reply_markup=keyboard,
             parse_mode="HTML"
         )
         
     except Exception as e:
-        logger.error(f"Error in QR registration: {e}")
+        logger.error(f"Error reading agreement: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
@@ -1700,22 +2035,223 @@ async def callback_qr_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена QR-кода авторизации"""
     try:
         await callback.answer()
+        
+        # Извлекаем токен из callback_data
+        token = callback.data.replace("qr_cancel_", "")
+        
+        # Отмечаем сессию как отменённую через API (если нужно)
+        # Пока просто отменяем локально
+        
         await callback.message.edit_text(
             "❌ <b>Вход отменён</b>\n\n"
-            "Если вы хотите войти, откройте страницу входа на сайте и отсканируйте QR-код снова.",
+            "Если вы хотите войти, откройте страницу входа на сайте и отсканируйте QR-код снова.\n\n"
+            "💡 <b>Почему это важно?</b>\n"
+            "Подтверждение входа помогает защитить ваш аккаунт от несанкционированного доступа.",
             parse_mode="HTML"
         )
         
         # Очищаем состояние
-        await state.update_data(qr_token=None, qr_auth_data=None)
+        await state.update_data(
+            qr_token=None, 
+            qr_auth_data=None,
+            registration_step=None,
+            full_name=None
+        )
         
     except Exception as e:
         logger.error(f"Error cancelling QR auth: {e}")
 
 
+@router.callback_query(F.data == "onboarding_start")
+async def callback_onboarding_start(callback: CallbackQuery, state: FSMContext):
+    """Начало онбординга - система вопросов для новичков"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        await callback.message.edit_text(
+            f"💬 <b>Расскажи о себе!</b>\n\n"
+            f"Мы хотим узнать тебя получше, чтобы предложить самые интересные задачи.\n\n"
+            f"📝 <b>Вопрос 1/3:</b> Какой у тебя опыт в PR, SMM, дизайне или видеопроизводстве?\n\n"
+            f"Напиши свой ответ текстом (можно кратко или подробно).",
+            parse_mode="HTML"
+        )
+        
+        # Сохраняем состояние онбординга
+        await state.update_data(onboarding_step="experience")
+        
+    except Exception as e:
+        logger.error(f"Error in onboarding_start: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "ask_question")
+async def callback_ask_question(callback: CallbackQuery, state: FSMContext):
+    """Задать вопрос админу/координаторам"""
+    try:
+        await callback.answer()
+        
+        await callback.message.edit_text(
+            "❓ <b>Задать вопрос</b>\n\n"
+            "Ты можешь задать вопрос:\n"
+            "• VP4PR (главе PR-отдела) - @bfm5451\n"
+            "• Координаторам через поддержку на сайте\n\n"
+            "Или напиши свой вопрос здесь, и мы переадресуем его нужному человеку.\n\n"
+            "Напиши свой вопрос:",
+            parse_mode="HTML"
+        )
+        
+        await state.update_data(asking_question=True)
+        
+    except Exception as e:
+        logger.error(f"Error in ask_question: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.message(F.text)
+async def handle_text_message(message: Message, state: FSMContext):
+    """Обработка текстовых сообщений (онбординг, вопросы и т.д.)"""
+    user = message.from_user
+    text = message.text
+    
+    # Проверяем состояние (онбординг, регистрация, вопросы)
+    data = await state.get_data()
+    onboarding_step = data.get("onboarding_step")
+    asking_question = data.get("asking_question")
+    registration_step = data.get("registration_step")
+    
+    if registration_step:
+        # Пользователь проходит регистрацию
+        if registration_step == "full_name":
+            # Сохраняем ФИО и запрашиваем согласия
+            full_name = text.strip()
+            
+            if len(full_name) < 3:
+                await message.answer(
+                    "❌ ФИО слишком короткое. Пожалуйста, введи полное ФИО (например: Иванов Иван Иванович)."
+                )
+                return
+            
+            # Сохраняем ФИО в состоянии
+            await state.update_data(full_name=full_name, registration_step="consents")
+            
+            # Получаем соглашение через API
+            agreement_response = await call_api("GET", "/registration/agreement")
+            agreement_version = agreement_response.get("version", "1.0")
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Принимаю соглашения", 
+                        callback_data=f"qr_register_accept_{data.get('qr_token')}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(text="📄 Прочитать соглашения", callback_data=f"qr_register_read_{data.get('qr_token')}"),
+                ],
+                [
+                    InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{data.get('qr_token')}"),
+                ],
+            ])
+            
+            await message.answer(
+                f"✅ <b>ФИО сохранено:</b> {full_name}\n\n"
+                f"📝 <b>Шаг 2:</b> Примите соглашения\n\n"
+                f"Для завершения регистрации необходимо:\n"
+                f"• ✅ Принять пользовательское соглашение\n"
+                f"• ✅ Дать согласие на обработку персональных данных\n\n"
+                f"Нажмите «Принимаю соглашения» для продолжения:",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            
+            await state.update_data(agreement_version=agreement_version)
+            return
+    
+    if onboarding_step:
+        # Пользователь отвечает на вопросы онбординга
+        if onboarding_step == "experience":
+            # Сохраняем ответ об опыте
+            await call_api("POST", "/onboarding/response", data={
+                "telegram_id": str(user.id),
+                "experience": text,
+                "from_website": data.get("from_website", False),
+                "from_qr": data.get("from_qr", False)
+            })
+            
+            await message.answer(
+                "✅ Спасибо! Записал.\n\n"
+                "📝 <b>Вопрос 2/3:</b> Какие у тебя цели? Что ты хочешь получить от участия в PR-отделе?\n\n"
+                "Напиши свой ответ:",
+                parse_mode="HTML"
+            )
+            
+            await state.update_data(onboarding_step="goals")
+            
+        elif onboarding_step == "goals":
+            # Сохраняем ответ о целях
+            await call_api("POST", "/onboarding/response", data={
+                "telegram_id": str(user.id),
+                "goals": text
+            })
+            
+            await message.answer(
+                "✅ Отлично!\n\n"
+                "📝 <b>Вопрос 3/3:</b> Что тебя мотивирует присоединиться к PR-отделу?\n\n"
+                "Напиши свой ответ:",
+                parse_mode="HTML"
+            )
+            
+            await state.update_data(onboarding_step="motivation")
+            
+        elif onboarding_step == "motivation":
+            # Сохраняем ответ о мотивации и завершаем онбординг
+            await call_api("POST", "/onboarding/response", data={
+                "telegram_id": str(user.id),
+                "motivation": text
+            })
+            
+            await message.answer(
+                "🎉 <b>Спасибо за ответы!</b>\n\n"
+                "Мы учтём твою информацию при подборе задач.\n\n"
+                "💡 <b>Что дальше?</b>\n"
+                "• 🌐 Изучи сайт и посмотри доступные задачи\n"
+                "• 📝 Зарегистрируйся, когда будешь готов\n"
+                "• ❓ Если есть вопросы - пиши нам!\n\n"
+                f"🔗 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>",
+                parse_mode="HTML"
+            )
+            
+            # Очищаем состояние онбординга
+            await state.update_data(onboarding_step=None)
+            
+        return
+    
+    elif asking_question:
+        # Пользователь задаёт вопрос
+        # TODO: Отправить вопрос админу/координаторам
+        await message.answer(
+            "✅ Спасибо за вопрос! Мы передадим его координаторам.\n\n"
+            "Обычно мы отвечаем в течение 24 часов.\n\n"
+            "Также ты можешь написать напрямую:\n"
+            "• VP4PR - @bfm5451",
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(asking_question=False)
+        
+        return
+    
+    # Если это не онбординг и не вопрос, обрабатываем как неизвестную команду
+    await message.answer(
+        "❓ Неизвестная команда. Используйте /help для списка доступных команд."
+    )
+
+
 @router.message()
 async def handle_unknown(message: Message):
-    """Обработка неизвестных сообщений"""
+    """Обработка неизвестных сообщений (не текст)"""
     await message.answer(
         "❓ Неизвестная команда. Используйте /help для списка доступных команд."
     )

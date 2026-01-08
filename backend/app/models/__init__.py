@@ -12,6 +12,7 @@ from app.models.moderation import ModerationQueue
 from app.models.activity import ActivityLog
 from app.models.notification import Notification
 from app.models.task_suggestion import TaskSuggestion
+from app.models.onboarding import OnboardingResponse, OnboardingReminder
 
 __all__ = [
     "User",
@@ -29,4 +30,6 @@ __all__ = [
     "ActivityLog",
     "Notification",
     "TaskSuggestion",
+    "OnboardingResponse",
+    "OnboardingReminder",
 ]

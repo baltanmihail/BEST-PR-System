@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { MessageSquare, Send, CheckCircle2, AlertCircle, HelpCircle, Lightbulb, Paperclip, Link as LinkIcon, X } from 'lucide-react'
+import { MessageSquare, Send, CheckCircle2, AlertCircle, HelpCircle, Lightbulb, Paperclip, Link as LinkIcon, X, MapPin } from 'lucide-react'
 import { supportApi } from '../services/support'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
+import { useTour } from '../hooks/useTour'
+import TourGuide from '../components/TourGuide'
 
 type SupportType = 'question' | 'suggestion' | null
 
@@ -62,10 +64,28 @@ export default function Support() {
   if (!supportType) {
     return (
       <div className="max-w-2xl mx-auto">
+        {isActive && (
+          <TourGuide
+            steps={steps}
+            onComplete={completeTour}
+            onSkip={stopTour}
+            showSkip={true}
+          />
+        )}
         <div className={`glass-enhanced ${theme} rounded-2xl p-8 text-white`}>
-          <div className="flex items-center space-x-3 mb-6">
-            <MessageSquare className="h-8 w-8 text-best-primary" />
-            <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center space-x-3">
+              <MessageSquare className="h-8 w-8 text-best-primary" />
+              <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
+            </div>
+            <button
+              onClick={() => startTour('home')}
+              className="flex items-center space-x-2 px-4 py-2 bg-best-primary/20 hover:bg-best-primary/30 text-white rounded-lg transition-all border border-best-primary/50"
+              title="Запустить интерактивный гайд по сайту"
+            >
+              <MapPin className="h-4 w-4" />
+              <span className="text-sm">Гайд по сайту</span>
+            </button>
           </div>
           <p className={`text-white/80 text-readable ${theme} mb-8`}>
             Выберите цель обращения

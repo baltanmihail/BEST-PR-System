@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Sparkles, ArrowRight, Target, Trophy, Users } from 'lucide-react'
+import { Sparkles, ArrowRight, Target, Trophy, Users, MessageSquare } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../services/tasks'
 import { publicApi } from '../services/public'
@@ -8,6 +8,9 @@ import { useEffect } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
 import ChatWidget from '../components/ChatWidget'
+import TourGuide from '../components/TourGuide'
+import { useTour } from '../hooks/useTour'
+import { telegramChatsApi } from '../services/telegramChats'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -69,11 +72,20 @@ export default function Home() {
   return (
     <div className="max-w-7xl mx-auto">
       <ChatWidget />
+      {isActive && (
+        <TourGuide
+          steps={steps}
+          onComplete={completeTour}
+          onSkip={stopTour}
+          showSkip={true}
+        />
+      )}
       
       {/* Hero Section - разный контент для разных ролей */}
       <div 
         ref={heroParallax.ref}
         style={{ transform: heroParallax.transform }}
+        data-tour="hero"
         className={`glass-enhanced ${theme} rounded-xl md:rounded-2xl p-4 md:p-8 mb-6 md:mb-8 text-white card-3d parallax-hover`}
       >
         <div className="flex items-center space-x-2 md:space-x-3 mb-3 md:mb-4">
@@ -97,6 +109,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
             <Link
               to="/tasks"
+              data-tour="tasks-link"
               data-cursor-action="view-tasks"
               className="inline-flex items-center justify-center space-x-2 bg-white/20 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30 text-sm md:text-base"
             >
@@ -113,14 +126,28 @@ export default function Home() {
           </div>
         )}
         {isRegistered && (
-          <Link
-            to="/tasks"
-            data-cursor-action="view-tasks"
-            className="inline-flex items-center justify-center space-x-2 bg-white/20 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30 text-sm md:text-base"
-          >
-            <span>Посмотреть задачи</span>
-            <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
-          </Link>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
+            <Link
+              to="/tasks"
+              data-tour="tasks-link"
+              data-cursor-action="view-tasks"
+              className="inline-flex items-center justify-center space-x-2 bg-white/20 text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-white/30 transition-all card-3d border border-white/30 text-sm md:text-base"
+            >
+              <span>Посмотреть задачи</span>
+              <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />
+            </Link>
+            {generalChat?.exists && generalChat.invite_link && (
+              <a
+                href={generalChat.invite_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center space-x-2 bg-best-primary text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all text-sm md:text-base"
+              >
+                <MessageSquare className="h-4 w-4 md:h-5 md:w-5" />
+                <span>Общий чат</span>
+              </a>
+            )}
+          </div>
         )}
       </div>
 
@@ -170,6 +197,7 @@ export default function Home() {
         >
           <Link
             to="/leaderboard"
+            data-tour="leaderboard-link"
             className="block"
           >
             <div className="flex items-center justify-between mb-3 md:mb-4">
@@ -222,6 +250,17 @@ export default function Home() {
             <span className="font-medium text-white">Посмотреть все задачи</span>
             <ArrowRight className="h-5 w-5 text-white" />
           </Link>
+          {isRegistered && generalChat?.exists && generalChat.invite_link && (
+            <a
+              href={generalChat.invite_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-4 bg-white/20 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30"
+            >
+              <span className="font-medium text-white">💬 Общий чат команды</span>
+              <MessageSquare className="h-5 w-5 text-white" />
+            </a>
+          )}
           {isCoordinator && (
             <button
               data-cursor-action="create-task"

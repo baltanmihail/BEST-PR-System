@@ -334,6 +334,43 @@ async def assign_task(
         import logging
         logging.error(f"Failed to log activity: {e}")
     
+    # Создаём или получаем чат для задачи
+    from app.services.telegram_chat_service import TelegramChatService
+    from app.models.user import UserRole
+    from sqlalchemy import select
+    
+    try:
+        # Проверяем, существует ли уже тема для задачи
+        task_topic = await TelegramChatService.get_task_topic(db, task_id)
+        
+        if not task_topic:
+            # Создаём тему для задачи в общем чате
+            task_topic = await TelegramChatService.create_task_topic(
+                db=db,
+                task_id=task_id,
+                task_title=task.title
+            )
+            
+            if task_topic:
+                import logging
+                logging.info(f"Task topic created for task {task_id}: {task.title} (topic_id: {task_topic.topic_id})")
+                
+                # Отправляем приветственное сообщение в тему
+                await TelegramChatService.send_welcome_message_to_chat(
+                    chat_id=task_topic.chat_id,
+                    user_full_name=current_user.full_name,
+                    is_new_user=False,
+                    topic_id=task_topic.topic_id
+                )
+        else:
+            # Если тема уже существует, пользователь уже в общем чате
+            # Можно отправить уведомление в тему о новом участнике
+            import logging
+            logging.info(f"Task topic already exists for task {task_id}: {task_topic.topic_id}")
+    except Exception as e:
+        import logging
+        logging.error(f"Failed to create/add user to task topic: {e}")
+    
     await db.commit()
     await db.refresh(task)
     

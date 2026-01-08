@@ -1,7 +1,10 @@
-import { Clock, AlertCircle } from 'lucide-react'
+import { Clock, AlertCircle, MessageSquare } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { Task } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
+import { useAuthStore } from '../store/authStore'
+import { useQuery } from '@tanstack/react-query'
+import { telegramChatsApi } from '../services/telegramChats'
 
 const typeLabels = {
   smm: 'SMM',
@@ -61,7 +64,7 @@ export default function TaskCard({ task }: TaskCardProps) {
       </div>
 
       <div className="flex items-center justify-between">
-              <div className={`flex items-center space-x-4 text-sm text-white text-readable ${theme}`}>
+        <div className={`flex items-center space-x-4 text-sm text-white text-readable ${theme}`}>
           {task.due_date && (
             <div className="flex items-center space-x-1">
               <Clock className="h-4 w-4" />
@@ -73,9 +76,23 @@ export default function TaskCard({ task }: TaskCardProps) {
             <span>{statusLabels[task.status as keyof typeof statusLabels]}</span>
           </div>
         </div>
-        <button className="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30">
-          Взять задачу
-        </button>
+        <div className="flex items-center space-x-2">
+          {isRegistered && taskChat?.exists && taskChat.invite_link && (
+            <a
+              href={taskChat.invite_link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center space-x-2 bg-best-primary/20 text-white px-3 py-2 rounded-lg hover:bg-best-primary/30 transition-all card-3d border border-best-primary/50"
+              title="Чат задачи"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span className="text-sm">Чат</span>
+            </a>
+          )}
+          <button className="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30">
+            Взять задачу
+          </button>
+        </div>
       </div>
     </div>
   )

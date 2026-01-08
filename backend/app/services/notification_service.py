@@ -165,6 +165,13 @@ class NotificationService:
         user_id: UUID
     ):
         """Уведомить об одобрении заявки с мотивирующим сообщением"""
+        # Получаем пользователя
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        
+        if not user:
+            return
+        
         # Получаем информацию о координаторах
         from app.models.user import UserRole
         coordinators_query = select(User).where(
@@ -184,22 +191,99 @@ class NotificationService:
             for coord in coordinators[:5]  # Показываем до 5 координаторов
         ])
         
-        message = f"""🎉 Добро пожаловать в команду BEST Moscow!
+        # Мотивирующее сообщение с похвалой
+        message = f"""🎉 <b>Поздравляем, {user.full_name}!</b>
 
-Ваша заявка одобрена, теперь вы можете брать задачи и участвовать в проектах.
+✅ <b>Ваша заявка одобрена!</b>
 
-📋 Важно знать:
-• Следите за дедлайнами - они критичны для успеха проекта
-• Координаторы помогут вам разобраться с задачами
-• Не стесняйтесь задавать вопросы - мы всегда готовы помочь
+Ты теперь официальный участник PR-отдела BEST Москва! 🚀
 
-👥 Наши координаторы:
+💪 <b>Ты молодец, что решил присоединиться к нам!</b>
+
+🎯 <b>Что дальше?</b>
+• 📝 Можешь брать интересные задачи
+• 🎬 Бронировать оборудование для съёмок
+• 🏆 Участвовать в рейтинге и зарабатывать баллы
+• 💡 Развиваться вместе с командой профессионалов
+
+👥 <b>Наши координаторы:</b>
 {coord_info if coord_info else "• Информация о координаторах доступна в разделе 'Помощь'"}
 
-💬 Есть вопросы? Напишите координатору вашего направления или мне лично. Также можете прочитать раздел "Помощь" для детальной информации.
+💬 <b>Есть вопросы?</b> Напиши координатору своего направления или VP4PR (@bfm5451)
+
+🌐 <b>Перейди на сайт</b> и посмотри доступные задачи!
 
 Удачи в работе! 🚀"""
         
+        # Уведомляем всех зарегистрированных пользователей о новом участнике (ненавязчиво)
+        await NotificationService.notify_new_user_joined(db=db, new_user_id=user_id)
+        
+        # Пытаемся добавить пользователя в общий чат и получаем ссылку
+        from app.utils.telegram_sender import send_telegram_message
+        from app.config import settings
+        from app.services.telegram_chat_service import TelegramChatService
+        
+        general_chat_link = ""
+        try:
+            general_chat = await TelegramChatService.get_or_create_general_chat(db)
+            if general_chat:
+                # Пытаемся добавить пользователя в чат
+                added = await TelegramChatService.add_user_to_chat(
+                    chat_id=general_chat.chat_id,
+                    user_telegram_id=user.telegram_id,
+                    user_full_name=user.full_name
+                )
+                
+                if added:
+                    # Если пользователь успешно добавлен, отправляем приветственное сообщение в чат
+                    await TelegramChatService.send_welcome_message_to_chat(
+                        chat_id=general_chat.chat_id,
+                        user_full_name=user.full_name,
+                        is_new_user=True
+                    )
+                else:
+                    # Если не удалось добавить автоматически, получаем ссылку-приглашение
+                    invite_link = await TelegramChatService.get_chat_invite_link(db, general_chat.chat_id)
+                    if invite_link:
+                        general_chat_link = f"\n💬 <a href=\"{invite_link}\">Присоединиться к общему чату команды</a>"
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to add user {user.telegram_id} to general chat: {e}")
+            # В случае ошибки всё равно получаем ссылку, если чат существует
+            try:
+                general_chat = await TelegramChatService.get_general_chat(db)
+                if general_chat:
+                    invite_link = await TelegramChatService.get_chat_invite_link(db, general_chat.chat_id)
+                    if invite_link:
+                        general_chat_link = f"\n💬 <a href=\"{invite_link}\">Присоединиться к общему чату команды</a>"
+            except:
+                pass
+        
+        # Формируем и отправляем сообщение в Telegram бот
+        telegram_message = (
+            f"🎉 <b>Поздравляем, {user.full_name}!</b>\n\n"
+            f"✅ <b>Ваша заявка одобрена!</b>\n\n"
+            f"Ты теперь официальный участник PR-отдела BEST Москва! 🚀\n\n"
+            f"💪 <b>Ты молодец, что решил присоединиться к нам!</b>\n\n"
+            f"🎯 <b>Что дальше?</b>\n"
+            f"• 📝 Можешь брать интересные задачи\n"
+            f"• 🎬 Бронировать оборудование для съёмок\n"
+            f"• 🏆 Участвовать в рейтинге и зарабатывать баллы\n"
+            f"{general_chat_link}\n"
+            f"🌐 <a href=\"{settings.FRONTEND_URL}?from=bot&telegram_id={user.telegram_id}&approved=true\">Перейти на сайт</a>"
+        )
+        
+        try:
+            await send_telegram_message(
+                chat_id=user.telegram_id,
+                message=telegram_message,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to send Telegram notification to user {user.telegram_id}: {e}")
+        
+        # Создаём уведомление в системе (после отправки в Telegram)
         await NotificationService.create_notification(
             db=db,
             user_id=user_id,
@@ -252,15 +336,56 @@ class NotificationService:
         user_id: UUID,
         reason: str
     ):
-        """Уведомить об отклонении заявки"""
+        """Уведомить об отклонении заявки с возможностью связаться с админом"""
+        # Получаем пользователя
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        
+        if not user:
+            return
+        
+        message = f"""❌ <b>К сожалению, ваша заявка отклонена</b>
+
+<b>Причина:</b> {reason}
+
+💬 <b>Если у вас есть вопросы или вы хотите обсудить решение:</b>
+• Напишите VP4PR напрямую: @bfm5451
+• Или задайте вопрос через поддержку на сайте
+
+Мы всегда готовы помочь и ответить на ваши вопросы!"""
+        
+        # Создаём уведомление в системе
         await NotificationService.create_notification(
             db=db,
             user_id=user_id,
             notification_type=NotificationType.MODERATION_REJECTED,
             title="Заявка отклонена",
-            message=f"Ваша заявка отклонена. Причина: {reason}",
+            message=message,
             data={"reason": reason}
         )
+        
+        # Отправляем сообщение в Telegram бот
+        from app.utils.telegram_sender import send_telegram_message
+        from app.config import settings
+        
+        telegram_message = (
+            f"❌ <b>К сожалению, ваша заявка отклонена</b>\n\n"
+            f"<b>Причина:</b> {reason}\n\n"
+            f"💬 <b>Если у вас есть вопросы или вы хотите обсудить решение:</b>\n"
+            f"• Напишите VP4PR напрямую: @bfm5451\n"
+            f"• Или задайте вопрос через поддержку на сайте\n\n"
+            f"Мы всегда готовы помочь и ответить на ваши вопросы!"
+        )
+        
+        try:
+            await send_telegram_message(
+                chat_id=user.telegram_id,
+                message=telegram_message,
+                parse_mode="HTML"
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to send Telegram notification to user {user.telegram_id}: {e}")
     
     @staticmethod
     async def notify_new_task(
@@ -297,3 +422,42 @@ class NotificationService:
             message=f"Вы получили ачивку: {achievement_name}",
             data={"achievement_type": achievement_type}
         )
+    
+    @staticmethod
+    async def notify_new_user_joined(
+        db: AsyncSession,
+        new_user_id: UUID
+    ):
+        """Уведомить всех зарегистрированных пользователей о новом участнике (ненавязчиво)"""
+        # Получаем нового пользователя
+        new_user_result = await db.execute(select(User).where(User.id == new_user_id))
+        new_user = new_user_result.scalar_one_or_none()
+        
+        if not new_user:
+            return
+        
+        # Получаем всех активных зарегистрированных пользователей (кроме самого нового)
+        all_users_result = await db.execute(
+            select(User).where(
+                and_(
+                    User.is_active == True,
+                    User.id != new_user_id,
+                    User.deleted_at.is_(None)
+                )
+            )
+        )
+        all_users = all_users_result.scalars().all()
+        
+        # Отправляем ненавязчивое уведомление всем (неважное, чтобы не раздражать)
+        message = f"👋 Поздоровайтесь с новым участником: <b>{new_user.full_name}</b>!"
+        
+        for user in all_users:
+            # Создаём ненавязчивое уведомление (неважное, чтобы не раздражать)
+            await NotificationService.create_notification(
+                db=db,
+                user_id=user.id,
+                notification_type=NotificationType.SYSTEM,  # Системное уведомление
+                title="Новый участник",
+                message=message,
+                data={"new_user_id": str(new_user_id), "new_user_name": new_user.full_name}
+            )

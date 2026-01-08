@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.config import settings
-from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth
+from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth, onboarding, tour, telegram_chats
 
 # Настройка логирования
 logging.basicConfig(
@@ -48,6 +48,9 @@ app.include_router(ai_assistant.router, prefix=settings.API_V1_PREFIX)
 app.include_router(activity.router, prefix=settings.API_V1_PREFIX)
 app.include_router(gallery.router, prefix=settings.API_V1_PREFIX)
 app.include_router(qr_auth.router, prefix=settings.API_V1_PREFIX)
+app.include_router(onboarding.router, prefix=settings.API_V1_PREFIX)
+app.include_router(tour.router, prefix=settings.API_V1_PREFIX)
+app.include_router(telegram_chats.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():

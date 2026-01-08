@@ -1,3 +1,5 @@
+# 🚂 Railway Deployment Guide
+
 ```powershell
 cd "BEST PR System"
 git status
@@ -5,7 +7,8 @@ git add .
 git commit -m "Too cool to do drugs"
 git push origin main
 ```
-# 🚂 Railway Deployment Guide
+
+> **Для быстрого старта см. [DEPLOY.md](./DEPLOY.md)**
 
 ## Структура сервисов
 

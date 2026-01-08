@@ -446,6 +446,139 @@ async def register_with_code(
     }
 
 
+class RegisterFromBotRequest(BaseModel):
+    """Запрос на регистрацию из бота через QR-код"""
+    qr_token: str
+    full_name: Optional[str] = None  # ФИО пользователя
+
+
+@router.post("/register-from-bot", response_model=dict)
+async def register_from_bot(
+    request: RegisterFromBotRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Регистрация через QR-код прямо из бота
+    
+    Пользователь нажал "Зарегистрироваться" в боте после сканирования QR-кода.
+    Автоматически принимаются согласие и пользовательское соглашение.
+    """
+    from app.models.qr_session import QRSession
+    from datetime import datetime, timezone
+    
+    # Находим QR-сессию
+    result = await db.execute(
+        select(QRSession).where(QRSession.session_token == request.qr_token)
+    )
+    qr_session = result.scalar_one_or_none()
+    
+    if not qr_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="QR session not found"
+        )
+    
+    if qr_session.status != "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="QR session not confirmed. Please confirm QR code in Telegram bot first."
+        )
+    
+    if not qr_session.telegram_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="QR session does not have telegram_id"
+        )
+    
+    telegram_id = qr_session.telegram_id
+    
+    # Проверяем, не зарегистрирован ли уже пользователь
+    user_result = await db.execute(
+        select(User).where(User.telegram_id == telegram_id)
+    )
+    existing_user = user_result.scalar_one_or_none()
+    
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already registered"
+        )
+    
+    # Получаем ФИО из запроса или используем минимальные данные
+    if request.full_name:
+        full_name = request.full_name.strip()
+    else:
+        full_name = "Пользователь"
+    
+    username = None
+    
+    # Создаём нового пользователя
+    now = datetime.now(timezone.utc)
+    user = User(
+        telegram_id=telegram_id,
+        username=username,
+        full_name=full_name,
+        is_active=False,  # Требует модерации
+        personal_data_consent=True,
+        consent_date=now,
+        user_agreement_accepted=True,
+        agreement_version="1.0",
+        agreement_accepted_at=now
+    )
+    
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    
+    # Создаём заявку на модерацию
+    from app.services.moderation_service import ModerationService
+    application = await ModerationService.create_user_application(
+        db=db,
+        user_id=user.id,
+        application_data={
+            "telegram_id": telegram_id,
+            "username": username,
+            "full_name": full_name,
+            "source": "qr_bot_registration",
+            "consent_date": now.isoformat(),
+            "agreement_version": "1.0"
+        }
+    )
+    
+    # Отмечаем пользователя как зарегистрированного в OnboardingReminder
+    from app.models.onboarding import OnboardingReminder
+    reminder_result = await db.execute(
+        select(OnboardingReminder).where(
+            OnboardingReminder.telegram_id == str(telegram_id)
+        )
+    )
+    reminder = reminder_result.scalar_one_or_none()
+    if reminder:
+        reminder.registered = True
+        await db.commit()
+    
+    # Уведомляем админов о новой заявке
+    from app.services.notification_service import NotificationService
+    try:
+        await NotificationService.notify_moderation_request(
+            db=db,
+            user_id=user.id,
+            user_name=full_name,
+            user_telegram_id=telegram_id
+        )
+    except Exception as e:
+        logger.error(f"Failed to send moderation request notification: {e}")
+    
+    logger.info(f"User registered from bot via QR: telegram_id={telegram_id}")
+    
+    return {
+        "success": True,
+        "message": "Регистрация успешна! Ваша заявка отправлена на модерацию.",
+        "user_id": str(user.id),
+        "telegram_id": telegram_id
+    }
+
+
 @router.get("/agreement", response_model=dict)
 async def get_user_agreement():
     """

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Telegram
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_ADMIN_IDS: Union[str, int, List[int]] = os.getenv("TELEGRAM_ADMIN_IDS", "")
+    TELEGRAM_GENERAL_CHAT_ID: str = os.getenv("TELEGRAM_GENERAL_CHAT_ID", "")  # ID общего чата для всех пользователей
     
     @field_validator('TELEGRAM_ADMIN_IDS', mode='before')
     @classmethod

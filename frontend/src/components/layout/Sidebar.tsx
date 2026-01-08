@@ -38,6 +38,7 @@ export default function Sidebar() {
             <Link
               key={item.name}
               to={item.href}
+              data-tour={item.href === '/support' ? 'support-link' : undefined}
               className={`
                 flex items-center space-x-2 md:space-x-3 px-3 md:px-4 py-2 md:py-3 rounded-lg transition-all card-3d whitespace-nowrap flex-shrink-0
                 ${isActive

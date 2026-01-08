@@ -30,7 +30,6 @@ from app.database import get_db
 from app.models.qr_session import QRSession
 from app.models.user import User
 from app.utils.auth import create_access_token
-from app.utils.auth import create_access_token
 from app.config import settings
 router = APIRouter(prefix="/auth/qr", tags=["qr-auth"])
 
@@ -114,17 +113,19 @@ async def generate_qr(
     await db.refresh(qr_session)
     
     # Формируем URL для QR-кода
-    # Если есть данные пользователя, добавляем их в QR-код для упрощённой регистрации
+    # Используем HTTPS ссылку на бота для совместимости с камерами (iPhone, Android)
+    # Формат: https://t.me/BESTPRSystemBot?start=qr_TOKEN
+    # Если есть данные пользователя, добавляем их в параметр start
+    bot_username = "BESTPRSystemBot"  # TODO: можно получать из настроек или Bot API
     if from_bot and telegram_id:
-        # Формат: bestpr://auth?token=TOKEN&telegram_id=ID&username=USERNAME&first_name=NAME
-        qr_data = f"bestpr://auth?token={session_token}&telegram_id={telegram_id}"
+        # Для упрощённой регистрации передаём данные в параметре start
+        start_param = f"qr_{session_token}_{telegram_id}"
         if telegram_username:
-            qr_data += f"&username={telegram_username}"
-        if first_name:
-            qr_data += f"&first_name={first_name}"
+            start_param += f"_{telegram_username}"
+        qr_data = f"https://t.me/{bot_username}?start={start_param}"
     else:
-        # Обычный QR-код без данных пользователя
-        qr_data = f"bestpr://auth?token={session_token}"
+        # Обычный QR-код для входа
+        qr_data = f"https://t.me/{bot_username}?start=qr_{session_token}"
     
     # Генерируем QR-код
     qr = qrcode.QRCode(
@@ -288,15 +289,16 @@ async def confirm_qr(
         }
     else:
         # Пользователь не существует - это регистрация
-        # НЕ создаём пользователя здесь - он будет создан при регистрации через /registration/register
-        # Сохраняем данные в сессии для последующей регистрации
+        # НЕ создаём пользователя здесь - он будет создан при регистрации через /registration/register-from-bot
+        # Сохраняем данные пользователя в сессии для последующей регистрации
+        # Сохраняем данные в JSON поле или в отдельной таблице (пока используем логирование)
         await db.commit()
         
         logger.info(f"QR session confirmed (registration): {qr_session.id} for new user {request.telegram_id}")
         
         return {
             "success": True,
-            "message": "QR session confirmed. Please complete registration on the website.",
+            "message": "QR session confirmed. Please complete registration in bot.",
             "is_registration": True,
             "user_data": {
                 "telegram_id": request.telegram_id,

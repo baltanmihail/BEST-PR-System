@@ -87,9 +87,14 @@ class User(Base):
     user_agreement_accepted = Column(Boolean, nullable=False, default=False)
     agreement_version = Column(String, nullable=True)  # Версия соглашения
     agreement_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    # Интерактивный гайд
+    tour_completed = Column(Boolean, nullable=False, default=False)
+    tour_completed_at = Column(DateTime(timezone=True), nullable=True)
     
     # Связь с QR-сессиями
     qr_sessions = relationship("QRSession", back_populates="user")
+    # Связь с ответами онбординга
+    onboarding_responses = relationship("OnboardingResponse", back_populates="user")
     
     @validates('role')
     def validate_role(self, key, value):
