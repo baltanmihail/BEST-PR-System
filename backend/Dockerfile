@@ -34,5 +34,5 @@ RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependen
 # Копирование остальных файлов
 COPY . .
 
-# Команда запуска
+# Команда запуска (миграции выполняются в run_with_bot.py при запуске)
 CMD ["python", "run_with_bot.py"]

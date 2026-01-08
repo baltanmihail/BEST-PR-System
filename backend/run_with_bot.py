@@ -120,6 +120,24 @@ async def run_bot():
 
 async def main():
     """Запуск API и бота параллельно"""
+    # Выполняем миграции перед запуском
+    try:
+        import subprocess
+        logger.info("🔄 Running database migrations...")
+        result = subprocess.run(
+            ["python", "-m", "alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).resolve().parent
+        )
+        if result.returncode == 0:
+            logger.info("✅ Database migrations completed")
+        else:
+            logger.warning(f"⚠️ Migration warning: {result.stderr}")
+    except Exception as e:
+        logger.error(f"❌ Migration error: {e}")
+        # Продолжаем запуск даже если миграции не выполнились
+    
     # Сначала запускаем API, затем с задержкой - бота
     api_task = asyncio.create_task(run_api())
     
