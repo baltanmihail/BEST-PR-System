@@ -133,8 +133,8 @@ export default function Home() {
         >
           <div className="flex items-center justify-between mb-4">
             <div className="relative">
-              <Target className="h-7 w-7 text-best-primary drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-              <div className="absolute inset-0 h-7 w-7 text-best-primary blur-md opacity-50">
+              <Target className="h-7 w-7 text-best-primary drop-shadow-[0_0_5px_rgba(59,130,246,0.4)]" />
+              <div className="absolute inset-0 h-7 w-7 text-best-primary blur-md opacity-40 translate-y-0.5">
                 <Target className="h-full w-full" />
               </div>
             </div>
