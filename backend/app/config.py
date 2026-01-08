@@ -2,8 +2,8 @@
 Конфигурация приложения
 """
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
-from typing import List, Union
+from pydantic import field_validator, model_validator
+from typing import List, Union, Any
 import os
 
 
@@ -61,40 +61,33 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_4_JSON: str = os.getenv("GOOGLE_CREDENTIALS_4_JSON", "")
     GOOGLE_CREDENTIALS_5_JSON: str = os.getenv("GOOGLE_CREDENTIALS_5_JSON", "")
     
-    # CORS
-    @field_validator('CORS_ORIGINS', mode='before')
+    # CORS - используем model_validator для перехвата до парсинга
+    CORS_ORIGINS: List[str] = []
+    
+    @model_validator(mode='before')
     @classmethod
-    def parse_cors_origins(cls, v):
-        """Парсинг CORS_ORIGINS из строки с запятыми или списка"""
-        if isinstance(v, list):
-            return [origin.strip() for origin in v if origin.strip()]
-        if isinstance(v, str):
-            if not v or not v.strip():
-                # Если пустая строка, используем дефолтное значение
-                return [
+    def parse_cors_origins_before(cls, data: Any) -> Any:
+        """Парсинг CORS_ORIGINS из строки с запятыми до парсинга Pydantic"""
+        if isinstance(data, dict):
+            # Если CORS_ORIGINS есть в данных как строка, парсим её
+            if 'CORS_ORIGINS' in data and isinstance(data['CORS_ORIGINS'], str):
+                cors_str = data['CORS_ORIGINS'].strip()
+                if cors_str:
+                    data['CORS_ORIGINS'] = [origin.strip() for origin in cors_str.split(",") if origin.strip()]
+                else:
+                    data['CORS_ORIGINS'] = [
+                        "http://localhost:3000",
+                        "http://localhost:5173",
+                        "https://best-pr-system.up.railway.app"
+                    ]
+            # Если CORS_ORIGINS нет, используем дефолтное значение
+            elif 'CORS_ORIGINS' not in data:
+                data['CORS_ORIGINS'] = [
                     "http://localhost:3000",
                     "http://localhost:5173",
                     "https://best-pr-system.up.railway.app"
                 ]
-            # Разбиваем строку по запятым
-            origins = [origin.strip() for origin in v.split(",") if origin.strip()]
-            return origins if origins else [
-                "http://localhost:3000",
-                "http://localhost:5173",
-                "https://best-pr-system.up.railway.app"
-            ]
-        # Если не строка и не список, возвращаем дефолтное значение
-        return [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "https://best-pr-system.up.railway.app"
-        ]
-    
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "https://best-pr-system.up.railway.app"
-    ]
+        return data
     
     # Frontend URL (для ссылок в боте и уведомлениях)
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
