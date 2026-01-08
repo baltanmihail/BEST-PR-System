@@ -23,12 +23,21 @@ export default function Home() {
     fetchUser()
   }, [fetchUser])
 
-  // Инициализируем визит для незарегистрированных пользователей
+  // Инициализируем визит для незарегистрированных пользователей и обрабатываем параметры URL
   useEffect(() => {
     const initVisitForUnregistered = async () => {
       // Получаем telegram_id из URL параметров или localStorage
       const urlParams = new URLSearchParams(window.location.search)
       const telegramId = urlParams.get('telegram_id') || localStorage.getItem('telegram_id')
+      const registered = urlParams.get('registered') === 'true'
+      const loggedIn = urlParams.get('logged_in') === 'true'
+      const approved = urlParams.get('approved') === 'true'
+      
+      // Очищаем URL параметры после обработки
+      if (telegramId || registered || loggedIn || approved) {
+        const newUrl = window.location.pathname
+        window.history.replaceState({}, '', newUrl)
+      }
       
       // Если пользователь не зарегистрирован и есть telegram_id, инициализируем визит
       if ((!user || !user.is_active) && telegramId) {
@@ -42,10 +51,25 @@ export default function Home() {
           console.error('Failed to init visit:', error)
         }
       }
+      
+      // Если пользователь только что зарегистрировался, показываем информацию
+      if (registered && (!user || !user.is_active)) {
+        // После регистрации показываем информацию о том, что заявка на рассмотрении
+        // Обновляем данные пользователя для проверки статуса
+        fetchUser()
+      }
+      
+      // Если пользователь только что вошёл или заявка одобрена, обновляем данные и показываем приветствие
+      if (loggedIn || approved) {
+        fetchUser().then(() => {
+          // После обновления данных показываем приветственное сообщение
+          // Это уже обрабатывается в компоненте через user.is_active
+        })
+      }
     }
 
     initVisitForUnregistered()
-  }, [user])
+  }, [user, fetchUser])
 
   const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
   const isRegistered = !!(user && user.is_active)

@@ -1234,48 +1234,21 @@ async def cmd_register(message: Message, state: FSMContext):
 async def start_registration_flow(message: Message, state: FSMContext, user, auth_data: dict):
     """Начинает процесс регистрации пользователя в боте"""
     try:
-        # Получаем соглашение
-        agreement_response = await call_api("GET", "/registration/agreement")
+        # Мотивирующее сообщение перед регистрацией
+        await message.answer(
+            "🎯 <b>Отлично! Ты на правильном пути!</b>\n\n"
+            "Осталось ещё чуть-чуть - всего пару минут, и ты станешь частью команды PR-отдела BEST Москва!\n\n"
+            "💪 <b>Ты молодец, что решил присоединиться к нам!</b>\n\n"
+            "📝 <b>Шаг 1:</b> Напиши своё полное ФИО (например: Иванов Иван Иванович)\n\n"
+            "Напиши ФИО текстом:",
+            parse_mode="HTML"
+        )
         
-        if "error" in agreement_response:
-            await message.answer(
-                "❌ Ошибка при получении пользовательского соглашения. Попробуйте позже."
-            )
-            return
-        
-        agreement_content = agreement_response.get("content", "")
-        agreement_version = agreement_response.get("version", "1.0")
-        
-        # Сохраняем данные в состояние
+        # Сохраняем состояние регистрации
         await state.update_data(
-            registration_data={
-                "auth_data": auth_data,
-                "agreement_version": agreement_version,
-            }
+            registration_step="full_name",
+            registration_auth_data=auth_data
         )
-        
-        # Показываем соглашение и запрашиваем подтверждение
-        agreement_text = (
-            f"<b>📋 Регистрация в BEST PR System</b>\n\n"
-            f"Для регистрации тебе нужно:\n"
-            f"1️⃣ Дать согласие на обработку персональных данных\n"
-            f"2️⃣ Принять пользовательское соглашение\n\n"
-            f"<b>Пользовательское соглашение:</b>\n"
-            f"{agreement_content[:1000]}...\n\n"
-            f"💡 Используй кнопки ниже для подтверждения."
-        )
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Согласен и принять", callback_data="confirm_registration"),
-                InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_registration"),
-            ],
-            [
-                InlineKeyboardButton(text="📖 Прочитать полное соглашение", url=settings.FRONTEND_URL + "/register"),
-            ],
-        ])
-        
-        await message.answer(agreement_text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
         logger.error(f"Error in start_registration_flow: {e}")
@@ -1344,93 +1317,182 @@ async def callback_register_in_bot(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
-@router.callback_query(F.data == "confirm_registration")
-async def callback_confirm_registration(callback: CallbackQuery, state: FSMContext):
-    """Подтверждение регистрации"""
+@router.callback_query(F.data == "register_accept")
+async def callback_register_accept(callback: CallbackQuery, state: FSMContext):
+    """Принятие соглашений и завершение обычной регистрации (через /register)"""
     try:
         await callback.answer()
+        user = callback.from_user
         
+        # Получаем данные из состояния
         data = await state.get_data()
-        registration_data = data.get("registration_data")
+        full_name = data.get("full_name")
+        auth_data = data.get("registration_auth_data")
         
-        if not registration_data:
+        if not full_name:
             await callback.message.answer(
-                "❌ Сессия регистрации истекла. Начни заново командой /register"
+                "❌ Ошибка: ФИО не найдено. Пожалуйста, начните регистрацию заново командой /register."
             )
             return
         
-        auth_data = registration_data["auth_data"]
-        agreement_version = registration_data["agreement_version"]
+        if not auth_data:
+            await callback.message.answer(
+                "❌ Ошибка: данные авторизации не найдены. Пожалуйста, начните регистрацию заново командой /register."
+            )
+            return
         
-        # Подготавливаем данные для регистрации
-        registration_request = {
+        # Регистрируем пользователя через API
+        from datetime import datetime
+        
+        register_response = await call_api("POST", "/registration/register", data={
             "telegram_auth": auth_data,
+            "full_name": full_name,
             "personal_data_consent": {
                 "consent": True,
                 "date": datetime.utcnow().isoformat()
             },
             "user_agreement": {
                 "accepted": True,
-                "version": agreement_version
+                "version": data.get("agreement_version", "1.0")
             }
-        }
+        })
         
-        # Отправляем запрос на регистрацию
-        response = await call_api("POST", "/registration/register", data=registration_request)
-        
-        if "error" in response:
+        if "error" in register_response:
             await callback.message.answer(
-                f"❌ Ошибка при регистрации: {response.get('error', 'Неизвестная ошибка')}\n\n"
-                f"Попробуй ещё раз или используй веб-интерфейс:\n"
-                f"🔗 {settings.FRONTEND_URL}/register"
+                f"❌ Ошибка регистрации: {register_response.get('error', 'Неизвестная ошибка')}\n\n"
+                "Попробуйте позже или используйте команду /register."
             )
             return
         
-        # Регистрация успешна
-        user_data = response.get("user", {})
-        access_token = response.get("access_token")
-        
-        # Сохраняем токен
+        # Успешная регистрация
+        access_token = register_response.get("access_token")
         await state.update_data(access_token=access_token)
         
-        success_text = (
-            f"🎉 <b>Регистрация успешна!</b>\n\n"
-            f"✅ Твоя заявка отправлена на модерацию.\n\n"
-            f"Мы уведомим тебя, когда она будет одобрена.\n"
-            f"Пока ты можешь:\n"
-            f"• 👀 Просматривать доступные задачи\n"
-            f"• 🏆 Смотреть рейтинг участников\n"
-            f"• 📊 Изучать статистику системы\n\n"
-            f"💡 После одобрения ты сможешь брать задачи и оборудование!\n\n"
-            f"Используй /start для доступа к функциям бота."
+        await callback.message.edit_text(
+            "✅ <b>Регистрация успешна!</b>\n\n"
+            "Ваша заявка отправлена на рассмотрение модераторам.\n\n"
+            "🔔 Мы уведомим вас, когда заявка будет одобрена.\n\n"
+            "Пока вы можете просматривать задачи и рейтинг.",
+            parse_mode="HTML"
         )
         
-        await callback.message.answer(success_text, parse_mode="HTML")
+        # Показываем кнопки для просмотра задач и рейтинга + автоматическое перенаправление на сайт
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Перейти на сайт", 
+                    url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&registered=true"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
+            ],
+        ])
         
-        # Очищаем данные регистрации
-        await state.update_data(registration_data=None)
+        await callback.message.answer(
+            "💡 <b>Что дальше?</b>\n\n"
+            "Пока ваша заявка на рассмотрении, вы можете:\n"
+            "• 🌐 Изучить сайт и посмотреть доступные функции\n"
+            "• 👀 Просматривать доступные задачи\n"
+            "• 🏆 Смотреть рейтинг участников\n"
+            "• 📊 Изучать статистику системы\n\n"
+            "🎯 <b>После одобрения заявки</b> вам станут доступны:\n"
+            "• Взятие задач\n"
+            "• Бронирование оборудования\n"
+            "• Участие в рейтинге",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(
+            registration_step=None,
+            full_name=None,
+            registration_auth_data=None,
+            agreement_version=None
+        )
         
     except Exception as e:
-        logger.error(f"Error in callback_confirm_registration: {e}")
+        logger.error(f"Error confirming registration: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
-@router.callback_query(F.data == "cancel_registration")
-async def callback_cancel_registration(callback: CallbackQuery, state: FSMContext):
-    """Отмена регистрации"""
+@router.callback_query(F.data == "register_read")
+async def callback_register_read(callback: CallbackQuery, state: FSMContext):
+    """Просмотр соглашений перед обычной регистрацией"""
     try:
         await callback.answer()
-        await callback.message.answer(
-            "❌ Регистрация отменена.\n\n"
-            f"Ты можешь зарегистрироваться позже через команду /register или на сайте:\n"
-            f"🔗 {settings.FRONTEND_URL}/register"
+        user = callback.from_user
+        
+        # Получаем соглашение через API
+        agreement_response = await call_api("GET", "/registration/agreement")
+        agreement_content = agreement_response.get("content", "")
+        agreement_title = agreement_response.get("title", "Пользовательское соглашение")
+        
+        # Показываем краткую версию соглашения
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Принимаю и продолжаю", 
+                    callback_data="register_accept"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменить", 
+                    callback_data="register_cancel"
+                ),
+            ],
+        ])
+        
+        # Показываем первые 1000 символов соглашения
+        content_preview = agreement_content[:1000] + "..." if len(agreement_content) > 1000 else agreement_content
+        
+        await callback.message.edit_text(
+            f"📄 <b>{agreement_title}</b>\n\n"
+            f"{content_preview}\n\n"
+            f"💡 <b>Также вы даёте согласие на обработку персональных данных</b>\n\n"
+            f"Нажмите «Принимаю и продолжаю» для завершения регистрации:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
         )
         
-        # Очищаем данные регистрации
-        await state.update_data(registration_data=None)
+    except Exception as e:
+        logger.error(f"Error reading agreement: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "register_cancel")
+async def callback_register_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена обычной регистрации"""
+    try:
+        await callback.answer()
+        
+        await callback.message.edit_text(
+            "❌ <b>Регистрация отменена</b>\n\n"
+            f"Ты можешь зарегистрироваться позже через команду /register или на сайте:\n"
+            f"🔗 {settings.FRONTEND_URL}/register",
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(
+            registration_step=None,
+            full_name=None,
+            registration_auth_data=None,
+            agreement_version=None
+        )
         
     except Exception as e:
-        logger.error(f"Error in callback_cancel_registration: {e}")
+        logger.error(f"Error cancelling registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+# Обработчик cancel_registration удалён - теперь используется register_cancel
 
 
 @router.message(Command("help"))
@@ -1489,7 +1551,7 @@ async def handle_qr_auth_old(message: Message, state: FSMContext):
         if "token=" not in text:
             await message.answer(
                 "❌ Неверный формат QR-кода.\n\n"
-                "Пожалуйста, отсканируйте QR-код снова или используйте команду /scan для помощи."
+                "Пожалуйста, отсканируйте QR-код снова на сайте."
             )
             return
         
@@ -1835,6 +1897,89 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("reminder_register_"))
+async def callback_reminder_register(callback: CallbackQuery, state: FSMContext):
+    """Регистрация из напоминания прямо в боте"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Извлекаем telegram_id из callback_data
+        telegram_id_from_callback = callback.data.replace("reminder_register_", "")
+        
+        # Проверяем, что это тот же пользователь
+        if str(user.id) != telegram_id_from_callback:
+            await callback.message.answer(
+                "❌ Ошибка: несоответствие пользователя. Попробуйте начать заново."
+            )
+            return
+        
+        # Проверяем, не зарегистрирован ли уже пользователь
+        auth_data = {
+            "id": user.id,
+            "first_name": user.first_name,
+            "last_name": user.last_name or "",
+            "username": user.username or "",
+            "auth_date": int(callback.message.date.timestamp()) if callback.message.date else int(callback.message.edit_date.timestamp()) if callback.message.edit_date else 0,
+        }
+        
+        auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+        
+        # Проверяем авторизацию
+        response = await call_api("POST", "/auth/telegram", data=auth_data)
+        
+        if "error" in response:
+            await callback.message.answer(
+                "❌ Ошибка авторизации. Попробуйте позже или обратитесь к администратору."
+            )
+            return
+        
+        user_data = response.get("user", {})
+        
+        # Если пользователь уже активен
+        if user_data.get("is_active", False):
+            await callback.message.answer(
+                "✅ Ты уже зарегистрирован и активен в системе!\n\n"
+                "💡 Используй /start для доступа к функциям бота."
+            )
+            return
+        
+        # Если заявка на рассмотрении
+        access_token = response.get("access_token")
+        if access_token:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            app_response = await call_api("GET", "/moderation/my-application", headers=headers, silent_errors=[403])
+            
+            if app_response.get("status") == "pending":
+                await callback.message.answer(
+                    "⏳ Твоя заявка уже находится на рассмотрении!\n\n"
+                    "Мы уведомим тебя, когда она будет одобрена.\n"
+                    "Пока можешь просматривать задачи и рейтинг через /start."
+                )
+                return
+        
+        # Мотивирующее сообщение перед регистрацией
+        await callback.message.edit_text(
+            "🎯 <b>Отлично! Ты на правильном пути!</b>\n\n"
+            "Осталось ещё чуть-чуть - всего пару минут, и ты станешь частью команды PR-отдела BEST Москва!\n\n"
+            "💪 <b>Ты молодец, что решил присоединиться к нам!</b>\n\n"
+            "📝 <b>Шаг 1:</b> Напиши своё полное ФИО (например: Иванов Иван Иванович)\n\n"
+            "Напиши ФИО текстом:",
+            parse_mode="HTML"
+        )
+        
+        # Сохраняем состояние регистрации
+        await state.update_data(
+            registration_step="full_name",
+            registration_from_reminder=True,
+            registration_auth_data=auth_data
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in reminder registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("qr_register_"))
 async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
     """Регистрация через QR-код прямо в боте (упрощённая)"""
@@ -1882,51 +2027,206 @@ async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
             )
             return
         
-        # Показываем пользовательское соглашение и запрашиваем подтверждение
-        # Получаем соглашение через API
-        agreement_response = await call_api("GET", "/registration/agreement")
-        agreement_content = agreement_response.get("content", "")
-        agreement_version = agreement_response.get("version", "1.0")
-        
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Принимаю и регистрируюсь", 
-                    callback_data=f"qr_register_confirm_{token}"
-                ),
-            ],
-            [
-                InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{token}"),
-            ],
-        ])
-        
-        # Показываем краткое соглашение и запрашиваем подтверждение
-        agreement_short = (
-            "• Пользовательское соглашение\n"
-            "• Согласие на обработку персональных данных\n\n"
-            "Нажимая «Принимаю и регистрируюсь», вы соглашаетесь с условиями."
-        )
-        
+        # Мотивирующее сообщение перед регистрацией
         await callback.message.edit_text(
-            f"📝 <b>Регистрация через QR-код</b>\n\n"
-            f"👤 <b>{user.first_name or 'Пользователь'}</b>\n\n"
-            f"Для завершения регистрации необходимо принять:\n"
-            f"{agreement_short}",
-            reply_markup=keyboard,
+            "🎯 <b>Отлично! Ты на правильном пути!</b>\n\n"
+            "Осталось ещё чуть-чуть - всего пару минут, и ты станешь частью команды PR-отдела BEST Москва!\n\n"
+            "💪 <b>Ты молодец, что решил присоединиться к нам!</b>\n\n"
+            "📝 <b>Шаг 1:</b> Напиши своё полное ФИО (например: Иванов Иван Иванович)\n\n"
+            "Напиши ФИО текстом:",
             parse_mode="HTML"
         )
         
-        # Сохраняем версию соглашения в состоянии
-        await state.update_data(agreement_version=agreement_version)
+        # Сохраняем состояние регистрации
+        await state.update_data(
+            registration_step="full_name",
+            qr_token=token,
+            qr_auth_data=auth_data
+        )
         
     except Exception as e:
         logger.error(f"Error in QR registration: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("reminder_register_accept_"))
+async def callback_reminder_register_accept(callback: CallbackQuery, state: FSMContext):
+    """Принятие соглашений и завершение регистрации из напоминания"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Получаем данные из состояния
+        data = await state.get_data()
+        full_name = data.get("full_name")
+        auth_data = data.get("registration_auth_data")
+        
+        if not full_name:
+            await callback.message.answer(
+                "❌ Ошибка: ФИО не найдено. Пожалуйста, начните регистрацию заново."
+            )
+            return
+        
+        if not auth_data:
+            await callback.message.answer(
+                "❌ Ошибка: данные авторизации не найдены. Пожалуйста, начните регистрацию заново."
+            )
+            return
+        
+        # Регистрируем пользователя через API (обычная регистрация, не через QR)
+        from datetime import datetime
+        
+        register_response = await call_api("POST", "/registration/register", data={
+            "telegram_auth": auth_data,
+            "full_name": full_name,
+            "personal_data_consent": {
+                "consent": True,
+                "date": datetime.utcnow().isoformat()
+            },
+            "user_agreement": {
+                "accepted": True,
+                "version": data.get("agreement_version", "1.0")
+            }
+        })
+        
+        if "error" in register_response:
+            await callback.message.answer(
+                f"❌ Ошибка регистрации: {register_response.get('error', 'Неизвестная ошибка')}\n\n"
+                "Попробуйте позже или используйте команду /register."
+            )
+            return
+        
+        # Успешная регистрация
+        await callback.message.edit_text(
+            "✅ <b>Регистрация успешна!</b>\n\n"
+            "Ваша заявка отправлена на рассмотрение модераторам.\n\n"
+            "🔔 Мы уведомим вас, когда заявка будет одобрена.\n\n"
+            "Пока вы можете просматривать задачи и рейтинг.",
+            parse_mode="HTML"
+        )
+        
+        # Показываем кнопки для просмотра задач и рейтинга + автоматическое перенаправление на сайт
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Перейти на сайт", 
+                    url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&registered=true"
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
+                InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
+            ],
+        ])
+        
+        await callback.message.answer(
+            "💡 <b>Что дальше?</b>\n\n"
+            "Пока ваша заявка на рассмотрении, вы можете:\n"
+            "• 🌐 Изучить сайт и посмотреть доступные функции\n"
+            "• 👀 Просматривать доступные задачи\n"
+            "• 🏆 Смотреть рейтинг участников\n"
+            "• 📊 Изучать статистику системы\n\n"
+            "🎯 <b>После одобрения заявки</b> вам станут доступны:\n"
+            "• Взятие задач\n"
+            "• Бронирование оборудования\n"
+            "• Участие в рейтинге",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(
+            registration_step=None,
+            full_name=None,
+            registration_from_reminder=None,
+            registration_auth_data=None,
+            agreement_version=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error confirming reminder registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("reminder_register_read_"))
+async def callback_reminder_register_read(callback: CallbackQuery, state: FSMContext):
+    """Просмотр соглашений перед регистрацией из напоминания"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Получаем соглашение через API
+        agreement_response = await call_api("GET", "/registration/agreement")
+        agreement_content = agreement_response.get("content", "")
+        agreement_title = agreement_response.get("title", "Пользовательское соглашение")
+        
+        # Показываем краткую версию соглашения
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Принимаю и продолжаю", 
+                    callback_data=f"reminder_register_accept_{user.id}"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Отменить", 
+                    callback_data=f"reminder_register_cancel_{user.id}"
+                ),
+            ],
+        ])
+        
+        # Показываем первые 1000 символов соглашения
+        content_preview = agreement_content[:1000] + "..." if len(agreement_content) > 1000 else agreement_content
+        
+        await callback.message.edit_text(
+            f"📄 <b>{agreement_title}</b>\n\n"
+            f"{content_preview}\n\n"
+            f"💡 <b>Также вы даёте согласие на обработку персональных данных</b>\n\n"
+            f"Нажмите «Принимаю и продолжаю» для завершения регистрации:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error reading agreement from reminder: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("reminder_register_cancel_"))
+async def callback_reminder_register_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена регистрации из напоминания"""
+    try:
+        await callback.answer()
+        
+        await callback.message.edit_text(
+            "❌ <b>Регистрация отменена</b>\n\n"
+            f"Ты можешь зарегистрироваться позже через команду /register или на сайте:\n"
+            f"🔗 {settings.FRONTEND_URL}/register\n\n"
+            "💡 Мы можем напомнить тебе о регистрации позже!",
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(
+            registration_step=None,
+            full_name=None,
+            registration_from_reminder=None,
+            registration_auth_data=None,
+            agreement_version=None
+        )
+        
+    except Exception as e:
+        logger.error(f"Error cancelling reminder registration: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("qr_register_accept_"))
 async def callback_qr_register_accept(callback: CallbackQuery, state: FSMContext):
-    """Принятие соглашений и завершение регистрации"""
+    """Принятие соглашений и завершение регистрации через QR"""
     try:
         await callback.answer()
         user = callback.from_user
@@ -2163,22 +2463,49 @@ async def handle_text_message(message: Message, state: FSMContext):
             # Сохраняем ФИО в состоянии
             await state.update_data(full_name=full_name, registration_step="consents")
             
+            # Проверяем, откуда регистрация (QR или напоминание)
+            qr_token = data.get("qr_token")
+            from_reminder = data.get("registration_from_reminder", False)
+            
             # Получаем соглашение через API
             agreement_response = await call_api("GET", "/registration/agreement")
             agreement_version = agreement_response.get("version", "1.0")
+            
+            # Определяем callback_data для кнопок
+            if from_reminder:
+                # Регистрация из напоминания
+                accept_callback = f"reminder_register_accept_{user.id}"
+                read_callback = f"reminder_register_read_{user.id}"
+                cancel_callback = f"reminder_register_cancel_{user.id}"
+            elif qr_token:
+                # Регистрация через QR
+                accept_callback = f"qr_register_accept_{qr_token}"
+                read_callback = f"qr_register_read_{qr_token}"
+                cancel_callback = f"qr_cancel_{qr_token}"
+            else:
+                # Обычная регистрация (через /register)
+                accept_callback = "register_accept"
+                read_callback = "register_read"
+                cancel_callback = "register_cancel"
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(
                         text="✅ Принимаю соглашения", 
-                        callback_data=f"qr_register_accept_{data.get('qr_token')}"
+                        callback_data=accept_callback
                     ),
                 ],
                 [
-                    InlineKeyboardButton(text="📄 Прочитать соглашения", callback_data=f"qr_register_read_{data.get('qr_token')}"),
+                    InlineKeyboardButton(
+                        text="📄 Прочитать соглашения", 
+                        callback_data=read_callback
+                    ),
                 ],
                 [
-                    InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{data.get('qr_token')}"),
+                    InlineKeyboardButton(
+                        text="❌ Отменить", 
+                        callback_data=cancel_callback
+                    ),
                 ],
             ])
             

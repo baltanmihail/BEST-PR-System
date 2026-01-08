@@ -43,12 +43,53 @@ class OnboardingService:
                 onboarding_data=onboarding_data
             )
             
-            # Отправляем сообщение
-            sent = await send_telegram_message(
-                chat_id=int(telegram_id),
-                message=message,
-                parse_mode="HTML"
-            )
+            # Отправляем сообщение с инлайн-кнопкой "Зарегистрироваться"
+            from aiogram import Bot
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            from aiogram.enums import ParseMode
+            from app.config import settings
+            
+            if not settings.TELEGRAM_BOT_TOKEN:
+                logger.warning("TELEGRAM_BOT_TOKEN не установлен, отправка напоминания невозможна")
+                return False
+            
+            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+            
+            # Создаём клавиатуру с кнопкой регистрации
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📝 Зарегистрироваться прямо в боте",
+                        callback_data=f"reminder_register_{telegram_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Перейти на сайт",
+                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={telegram_id}"
+                    ),
+                ],
+            ])
+            
+            sent = False
+            try:
+                await bot.send_message(
+                    chat_id=int(telegram_id),
+                    text=message,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML
+                )
+                sent = True
+            except Exception as e:
+                logger.error(f"Failed to send reminder with buttons: {e}")
+                # Fallback - отправляем без кнопок
+                sent = await send_telegram_message(
+                    chat_id=int(telegram_id),
+                    message=message,
+                    parse_mode="HTML"
+                )
+            finally:
+                await bot.session.close()
             
             if sent:
                 # Отмечаем, что напоминание отправлено
