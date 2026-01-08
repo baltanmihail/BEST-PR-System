@@ -18,6 +18,59 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+@router.post("/bot-login", response_model=dict)
+async def bot_login(
+    telegram_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Автоматический вход для зарегистрированных пользователей через бота
+    
+    Используется когда пользователь переходит по ссылке из бота.
+    Не требует QR-кода, так как пользователь уже подтверждён через бота.
+    """
+    # Находим пользователя
+    result = await db.execute(
+        select(User).where(
+            and_(
+                User.telegram_id == telegram_id,
+                User.deleted_at.is_(None)  # Не удалён
+            )
+        )
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not active. Please wait for moderation approval."
+        )
+    
+    # Создаём JWT токен
+    access_token = create_access_token(data={"sub": str(user.id), "telegram_id": user.telegram_id})
+    
+    logger.info(f"Bot login successful for user {user.telegram_id}")
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "telegram_id": user.telegram_id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "role": user.role.value if hasattr(user.role, 'value') else str(user.role)
+        }
+    }
+
+
 @router.post("/telegram", response_model=dict)
 async def auth_telegram(
     auth_data: dict,

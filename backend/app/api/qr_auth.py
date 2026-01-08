@@ -30,6 +30,7 @@ from app.database import get_db
 from app.models.qr_session import QRSession
 from app.models.user import User
 from app.utils.auth import create_access_token
+from app.utils.auth import create_access_token
 from app.config import settings
 router = APIRouter(prefix="/auth/qr", tags=["qr-auth"])
 
@@ -70,12 +71,22 @@ async def generate_qr(
     
     Пользователь открывает эту страницу, получает QR-код,
     сканирует его через Telegram бота, подтверждает вход
+    
+    Если пользователь перешёл через бота (параметр ?from=bot&telegram_id=...),
+    QR-код будет содержать данные пользователя для упрощённой регистрации
     """
     if not QRCODE_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="QR code generation is not available. Please install qrcode and Pillow packages."
         )
+    
+    # Проверяем, перешёл ли пользователь через бота
+    query_params = dict(request.query_params)
+    from_bot = query_params.get("from") == "bot"
+    telegram_id = query_params.get("telegram_id")
+    telegram_username = query_params.get("username")
+    first_name = query_params.get("first_name")
     
     # Генерируем уникальный токен сессии
     session_token = secrets.token_urlsafe(32)
@@ -91,13 +102,29 @@ async def generate_qr(
         user_agent=request.headers.get("user-agent")
     )
     
+    # Если пользователь перешёл через бота, сохраняем его данные в сессии
+    if from_bot and telegram_id:
+        try:
+            qr_session.telegram_id = int(telegram_id)
+        except (ValueError, TypeError):
+            pass
+    
     db.add(qr_session)
     await db.commit()
     await db.refresh(qr_session)
     
     # Формируем URL для QR-кода
-    # Формат: bestpr://auth?token=TOKEN
-    qr_data = f"bestpr://auth?token={session_token}"
+    # Если есть данные пользователя, добавляем их в QR-код для упрощённой регистрации
+    if from_bot and telegram_id:
+        # Формат: bestpr://auth?token=TOKEN&telegram_id=ID&username=USERNAME&first_name=NAME
+        qr_data = f"bestpr://auth?token={session_token}&telegram_id={telegram_id}"
+        if telegram_username:
+            qr_data += f"&username={telegram_username}"
+        if first_name:
+            qr_data += f"&first_name={first_name}"
+    else:
+        # Обычный QR-код без данных пользователя
+        qr_data = f"bestpr://auth?token={session_token}"
     
     # Генерируем QR-код
     qr = qrcode.QRCode(
@@ -224,72 +251,58 @@ async def confirm_qr(
             detail="QR session expired"
         )
     
-    # Находим или создаём пользователя
+    # Находим пользователя
     user_result = await db.execute(
         select(User).where(User.telegram_id == request.telegram_id)
     )
     user = user_result.scalar_one_or_none()
     
-    if not user:
-        # Создаём нового пользователя (неактивного, требует модерации)
-        from app.models.user import UserRole
-        full_name = f"{request.first_name} {request.last_name or ''}".strip() or request.first_name
+    # Обновляем сессию
+    qr_session.status = "confirmed"
+    qr_session.telegram_id = request.telegram_id
+    qr_session.confirmed_at = datetime.now(timezone.utc)
+    
+    if user:
+        # Пользователь уже существует - это вход
+        qr_session.user_id = user.id
         
-        user = User(
-            telegram_id=request.telegram_id,
-            username=request.username,
-            full_name=full_name,
-            role=UserRole.NOVICE,
-            is_active=False,  # Требует модерации
-            personal_data_consent=False,
-            user_agreement_accepted=False
-        )
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-        # Создаём заявку на модерацию
-        from app.services.moderation_service import ModerationService
-        application = await ModerationService.create_user_application(
-            db=db,
-            user_id=user.id,
-            application_data={
-                "telegram_id": request.telegram_id,
-                "username": request.username,
-                "full_name": full_name,
-                "source": "qr_auth"
-            }
-        )
-        
-        # Уведомляем админов
-        from app.services.notification_service import NotificationService
-        try:
-            await NotificationService.notify_moderation_request(
-                db=db,
-                user_id=user.id,
-                user_name=full_name,
-                user_telegram_id=request.telegram_id
-            )
-        except Exception as e:
-            logger.error(f"Failed to send moderation request notification: {e}")
-    else:
         # Обновляем данные существующего пользователя
         user.username = request.username
         user.full_name = f"{request.first_name} {request.last_name or ''}".strip() or request.first_name
         await db.commit()
         await db.refresh(user)
-    
-    # Обновляем сессию
-    qr_session.status = "confirmed"
-    qr_session.telegram_id = request.telegram_id
-    qr_session.user_id = user.id
-    qr_session.confirmed_at = datetime.now(timezone.utc)
-    await db.commit()
-    
-    logger.info(f"QR session confirmed: {qr_session.id} for user {user.telegram_id}")
-    
-    return {
-        "success": True,
-        "message": "QR session confirmed",
-        "user_id": str(user.id)
-    }
+        
+        # Создаём JWT токен для входа
+        access_token = create_access_token(
+            data={"sub": str(user.id), "telegram_id": user.telegram_id}
+        )
+        
+        logger.info(f"QR session confirmed (login): {qr_session.id} for existing user {user.telegram_id}")
+        
+        return {
+            "success": True,
+            "message": "QR session confirmed",
+            "user_id": str(user.id),
+            "is_registration": False,
+            "access_token": access_token  # Возвращаем токен для автоматического входа
+        }
+    else:
+        # Пользователь не существует - это регистрация
+        # НЕ создаём пользователя здесь - он будет создан при регистрации через /registration/register
+        # Сохраняем данные в сессии для последующей регистрации
+        await db.commit()
+        
+        logger.info(f"QR session confirmed (registration): {qr_session.id} for new user {request.telegram_id}")
+        
+        return {
+            "success": True,
+            "message": "QR session confirmed. Please complete registration on the website.",
+            "is_registration": True,
+            "user_data": {
+                "telegram_id": request.telegram_id,
+                "username": request.username,
+                "first_name": request.first_name,
+                "last_name": request.last_name,
+                "full_name": f"{request.first_name} {request.last_name or ''}".strip() or request.first_name
+            }
+        }

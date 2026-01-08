@@ -18,6 +18,7 @@ export interface RegistrationRequest {
     accepted: boolean
     version: string
   }
+  qr_token?: string  // Опциональный токен QR-сессии для упрощённой регистрации
 }
 
 export interface AgreementResponse {

@@ -2,7 +2,7 @@
 cd "BEST PR System"
 git status
 git add .
-git commit -m "Никто"
+git commit -m "Ладно, теперь вход должен быть нормальный"
 git push origin main
 ```
 # 🚂 Railway Deployment Guide

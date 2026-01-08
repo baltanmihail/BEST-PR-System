@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Layout from './components/layout/Layout'
 import Home from './pages/Home'
@@ -13,6 +14,8 @@ import Register from './pages/Register'
 import Login from './pages/Login'
 import Equipment from './pages/Equipment'
 import Settings from './pages/Settings'
+import { useAuthStore } from './store/authStore'
+import { authApi } from './services/auth'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,7 +30,54 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Layout>
+        <AppContent />
+      </BrowserRouter>
+    </QueryClientProvider>
+  )
+}
+
+// Компонент для проверки Telegram WebApp и автоматического входа
+function AppContent() {
+  const { user, login, fetchUser } = useAuthStore()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    // Проверяем, открыт ли сайт через Telegram WebApp
+    const isTelegramWebApp = window.Telegram?.WebApp
+    
+    if (isTelegramWebApp && !user) {
+      const tg = window.Telegram.WebApp
+      const initDataUnsafe = tg.initDataUnsafe
+      
+      // Если есть данные пользователя из Telegram WebApp
+      if (initDataUnsafe?.user?.id) {
+        const telegramId = initDataUnsafe.user.id
+        
+        // Пытаемся автоматически войти через бота (для зарегистрированных пользователей)
+        authApi.botLogin(telegramId)
+          .then((response) => {
+            // Успешный вход
+            login(response.access_token)
+            // Если мы на странице входа, перенаправляем на главную
+            if (location.pathname === '/login') {
+              navigate('/')
+            }
+          })
+          .catch((error) => {
+            // Пользователь не зарегистрирован или неактивен
+            // Оставляем на текущей странице (Login покажет QR-код)
+            console.log('Bot login failed (user not registered or inactive):', error)
+          })
+      }
+    } else if (!user) {
+      // Если не в Telegram WebApp, проверяем сохранённый токен
+      fetchUser()
+    }
+  }, []) // Выполняется только при монтировании
+
+  return (
+    <Layout>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/tasks" element={<Tasks />} />
@@ -43,8 +93,6 @@ function App() {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Layout>
-      </BrowserRouter>
-    </QueryClientProvider>
   )
 }
 

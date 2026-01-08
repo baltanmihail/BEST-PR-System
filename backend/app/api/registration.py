@@ -26,6 +26,7 @@ class RegistrationRequest(BaseModel):
     telegram_auth: TelegramAuthData
     personal_data_consent: PersonalDataConsent
     user_agreement: UserAgreementAccept
+    qr_token: Optional[str] = None  # Опциональный токен QR-сессии для упрощённой регистрации
 
 
 class RegistrationCodeRequest(BaseModel):
@@ -64,27 +65,77 @@ async def register(
             detail="Необходимо принять пользовательское соглашение"
         )
     
-    # Валидация данных Telegram
-    auth_data = registration.telegram_auth.model_dump()
-    
-    # Логируем для отладки (без чувствительных данных)
+    # Логируем для отладки
     import logging
     logger = logging.getLogger(__name__)
-    logger.info(f"Registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
     
-    if not verify_telegram_auth(auth_data):
-        logger.warning(f"Telegram auth verification failed for telegram_id: {auth_data.get('id')}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Telegram authentication data. Please open this page through Telegram bot."
+    # Если есть qr_token, используем данные из QR-сессии (упрощённая регистрация)
+    if registration.qr_token:
+        from app.models.qr_session import QRSession
+        result = await db.execute(
+            select(QRSession).where(QRSession.session_token == registration.qr_token)
         )
+        qr_session = result.scalar_one_or_none()
+        
+        if not qr_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="QR session not found"
+            )
+        
+        if qr_session.status != "confirmed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="QR session not confirmed. Please confirm QR code in Telegram bot first."
+            )
+        
+        if not qr_session.telegram_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="QR session does not have telegram_id"
+            )
+        
+        # Используем telegram_id из QR-сессии
+        # Данные пользователя берём из telegram_auth (они должны быть переданы с фронтенда)
+        telegram_id = qr_session.telegram_id
+        
+        # Проверяем, что telegram_id в auth_data совпадает с telegram_id в QR-сессии
+        auth_data = registration.telegram_auth.model_dump()
+        if auth_data.get("id") != telegram_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Telegram ID mismatch between QR session and auth data"
+            )
+        
+        # Для QR-регистрации не проверяем hash (пользователь уже подтвердил через бота)
+        first_name = auth_data.get("first_name", "")
+        last_name = auth_data.get("last_name", "")
+        username = auth_data.get("username")
+        full_name = f"{first_name} {last_name}".strip() or first_name
+        
+        logger.info(f"Registration via QR token for telegram_id: {telegram_id} (simplified - no hash check)")
+    else:
+        # Обычная регистрация через Telegram WebApp
+        auth_data = registration.telegram_auth.model_dump()
+        
+        logger.info(f"Registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
+        
+        # Проверяем hash только для обычной регистрации (не через QR)
+        if not verify_telegram_auth(auth_data):
+            logger.warning(f"Telegram auth verification failed for telegram_id: {auth_data.get('id')}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Telegram authentication data. Please open this page through Telegram bot."
+            )
+        
+        telegram_id = auth_data.get("id")
+        first_name = auth_data.get("first_name", "")
+        last_name = auth_data.get("last_name", "")
+        username = auth_data.get("username")
+        
+        full_name = f"{first_name} {last_name}".strip() or first_name
     
-    telegram_id = auth_data.get("id")
-    first_name = auth_data.get("first_name", "")
-    last_name = auth_data.get("last_name", "")
-    username = auth_data.get("username")
-    
-    full_name = f"{first_name} {last_name}".strip() or first_name
+    # Общая логика для обоих случаев (QR и обычная регистрация)
     
     # Проверяем, не зарегистрирован ли уже пользователь
     result = await db.execute(
@@ -125,7 +176,7 @@ async def register(
             "telegram_id": telegram_id,
             "username": username,
             "full_name": full_name,
-            "source": "registration",
+            "source": "qr_registration" if registration.qr_token else "registration",
             "consent_date": now.isoformat(),
             "agreement_version": registration.user_agreement.version or "1.0"
         }

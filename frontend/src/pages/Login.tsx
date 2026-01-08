@@ -35,12 +35,62 @@ export default function Login() {
     }
   }, [user, navigate])
 
-  // Генерация QR-кода
+  // Проверяем, открыт ли сайт через Telegram WebApp (для зарегистрированных пользователей)
+  useEffect(() => {
+    const isTelegramWebApp = window.Telegram?.WebApp
+    
+    // Если открыт через Telegram WebApp и пользователь не авторизован
+    if (isTelegramWebApp && !user) {
+      const tg = window.Telegram.WebApp
+      const initDataUnsafe = tg.initDataUnsafe
+      
+      // Если есть данные пользователя из Telegram WebApp
+      if (initDataUnsafe?.user?.id) {
+        const telegramId = initDataUnsafe.user.id
+        
+        // Пытаемся автоматически войти через бота (для зарегистрированных пользователей)
+        import('../services/auth').then(({ authApi }) => {
+          authApi.botLogin(telegramId)
+            .then((response) => {
+              // Успешный вход - автоматически авторизуем
+              login(response.access_token)
+              navigate('/')
+            })
+            .catch((error) => {
+              // Пользователь не зарегистрирован или неактивен
+              // Показываем QR-код для входа/регистрации
+              console.log('Bot login failed, showing QR code:', error)
+            })
+        })
+      }
+    }
+  }, [user, login, navigate])
+
+  // Проверяем параметры из URL (если пользователь перешёл через бота)
+  const urlParams = new URLSearchParams(window.location.search)
+  const fromBot = urlParams.get('from') === 'bot'
+  const telegramId = urlParams.get('telegram_id')
+  const username = urlParams.get('username')
+  const firstName = urlParams.get('first_name')
+
+  // Генерация QR-кода с параметрами, если пользователь перешёл через бота
   const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
-    queryKey: ['qr-generate'],
+    queryKey: ['qr-generate', fromBot, telegramId],
     queryFn: async () => {
       try {
-        const data = await qrAuthApi.generate()
+        // Если пользователь перешёл через бота, передаём параметры в URL
+        let generateUrl = '/auth/qr/generate'
+        if (fromBot && telegramId) {
+          const params = new URLSearchParams({
+            from: 'bot',
+            telegram_id: telegramId,
+          })
+          if (username) params.append('username', username)
+          if (firstName) params.append('first_name', firstName)
+          generateUrl += '?' + params.toString()
+        }
+        
+        const data = await qrAuthApi.generate(generateUrl)
         console.log('QR data received:', data)
         return data
       } catch (error) {

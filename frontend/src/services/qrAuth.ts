@@ -24,9 +24,11 @@ export interface QRStatusResponse {
 
 export const qrAuthApi = {
   // Генерация QR-кода
-  generate: async (): Promise<QRGenerateResponse> => {
+  // urlParams - опциональные параметры для передачи в query string (например, "?from=bot&telegram_id=123")
+  generate: async (urlParams: string = ''): Promise<QRGenerateResponse> => {
     try {
-      const response = await api.post<QRGenerateResponse>('/auth/qr/generate')
+      const endpoint = '/auth/qr/generate' + urlParams
+      const response = await api.post<QRGenerateResponse>(endpoint)
       console.log('QR generate response:', response.data)
       
       // Проверяем, что qr_code присутствует и имеет правильный формат

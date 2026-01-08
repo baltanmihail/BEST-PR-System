@@ -31,6 +31,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Проверка установки qrcode (отдельным шагом для лучшей диагностики)
 RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && pip list | grep -E "(qrcode|Pillow)" && exit 1)
 
+# Копирование картинки приветствия
+COPY "BEST logos/" "/app/BEST logos/"
+
 # Копирование остальных файлов бэкенда
 COPY backend/ .
 

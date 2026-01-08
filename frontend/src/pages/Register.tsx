@@ -19,7 +19,15 @@ export default function Register() {
   const [showAgreement, setShowAgreement] = useState(false)
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('telegram')
   
-  // Регистрация только через Telegram WebApp
+  // Проверяем параметры из URL (если пользователь перешёл через бота или QR-код)
+  const urlParams = new URLSearchParams(window.location.search)
+  const fromBot = urlParams.get('from') === 'bot'
+  const qrToken = urlParams.get('qr_token')
+  const telegramId = urlParams.get('telegram_id')
+  const username = urlParams.get('username')
+  const firstName = urlParams.get('first_name')
+  
+  // Регистрация через Telegram WebApp или через QR-код (упрощённая)
 
   // Проверяем, не зарегистрирован ли уже пользователь
   useEffect(() => {
@@ -50,18 +58,58 @@ export default function Register() {
     },
   })
 
-  // Регистрация доступна только через Telegram WebApp
+  // Регистрация доступна через Telegram WebApp или через QR-код (упрощённая)
   useEffect(() => {
-    if (!window.Telegram?.WebApp) {
-      // Если не в Telegram, перенаправляем на страницу входа
+    if (qrToken && fromBot && telegramId) {
+      // Регистрация через QR-код - упрощённая, не требует WebApp
+      setRegistrationMode('telegram')
+    } else if (!window.Telegram?.WebApp) {
+      // Если не в Telegram и нет QR-токена, перенаправляем на страницу входа
       navigate('/login')
     } else {
       setRegistrationMode('telegram')
     }
-  }, [navigate])
+  }, [navigate, qrToken, fromBot, telegramId])
 
   const handleTelegramAuth = () => {
-    // Telegram WebApp доступен только в Telegram
+    // Если есть QR-токен, используем упрощённую регистрацию
+    if (qrToken && fromBot && telegramId) {
+      // Упрощённая регистрация через QR-код
+      // Данные пользователя уже подтверждены через бота, hash не нужен
+      const telegramAuth: RegistrationRequest['telegram_auth'] = {
+        id: parseInt(telegramId),
+        first_name: firstName || 'Пользователь',
+        auth_date: Math.floor(Date.now() / 1000),
+        hash: '', // Для QR-регистрации hash не проверяется на бэкенде
+      }
+      
+      if (username) {
+        telegramAuth.username = username
+      }
+      
+      const registrationData: RegistrationRequest = {
+        telegram_auth: telegramAuth,
+        personal_data_consent: {
+          consent: consentAccepted,
+          date: new Date().toISOString(),
+        },
+        user_agreement: {
+          accepted: agreementAccepted,
+          version: agreementData?.version || '1.0',
+        },
+        qr_token: qrToken,
+      }
+      
+      console.log('Sending QR registration request', { 
+        telegram_id: telegramAuth.id, 
+        qr_token: qrToken 
+      })
+      
+      registrationMutation.mutate(registrationData)
+      return
+    }
+    
+    // Обычная регистрация через Telegram WebApp
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp
       const initDataUnsafe = tg.initDataUnsafe

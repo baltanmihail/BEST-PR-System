@@ -25,6 +25,16 @@ export const authApi = {
     return response.data
   },
 
+  // Автоматический вход через бота (для зарегистрированных пользователей)
+  botLogin: async (telegramId: number): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/bot-login', null, {
+      params: { telegram_id: telegramId }
+    })
+    // Сохраняем токен
+    localStorage.setItem('access_token', response.data.access_token)
+    return response.data
+  },
+
   // Получить текущего пользователя
   getMe: async (): Promise<User> => {
     const response = await api.get<User>('/auth/me')

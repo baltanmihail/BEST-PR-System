@@ -243,14 +243,21 @@ async def cmd_start(message: Message, state: FSMContext):
     possible_paths = [
         base_path / "BEST logos" / "best_welcome.jpg",  # Локально
         base_path.parent / "BEST logos" / "best_welcome.jpg",  # Альтернативный локальный
-        Path("/app") / "BEST logos" / "best_welcome.jpg",  # Railway
+        Path("/app") / "BEST logos" / "best_welcome.jpg",  # Railway (корень проекта)
         Path("/app/backend") / ".." / "BEST logos" / "best_welcome.jpg",  # Railway альтернативный
+        Path("/app") / "backend" / ".." / "BEST logos" / "best_welcome.jpg",  # Railway (из backend)
     ]
     
     for path in possible_paths:
-        if path.exists():
-            welcome_photo_path = path
+        path_resolved = path.resolve()
+        logger.debug(f"Checking welcome photo path: {path_resolved}")
+        if path_resolved.exists():
+            welcome_photo_path = path_resolved
+            logger.info(f"✅ Welcome photo found at: {welcome_photo_path}")
             break
+    
+    if not welcome_photo_path:
+        logger.warning(f"⚠️ Welcome photo not found. Checked paths: {[str(p.resolve()) for p in possible_paths]}")
     
     # Создаём клавиатуру с инлайн-кнопками
     keyboard = InlineKeyboardMarkup(inline_keyboard=[])
@@ -267,18 +274,23 @@ async def cmd_start(message: Message, state: FSMContext):
         greeting = get_welcome_greeting(user.first_name, "unregistered")
         
         if "error" in app_response or app_response.get("status_code") == 403:
-            # Заявки ещё нет
+            # Заявки ещё нет - оптимизированное сообщение для QR-регистрации
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> гость (без регистрации)\n"
                 f"🆔 <b>Твой ID:</b> <code>{user.id}</code>\n\n"
-                f"📋 Ты можешь:\n"
+                f"📋 <b>Доступно сейчас:</b>\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
-                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
-                f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
+                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться.\n\n"
+                f"🔐 <b>Самый простой способ:</b>\n"
+                f"1️⃣ Открой сайт: {settings.FRONTEND_URL}/login\n"
+                f"2️⃣ Отсканируй QR-код с камеры смартфона\n"
+                f"3️⃣ Подтверди вход здесь в боте\n"
+                f"4️⃣ Заполни заявку на регистрацию\n\n"
+                f"✨ Или перейди на сайт и зарегистрируйся через Telegram WebApp"
             )
             
             keyboard.inline_keyboard = [
@@ -290,7 +302,10 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться в боте", callback_data="register_in_bot"),
+                    InlineKeyboardButton(
+                        text="🔐 Войти через QR-код", 
+                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
+                    ),
                 ],
                 [
                     InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
@@ -332,16 +347,22 @@ async def cmd_start(message: Message, state: FSMContext):
                 ],
             ]
         else:
+            # Fallback для неавторизированных
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
                 f"🧭 <b>Статус:</b> гость (без регистрации)\n\n"
-                f"📋 Ты можешь:\n"
+                f"📋 <b>Доступно сейчас:</b>\n"
                 f"• 👀 Просматривать доступные задачи\n"
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
-                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться по ссылке:\n"
-                f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
+                f"💡 <b>Для взятия задач и оборудования BEST Channel</b> нужно зарегистрироваться.\n\n"
+                f"🔐 <b>Самый простой способ:</b>\n"
+                f"1️⃣ Открой сайт: {settings.FRONTEND_URL}/login\n"
+                f"2️⃣ Отсканируй QR-код с камеры смартфона\n"
+                f"3️⃣ Подтверди вход здесь в боте\n"
+                f"4️⃣ Заполни заявку на регистрацию\n\n"
+                f"✨ Или перейди на сайт и зарегистрируйся через Telegram WebApp"
             )
             
             keyboard.inline_keyboard = [
@@ -353,7 +374,10 @@ async def cmd_start(message: Message, state: FSMContext):
                     InlineKeyboardButton(text="📊 Статистика", callback_data="view_stats"),
                 ],
                 [
-                    InlineKeyboardButton(text="📝 Зарегистрироваться в боте", callback_data="register_in_bot"),
+                    InlineKeyboardButton(
+                        text="🔐 Войти через QR-код", 
+                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}"
+                    ),
                 ],
                 [
                     InlineKeyboardButton(text="🌐 Зарегистрироваться на сайте", url=settings.FRONTEND_URL + "/register"),
@@ -1331,8 +1355,8 @@ async def handle_qr_auth(message: Message, state: FSMContext):
         user = message.from_user
         text = message.text
         
-        # Парсим токен из URL
-        # Формат: bestpr://auth?token=TOKEN
+        # Парсим параметры из URL
+        # Формат: bestpr://auth?token=TOKEN&telegram_id=ID&username=USERNAME&first_name=NAME
         if "token=" not in text:
             await message.answer(
                 "❌ Неверный формат QR-кода.\n\n"
@@ -1340,7 +1364,15 @@ async def handle_qr_auth(message: Message, state: FSMContext):
             )
             return
         
-        token = text.split("token=")[1].split("&")[0].strip()
+        # Извлекаем все параметры из URL
+        params = {}
+        parts = text.split("?")[1].split("&")
+        for part in parts:
+            if "=" in part:
+                key, value = part.split("=", 1)
+                params[key] = value
+        
+        token = params.get("token", "").strip()
         
         if not token:
             await message.answer(
@@ -1349,9 +1381,12 @@ async def handle_qr_auth(message: Message, state: FSMContext):
             )
             return
         
-        # Проверяем сессию через API (используем токен напрямую)
-        # Но сначала нужно получить session_id по токену или использовать токен
-        # Для упрощения используем токен как идентификатор
+        # Проверяем, есть ли данные пользователя в QR-коде (для упрощённой регистрации)
+        qr_telegram_id = params.get("telegram_id")
+        qr_username = params.get("username", "")
+        qr_first_name = params.get("first_name", "")
+        
+        # Проверяем сессию через API
         check_response = await call_api("GET", f"/auth/qr/status/{token}")
         
         if "error" in check_response:
@@ -1400,6 +1435,9 @@ async def handle_qr_auth(message: Message, state: FSMContext):
             # Сохраняем данные для подтверждения
             await state.update_data(qr_auth_data=auth_data)
             
+            # Проверяем, есть ли данные пользователя в QR-коде (для упрощённой регистрации)
+            is_registration_qr = qr_telegram_id and str(user.id) == qr_telegram_id
+            
             # Показываем подтверждение
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
@@ -1408,18 +1446,41 @@ async def handle_qr_auth(message: Message, state: FSMContext):
                 ]
             ])
             
-            await message.answer(
-                f"🔐 <b>Подтверждение входа на сайт</b>\n\n"
-                f"Вы хотите войти в аккаунт:\n"
-                f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
-                f"🆔 ID: <code>{user.id}</code>\n\n"
-                f"📍 <b>Устройство:</b> {message.from_user.language_code or 'Unknown'}\n"
-                f"🕐 <b>Время:</b> {message.date.strftime('%H:%M:%S')}\n\n"
-                f"⚠️ Если это не вы, нажмите «Отменить».\n\n"
-                f"Подтвердите вход:",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+            if is_registration_qr:
+                # Если это QR-код для регистрации, предлагаем зарегистрироваться
+                keyboard.inline_keyboard.append([
+                    InlineKeyboardButton(
+                        text="📝 Зарегистрироваться", 
+                        callback_data=f"qr_register_{token}"
+                    ),
+                ])
+                
+                await message.answer(
+                    f"🔐 <b>Подтверждение входа на сайт</b>\n\n"
+                    f"Вы отсканировали QR-код для регистрации.\n\n"
+                    f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
+                    f"🆔 ID: <code>{user.id}</code>\n\n"
+                    f"💡 <b>Вы можете:</b>\n"
+                    f"• ✅ Подтвердить вход (если уже зарегистрированы)\n"
+                    f"• 📝 Зарегистрироваться (если ещё не зарегистрированы)\n\n"
+                    f"⚠️ Если это не вы, нажмите «Отменить».",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+            else:
+                # Обычное подтверждение входа
+                await message.answer(
+                    f"🔐 <b>Подтверждение входа на сайт</b>\n\n"
+                    f"Вы хотите войти в аккаунт:\n"
+                    f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
+                    f"🆔 ID: <code>{user.id}</code>\n\n"
+                    f"📍 <b>Устройство:</b> {message.from_user.language_code or 'Unknown'}\n"
+                    f"🕐 <b>Время:</b> {message.date.strftime('%H:%M:%S')}\n\n"
+                    f"⚠️ Если это не вы, нажмите «Отменить».\n\n"
+                    f"Подтвердите вход:",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
         else:
             await message.answer(
                 f"❌ Неизвестный статус QR-кода: {check_response.get('status')}\n\n"
@@ -1473,19 +1534,164 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
             )
             return
         
-        # Успешно подтверждено
-        await callback.message.edit_text(
-            "✅ <b>Вход подтверждён!</b>\n\n"
-            "Теперь вы можете использовать сайт.\n\n"
-            "🔔 Важные уведомления и изменения будут приходить сюда в бот.",
-            parse_mode="HTML"
-        )
+        # Проверяем, это регистрация или вход
+        is_registration = response.get("is_registration", False)
+        
+        if is_registration:
+            # Это регистрация - предлагаем перейти на страницу регистрации
+            registration_url = (
+                f"{settings.FRONTEND_URL}/register?"
+                f"from=bot&"
+                f"telegram_id={user.id}&"
+                f"username={user.username or ''}&"
+                f"first_name={user.first_name or ''}&"
+                f"qr_token={token}"
+            )
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="📝 Перейти к регистрации", 
+                        url=registration_url
+                    ),
+                ],
+            ])
+            
+            await callback.message.edit_text(
+                "✅ <b>QR-код подтверждён!</b>\n\n"
+                "Вы ещё не зарегистрированы. Нажмите кнопку ниже, чтобы перейти к регистрации.\n\n"
+                "💡 <b>Преимущества регистрации через QR-код:</b>\n"
+                "• ✅ Не нужно подтверждать Telegram ID\n"
+                "• ✅ Данные уже заполнены\n"
+                "• ✅ Просто согласитесь с условиями",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            # Это вход - пользователь уже зарегистрирован
+            # Получаем access_token из ответа подтверждения
+            access_token = response.get("access_token")
+            
+            # Показываем уведомление (alert) поверх экрана
+            await callback.answer(
+                "✅ Сессия запущена на устройстве!",
+                show_alert=True
+            )
+            
+            # Формируем URL для возврата на сайт
+            site_url = settings.FRONTEND_URL
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Вернуться на сайт",
+                        url=site_url
+                    ),
+                ],
+            ])
+            
+            # Отправляем сообщение с информацией и кнопкой
+            await callback.message.answer(
+                "✅ <b>Сессия запущена на устройстве</b>\n\n"
+                "Вы успешно вошли в свой аккаунт на сайте.\n\n"
+                "🔔 Важные уведомления и изменения будут приходить сюда в бот.\n\n"
+                "Вы можете вернуться на сайт или продолжить работу здесь.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
         
         # Очищаем состояние
         await state.update_data(qr_token=None, qr_auth_data=None)
         
     except Exception as e:
         logger.error(f"Error confirming QR auth: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("qr_register_"))
+async def callback_qr_register(callback: CallbackQuery, state: FSMContext):
+    """Регистрация через QR-код (упрощённая)"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Извлекаем токен из callback_data
+        token = callback.data.replace("qr_register_", "")
+        
+        # Получаем данные из состояния
+        data = await state.get_data()
+        auth_data = data.get("qr_auth_data")
+        
+        if not auth_data:
+            await callback.message.answer(
+                "❌ Данные авторизации не найдены.\n\n"
+                "Пожалуйста, отсканируйте QR-код снова."
+            )
+            return
+        
+        # Проверяем, не зарегистрирован ли уже пользователь
+        # Сначала подтверждаем QR-сессию, чтобы получить информацию о пользователе
+        confirm_response = await call_api("POST", "/auth/qr/confirm", data={
+            "session_token": token,
+            "telegram_id": user.id,
+            "first_name": user.first_name or "User",
+            "last_name": user.last_name,
+            "username": user.username
+        })
+        
+        if "error" in confirm_response:
+            await callback.message.answer(
+                f"❌ Ошибка подтверждения QR-кода: {confirm_response.get('error', 'Неизвестная ошибка')}\n\n"
+                "Попробуйте отсканировать QR-код снова."
+            )
+            return
+        
+        # Если пользователь уже существует (is_registration: False), это вход, а не регистрация
+        if not confirm_response.get("is_registration", True):
+            await callback.message.edit_text(
+                "✅ <b>Вы уже зарегистрированы!</b>\n\n"
+                "Используйте кнопку «Подтвердить вход» для входа на сайт.",
+                parse_mode="HTML"
+            )
+            return
+        
+        # Открываем страницу регистрации с данными пользователя и QR-токеном
+        registration_url = (
+            f"{settings.FRONTEND_URL}/register?"
+            f"from=bot&"
+            f"telegram_id={user.id}&"
+            f"username={user.username or ''}&"
+            f"first_name={user.first_name or ''}&"
+            f"qr_token={token}"
+        )
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📝 Перейти к регистрации", 
+                    url=registration_url
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{token}"),
+            ],
+        ])
+        
+        await callback.message.edit_text(
+            f"📝 <b>Регистрация через QR-код</b>\n\n"
+            f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
+            f"🆔 ID: <code>{user.id}</code>\n\n"
+            f"💡 <b>Преимущества регистрации через QR-код:</b>\n"
+            f"• ✅ Не нужно подтверждать Telegram ID\n"
+            f"• ✅ Данные уже заполнены\n"
+            f"• ✅ Просто согласитесь с условиями\n\n"
+            f"Нажмите кнопку ниже, чтобы перейти к регистрации:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in QR registration: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
