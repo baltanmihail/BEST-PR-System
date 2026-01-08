@@ -388,7 +388,7 @@ export default function Settings() {
                 Информация об аккаунте
               </h3>
           
-          <div className="space-y-4">
+              <div className="space-y-4">
             {fullProfile?.avatar_url && (
               <div className="flex items-center space-x-3 mb-4">
                 <img
@@ -483,6 +483,8 @@ export default function Settings() {
                 <p className={`text-white text-readable ${theme}`}>
                   {user.is_active ? '✅ Активен' : '⏳ На модерации'}
                 </p>
+              </div>
+            </div>
               </div>
             </div>
           </div>
