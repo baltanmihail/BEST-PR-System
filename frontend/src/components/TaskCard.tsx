@@ -37,6 +37,16 @@ interface TaskCardProps {
 export default function TaskCard({ task }: TaskCardProps) {
   const parallax = useParallaxHover(8)
   const { theme } = useThemeStore()
+  const { user } = useAuthStore()
+  
+  // Получаем информацию о чате задачи
+  const { data: taskChat } = useQuery({
+    queryKey: ['task-chat', task.id],
+    queryFn: () => telegramChatsApi.getTaskChat(task.id),
+    enabled: !!user?.is_active,
+  })
+  
+  const isRegistered = !!user?.is_active
 
   return (
     <div

@@ -12,6 +12,7 @@ type SupportType = 'question' | 'suggestion' | null
 export default function Support() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
+  const { steps, isActive, completeTour, stopTour, startTour } = useTour()
   const [supportType, setSupportType] = useState<SupportType>(null)
   const [message, setMessage] = useState('')
   const [link, setLink] = useState('')

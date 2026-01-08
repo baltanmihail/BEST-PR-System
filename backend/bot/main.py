@@ -27,6 +27,38 @@ async def main():
     # Создаём бота и диспетчер
     # Используем простой способ создания бота без DefaultBotProperties
     bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+    
+    # Устанавливаем команды бота для меню
+    try:
+        from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeAllGroupChats
+        
+        # Команды для личного чата (по умолчанию)
+        private_commands = [
+            BotCommand(command="start", description="Авторизация и главное меню"),
+            BotCommand(command="register", description="Регистрация в системе"),
+            BotCommand(command="tasks", description="Список моих задач"),
+            BotCommand(command="stats", description="Моя статистика"),
+            BotCommand(command="leaderboard", description="Рейтинг участников"),
+            BotCommand(command="equipment", description="Мои заявки на оборудование"),
+            BotCommand(command="notifications", description="Уведомления"),
+            BotCommand(command="help", description="Справка"),
+        ]
+        
+        # Команды для групп (только /help)
+        group_commands = [
+            BotCommand(command="help", description="Справка по чату"),
+        ]
+        
+        # Устанавливаем команды для личного чата
+        await bot.set_my_commands(private_commands, scope=BotCommandScopeDefault())
+        logger.info("✅ Команды для личного чата установлены")
+        
+        # Устанавливаем команды для групп
+        await bot.set_my_commands(group_commands, scope=BotCommandScopeAllGroupChats())
+        logger.info("✅ Команды для групп установлены")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось установить команды бота: {e}")
+    
     dp = Dispatcher()
     
     # Регистрируем роутер

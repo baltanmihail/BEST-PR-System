@@ -25,6 +25,16 @@ export default function Home() {
   const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
   const isRegistered = user && user.is_active
   const isUnregistered = !user || !user.is_active
+  
+  // Хук для тура
+  const { steps, isActive, completeTour, stopTour } = useTour()
+  
+  // Получаем информацию об общем чате
+  const { data: generalChat } = useQuery({
+    queryKey: ['general-chat'],
+    queryFn: telegramChatsApi.getGeneralChat,
+    enabled: isRegistered,
+  })
 
   // Загружаем данные в зависимости от роли
   const { data: tasksData } = useQuery({

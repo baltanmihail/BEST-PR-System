@@ -21,7 +21,6 @@ type TourGuideProps = {
 
 export default function TourGuide({ steps, onComplete, onSkip, showSkip = true }: TourGuideProps) {
   const { theme } = useThemeStore()
-  const { user } = useAuthStore()
   const [currentStep, setCurrentStep] = useState(0)
   const [isVisible, setIsVisible] = useState(false)
   const overlayRef = useRef<HTMLDivElement>(null)

@@ -9,7 +9,7 @@
    - ✅ Управлять темами (`can_manage_topics`)
    - ✅ Добавлять участников
    - ✅ Приглашать пользователей по ссылке
-3. **Получи ID чата** через @userinfobot (формат: `-1001234567890`)
+3. **Получи ID чата** через @userinfobot (формат: `3545542173`)
 
 ### 2. Настройка Railway
 
@@ -25,7 +25,7 @@ DATABASE_URL=postgresql://...
 ENVIRONMENT=production
 TELEGRAM_BOT_TOKEN=ваш_токен_бота
 TELEGRAM_ADMIN_IDS=5079636941
-TELEGRAM_GENERAL_CHAT_ID=-1001234567890
+TELEGRAM_GENERAL_CHAT_ID=3545542173
 FRONTEND_URL=https://best-pr-system.up.railway.app
 ```
 
