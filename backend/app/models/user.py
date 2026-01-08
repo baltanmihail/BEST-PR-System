@@ -2,7 +2,7 @@
 Модель пользователя
 """
 from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator
-from sqlalchemy.orm import validates
+from sqlalchemy.orm import validates, relationship
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
@@ -87,6 +87,9 @@ class User(Base):
     user_agreement_accepted = Column(Boolean, nullable=False, default=False)
     agreement_version = Column(String, nullable=True)  # Версия соглашения
     agreement_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Связь с QR-сессиями
+    qr_sessions = relationship("QRSession", back_populates="user")
     
     @validates('role')
     def validate_role(self, key, value):

@@ -10,6 +10,7 @@ import Notifications from './pages/Notifications'
 import Activity from './pages/Activity'
 import Gallery from './pages/Gallery'
 import Register from './pages/Register'
+import Login from './pages/Login'
 import Equipment from './pages/Equipment'
 import Settings from './pages/Settings'
 
@@ -37,6 +38,7 @@ function App() {
             <Route path="/activity" element={<Activity />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login />} />
             <Route path="/equipment" element={<Equipment />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>

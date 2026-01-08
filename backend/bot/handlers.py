@@ -1309,6 +1309,204 @@ async def cmd_help(message: Message):
     await message.answer(help_text)
 
 
+@router.message(Command("scan"))
+async def cmd_scan(message: Message):
+    """Команда /scan - сканирование QR-кода для входа на сайт"""
+    await message.answer(
+        "📱 <b>Сканирование QR-кода</b>\n\n"
+        "Чтобы войти на сайт:\n"
+        "1. Откройте страницу входа на сайте\n"
+        "2. Нажмите на QR-код или скопируйте ссылку\n"
+        "3. Отправьте ссылку сюда в бот\n\n"
+        "Или просто отправьте ссылку вида:\n"
+        "<code>bestpr://auth?token=...</code>",
+        parse_mode="HTML"
+    )
+
+
+@router.message(F.text.startswith("bestpr://auth"))
+async def handle_qr_auth(message: Message, state: FSMContext):
+    """Обработка QR-кода авторизации"""
+    try:
+        user = message.from_user
+        text = message.text
+        
+        # Парсим токен из URL
+        # Формат: bestpr://auth?token=TOKEN
+        if "token=" not in text:
+            await message.answer(
+                "❌ Неверный формат QR-кода.\n\n"
+                "Пожалуйста, отсканируйте QR-код снова или используйте команду /scan для помощи."
+            )
+            return
+        
+        token = text.split("token=")[1].split("&")[0].strip()
+        
+        if not token:
+            await message.answer(
+                "❌ Не удалось извлечь токен из QR-кода.\n\n"
+                "Пожалуйста, отсканируйте QR-код снова."
+            )
+            return
+        
+        # Проверяем сессию через API (используем токен напрямую)
+        # Но сначала нужно получить session_id по токену или использовать токен
+        # Для упрощения используем токен как идентификатор
+        check_response = await call_api("GET", f"/auth/qr/status/{token}")
+        
+        if "error" in check_response:
+            await message.answer(
+                "❌ Не удалось проверить QR-код.\n\n"
+                "Возможно, сессия истекла. Попробуйте отсканировать QR-код снова на сайте."
+            )
+            return
+        
+        # Если сессия уже подтверждена
+        if check_response.get("status") == "confirmed":
+            await message.answer(
+                "✅ Этот QR-код уже использован.\n\n"
+                "Если вы хотите войти снова, откройте страницу входа на сайте и отсканируйте новый QR-код."
+            )
+            return
+        
+        # Если сессия истекла
+        if check_response.get("status") == "expired":
+            await message.answer(
+                "⏰ QR-код истёк.\n\n"
+                "Пожалуйста, откройте страницу входа на сайте и отсканируйте новый QR-код."
+            )
+            return
+        
+        # Если сессия в статусе pending, показываем подтверждение
+        if check_response.get("status") == "pending":
+            # Сохраняем токен в состояние
+            await state.update_data(qr_token=token)
+            
+            # Формируем данные пользователя
+            auth_data = {
+                "id": user.id,
+                "first_name": user.first_name or "User",
+                "auth_date": int(message.date.timestamp()),
+            }
+            
+            if user.last_name:
+                auth_data["last_name"] = user.last_name
+            if user.username:
+                auth_data["username"] = user.username
+            
+            # Генерируем hash
+            auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+            
+            # Сохраняем данные для подтверждения
+            await state.update_data(qr_auth_data=auth_data)
+            
+            # Показываем подтверждение
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Подтвердить вход", callback_data=f"qr_confirm_{token}"),
+                    InlineKeyboardButton(text="❌ Отменить", callback_data=f"qr_cancel_{token}"),
+                ]
+            ])
+            
+            await message.answer(
+                f"🔐 <b>Подтверждение входа на сайт</b>\n\n"
+                f"Вы хотите войти в аккаунт:\n"
+                f"👤 <b>{user.first_name or 'Пользователь'}</b>\n"
+                f"🆔 ID: <code>{user.id}</code>\n\n"
+                f"📍 <b>Устройство:</b> {message.from_user.language_code or 'Unknown'}\n"
+                f"🕐 <b>Время:</b> {message.date.strftime('%H:%M:%S')}\n\n"
+                f"⚠️ Если это не вы, нажмите «Отменить».\n\n"
+                f"Подтвердите вход:",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            await message.answer(
+                f"❌ Неизвестный статус QR-кода: {check_response.get('status')}\n\n"
+                "Попробуйте отсканировать QR-код снова."
+            )
+            
+    except Exception as e:
+        logger.error(f"Error handling QR auth: {e}")
+        await message.answer(
+            "❌ Произошла ошибка при обработке QR-кода.\n\n"
+            "Попробуйте позже или обратитесь к администратору."
+        )
+
+
+@router.callback_query(F.data.startswith("qr_confirm_"))
+async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение QR-кода авторизации"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        
+        # Извлекаем токен из callback_data
+        token = callback.data.replace("qr_confirm_", "")
+        
+        # Получаем данные из состояния
+        data = await state.get_data()
+        auth_data = data.get("qr_auth_data")
+        
+        if not auth_data:
+            await callback.message.answer(
+                "❌ Данные авторизации не найдены.\n\n"
+                "Пожалуйста, отсканируйте QR-код снова."
+            )
+            return
+        
+        # Отправляем подтверждение на API
+        confirm_data = {
+            "session_token": token,
+            "telegram_id": user.id,
+            "first_name": auth_data.get("first_name", user.first_name or "User"),
+            "last_name": auth_data.get("last_name"),
+            "username": auth_data.get("username")
+        }
+        
+        response = await call_api("POST", "/auth/qr/confirm", data=confirm_data)
+        
+        if "error" in response:
+            await callback.message.answer(
+                f"❌ Ошибка подтверждения: {response.get('error', 'Неизвестная ошибка')}\n\n"
+                "Попробуйте отсканировать QR-код снова."
+            )
+            return
+        
+        # Успешно подтверждено
+        await callback.message.edit_text(
+            "✅ <b>Вход подтверждён!</b>\n\n"
+            "Теперь вы можете использовать сайт.\n\n"
+            "🔔 Важные уведомления и изменения будут приходить сюда в бот.",
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(qr_token=None, qr_auth_data=None)
+        
+    except Exception as e:
+        logger.error(f"Error confirming QR auth: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("qr_cancel_"))
+async def callback_qr_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена QR-кода авторизации"""
+    try:
+        await callback.answer()
+        await callback.message.edit_text(
+            "❌ <b>Вход отменён</b>\n\n"
+            "Если вы хотите войти, откройте страницу входа на сайте и отсканируйте QR-код снова.",
+            parse_mode="HTML"
+        )
+        
+        # Очищаем состояние
+        await state.update_data(qr_token=None, qr_auth_data=None)
+        
+    except Exception as e:
+        logger.error(f"Error cancelling QR auth: {e}")
+
+
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
