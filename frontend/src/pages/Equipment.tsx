@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, Edit, Trash2, Settings, Eye } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, Edit, Trash2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate, type EquipmentUpdate } from '../services/equipment'
+import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
 import { UserRole } from '../types/user'
 
 export default function Equipment() {
@@ -132,7 +132,7 @@ export default function Equipment() {
         return <Camera className="h-6 w-6" />
       case 'audio':
         return <Mic className="h-6 w-6" />
-      case 'video':
+      case 'lighting':
         return <Video className="h-6 w-6" />
       default:
         return <Camera className="h-6 w-6" />

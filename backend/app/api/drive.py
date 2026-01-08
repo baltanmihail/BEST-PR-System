@@ -10,7 +10,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from app.database import get_db
-from app.utils.auth import get_current_user
+from app.utils.permissions import get_current_user
 from app.models.user import User, UserRole
 from app.services.google_service import GoogleService
 from app.services.drive_structure import DriveStructureService

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera, Settings, Users, Shield, Calendar } from 'lucide-react'
+import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera, Settings, Shield, Calendar } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 import { UserRole } from '../../types/user'

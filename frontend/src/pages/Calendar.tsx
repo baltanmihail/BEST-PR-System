@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, CalendarDays, Grid3x3, BarChart3, List, ArrowLeft, ArrowRight, Sync, Loader2 } from 'lucide-react'
+import { Calendar as CalendarIcon, CalendarDays, Grid3x3, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
@@ -136,7 +136,7 @@ export default function Calendar() {
             {syncToSheetsMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Sync className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
             )}
             <span>Синхронизировать с Sheets</span>
           </button>
@@ -265,8 +265,6 @@ export default function Calendar() {
           ) : (
             <MonthWeekView
               calendarData={calendarData}
-              view={view}
-              currentDate={currentDate}
               theme={theme}
             />
           )}
@@ -418,13 +416,9 @@ function GanttView({ tasks, theme }: { tasks: any[]; theme: string }) {
 // Компонент для представления Месяц/Неделя
 function MonthWeekView({
   calendarData,
-  view,
-  currentDate,
   theme,
 }: {
   calendarData: any
-  view: CalendarView
-  currentDate: Date
   theme: string
 }) {
   // Собираем все задачи из days

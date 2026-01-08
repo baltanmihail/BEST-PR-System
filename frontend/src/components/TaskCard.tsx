@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, HelpCircle, Image as ImageIcon, Camera, X } from 'lucide-react'
+import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, HelpCircle, Image as ImageIcon, Camera } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { Task } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
@@ -56,7 +56,7 @@ export default function TaskCard({ task }: TaskCardProps) {
     queryFn: async () => {
       if (!task.example_project_ids || task.example_project_ids.length === 0) return []
       const results = await Promise.all(
-        task.example_project_ids.map((id) => galleryApi.getGallery({ task_id: id, limit: 1 }))
+        task.example_project_ids.map((id) => galleryApi.getGallery({ limit: 1 }))
       )
       return results.flatMap((r) => r.items)
     },

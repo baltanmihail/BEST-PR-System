@@ -44,6 +44,8 @@ export const galleryApi = {
     skip?: number
     limit?: number
     task_type?: string
+    category?: 'photo' | 'video' | 'final' | 'wip'
+    task_id?: string
   }): Promise<GalleryResponse> => {
     const response = await api.get<GalleryResponse>('/gallery', { params })
     return response.data

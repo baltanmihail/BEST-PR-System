@@ -26,12 +26,6 @@ export default function Settings() {
     portfolio: user?.portfolio || [],
   })
   const [newSkill, setNewSkill] = useState('')
-  const [newPortfolioItem, setNewPortfolioItem] = useState({
-    title: '',
-    description: '',
-    url: '',
-    type: 'link' as 'photo' | 'video' | 'link',
-  })
   
   const isVP4PR = user?.role === 'vp4pr'
   

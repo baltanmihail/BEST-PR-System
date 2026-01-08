@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Search, Shield, Ban, Unlock, TrendingUp, Download, Eye, Edit, Loader2, AlertCircle } from 'lucide-react'
+import { Users, Search, Shield, Ban, Unlock, TrendingUp, Download, Eye, Loader2, AlertCircle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'

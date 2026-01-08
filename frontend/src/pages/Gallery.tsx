@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Image, Loader2, Film, FileText, Filter, Eye, Heart, Tag, User, Calendar, CheckCircle2, Clock, Globe } from 'lucide-react'
+import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar } from 'lucide-react'
 import { galleryApi, type GalleryItem } from '../services/gallery'
 import { useThemeStore } from '../store/themeStore'
 
@@ -14,7 +14,7 @@ export default function Gallery() {
     queryFn: () =>
       galleryApi.getGallery({
         limit: 50,
-        category: selectedCategory !== 'all' ? (selectedCategory as any) : undefined,
+        category: selectedCategory !== 'all' ? (selectedCategory as 'photo' | 'video' | 'final' | 'wip') : undefined,
       }),
   })
 
