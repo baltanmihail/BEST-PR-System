@@ -12,6 +12,9 @@ import io
 import base64
 import logging
 
+# Создаём logger перед использованием
+logger = logging.getLogger(__name__)
+
 # Импорт qrcode с обработкой ошибок
 try:
     import qrcode
@@ -20,16 +23,14 @@ try:
     logger.info("✅ QR code module loaded successfully")
 except ImportError as e:
     QRCODE_AVAILABLE = False
-    logging.error(f"❌ QR code module not available: {e}")
-    logging.error("Please ensure qrcode and Pillow are installed with system dependencies")
+    logger.error(f"❌ QR code module not available: {e}")
+    logger.error("Please ensure qrcode and Pillow are installed with system dependencies")
 
 from app.database import get_db
 from app.models.qr_session import QRSession
 from app.models.user import User
 from app.utils.auth import create_access_token
 from app.config import settings
-
-logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/qr", tags=["qr-auth"])
 
 
