@@ -37,8 +37,9 @@ python-dotenv==1.0.0
 httpx==0.25.2
 aiofiles==23.2.1
 # QR code generation (requires system libraries: libjpeg, zlib, libtiff, freetype, etc.)
-qrcode[pil]==7.4.2
-Pillow==10.1.0
+# Pillow и qrcode устанавливаются отдельно в Dockerfile для правильной сборки
+# Pillow==10.1.0
+# qrcode==7.4.2
 
 # Date/Time
 python-dateutil==2.8.2

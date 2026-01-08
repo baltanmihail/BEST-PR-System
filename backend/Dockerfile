@@ -20,14 +20,19 @@ WORKDIR /app
 COPY requirements.txt .
 
 # Установка Python зависимостей
+# Сначала устанавливаем Pillow (требует системные библиотеки, которые уже установлены)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir Pillow==10.1.0 && \
+    pip install --no-cache-dir qrcode==7.4.2
+
+# Установка остальных зависимостей
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Проверка установки qrcode (отдельным шагом для лучшей диагностики)
+RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && pip list | grep -E "(qrcode|Pillow)" && exit 1)
 
 # Копирование остальных файлов
 COPY . .
-
-# Проверка установки qrcode
-RUN python -c "import qrcode; from PIL import Image; print('✅ QR code dependencies OK')" || (echo "❌ QR code dependencies NOT installed" && exit 1)
 
 # Команда запуска
 CMD ["python", "run_with_bot.py"]
