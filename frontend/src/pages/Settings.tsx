@@ -1,22 +1,63 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings as SettingsIcon, Trash2, AlertTriangle, LogOut, User, Shield, FileText, ArrowLeft, Search, Users } from 'lucide-react'
+import { Settings as SettingsIcon, Trash2, AlertTriangle, LogOut, User, Shield, FileText, ArrowLeft, Search, Users, Edit, Save, X, Plus, Camera, Mail, Phone, MessageCircle, Globe, Instagram } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import api from '../services/api'
+import { usersApi, type ProfileUpdate } from '../services/users'
 
 export default function Settings() {
   const { theme } = useThemeStore()
-  const { user, logout } = useAuthStore()
+  const { user, logout, fetchUser } = useAuthStore()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [userSearch, setUserSearch] = useState('')
   const [selectedUserForDeletion, setSelectedUserForDeletion] = useState<string | null>(null)
+  const [isEditingProfile, setIsEditingProfile] = useState(false)
+  const [profileData, setProfileData] = useState<ProfileUpdate>({
+    full_name: user?.full_name || '',
+    bio: user?.bio || '',
+    contacts: user?.contacts || {},
+    skills: user?.skills || [],
+    portfolio: user?.portfolio || [],
+  })
+  const [newSkill, setNewSkill] = useState('')
+  const [newPortfolioItem, setNewPortfolioItem] = useState({
+    title: '',
+    description: '',
+    url: '',
+    type: 'link' as 'photo' | 'video' | 'link',
+  })
   
   const isVP4PR = user?.role === 'vp4pr'
+  
+  // Загружаем полный профиль
+  const { data: fullProfile } = useQuery({
+    queryKey: ['user', 'profile', user?.id],
+    queryFn: () => usersApi.getMyProfile(),
+    enabled: !!user,
+  })
+
+  const updateProfileMutation = useMutation({
+    mutationFn: (data: ProfileUpdate) => usersApi.updateProfile(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', 'profile'] })
+      fetchUser()
+      setIsEditingProfile(false)
+    },
+  })
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: (file: File) => usersApi.uploadPhoto(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user', 'profile'] })
+      fetchUser()
+    },
+  })
   
   // Запрос списка пользователей для VP4PR
   const { data: usersData } = useQuery({
@@ -81,21 +122,332 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Информация о пользователе */}
+      {/* Редактирование профиля */}
       <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6 mb-6`}>
-        <div>
-          <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
-            Информация об аккаунте
+        <div className="flex items-center justify-between mb-4">
+          <h2 className={`text-xl font-semibold text-white text-readable ${theme}`}>
+            Мой профиль
           </h2>
+          {!isEditingProfile && (
+            <button
+              onClick={() => {
+                setProfileData({
+                  full_name: fullProfile?.full_name || user?.full_name || '',
+                  bio: fullProfile?.bio || '',
+                  contacts: fullProfile?.contacts || {},
+                  skills: fullProfile?.skills || [],
+                  portfolio: fullProfile?.portfolio || [],
+                })
+                setIsEditingProfile(true)
+              }}
+              className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
+            >
+              <Edit className="h-4 w-4" />
+              <span>Редактировать</span>
+            </button>
+          )}
+        </div>
+
+        {isEditingProfile ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              updateProfileMutation.mutate(profileData)
+            }}
+            className="space-y-6"
+          >
+            {/* Фото профиля */}
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Фото профиля
+              </label>
+              <div className="flex items-center space-x-4">
+                {fullProfile?.avatar_url && (
+                  <img
+                    src={fullProfile.avatar_url}
+                    alt="Avatar"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-best-primary"
+                  />
+                )}
+                <label className="flex items-center space-x-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all cursor-pointer">
+                  <Camera className="h-4 w-4" />
+                  <span>Загрузить фото</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        uploadPhotoMutation.mutate(file)
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Имя */}
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Имя *
+              </label>
+              <input
+                type="text"
+                value={profileData.full_name}
+                onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
+                required
+                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              />
+            </div>
+
+            {/* Био */}
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                О себе
+              </label>
+              <textarea
+                value={profileData.bio || ''}
+                onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
+                rows={4}
+                placeholder="Расскажите о себе..."
+                className={`w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-none text-readable ${theme}`}
+              />
+            </div>
+
+            {/* Контакты */}
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Контакты
+              </label>
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Mail className="h-4 w-4 text-white/60" />
+                  <input
+                    type="email"
+                    value={profileData.contacts?.email || ''}
+                    onChange={(e) => setProfileData({
+                      ...profileData,
+                      contacts: { ...profileData.contacts, email: e.target.value }
+                    })}
+                    placeholder="Email"
+                    className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Phone className="h-4 w-4 text-white/60" />
+                  <input
+                    type="tel"
+                    value={profileData.contacts?.phone || ''}
+                    onChange={(e) => setProfileData({
+                      ...profileData,
+                      contacts: { ...profileData.contacts, phone: e.target.value }
+                    })}
+                    placeholder="Телефон"
+                    className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <MessageCircle className="h-4 w-4 text-white/60" />
+                  <input
+                    type="text"
+                    value={profileData.contacts?.telegram || ''}
+                    onChange={(e) => setProfileData({
+                      ...profileData,
+                      contacts: { ...profileData.contacts, telegram: e.target.value }
+                    })}
+                    placeholder="@telegram"
+                    className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Globe className="h-4 w-4 text-white/60" />
+                  <input
+                    type="text"
+                    value={profileData.contacts?.vk || ''}
+                    onChange={(e) => setProfileData({
+                      ...profileData,
+                      contacts: { ...profileData.contacts, vk: e.target.value }
+                    })}
+                    placeholder="VK"
+                    className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Instagram className="h-4 w-4 text-white/60" />
+                  <input
+                    type="text"
+                    value={profileData.contacts?.instagram || ''}
+                    onChange={(e) => setProfileData({
+                      ...profileData,
+                      contacts: { ...profileData.contacts, instagram: e.target.value }
+                    })}
+                    placeholder="@instagram"
+                    className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Навыки */}
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Навыки
+              </label>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {profileData.skills?.map((skill, index) => (
+                  <span
+                    key={index}
+                    className="px-3 py-1 bg-best-primary/20 text-best-primary rounded-full text-sm flex items-center space-x-2"
+                  >
+                    <span>{skill}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newSkills = profileData.skills?.filter((_, i) => i !== index) || []
+                        setProfileData({ ...profileData, skills: newSkills })
+                      }}
+                      className="text-best-primary hover:text-red-400"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex space-x-2">
+                <input
+                  type="text"
+                  value={newSkill}
+                  onChange={(e) => setNewSkill(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      if (newSkill.trim()) {
+                        setProfileData({
+                          ...profileData,
+                          skills: [...(profileData.skills || []), newSkill.trim()]
+                        })
+                        setNewSkill('')
+                      }
+                    }
+                  }}
+                  placeholder="Добавить навык"
+                  className={`flex-1 bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newSkill.trim()) {
+                      setProfileData({
+                        ...profileData,
+                        skills: [...(profileData.skills || []), newSkill.trim()]
+                      })
+                      setNewSkill('')
+                    }
+                  }}
+                  className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Кнопки */}
+            <div className="flex space-x-3">
+              <button
+                type="submit"
+                disabled={updateProfileMutation.isPending}
+                className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>{updateProfileMutation.isPending ? 'Сохранение...' : 'Сохранить'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsEditingProfile(false)
+                  setProfileData({
+                    full_name: fullProfile?.full_name || user?.full_name || '',
+                    bio: fullProfile?.bio || '',
+                    contacts: fullProfile?.contacts || {},
+                    skills: fullProfile?.skills || [],
+                    portfolio: fullProfile?.portfolio || [],
+                  })
+                }}
+                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            {/* Информация о пользователе */}
+            <div>
+              <h3 className={`text-lg font-semibold text-white mb-4 text-readable ${theme}`}>
+                Информация об аккаунте
+              </h3>
           
           <div className="space-y-4">
+            {fullProfile?.avatar_url && (
+              <div className="flex items-center space-x-3 mb-4">
+                <img
+                  src={fullProfile.avatar_url}
+                  alt="Avatar"
+                  className="w-16 h-16 rounded-full object-cover border-2 border-best-primary"
+                />
+              </div>
+            )}
             <div className="flex items-center space-x-3">
               <User className="h-5 w-5 text-best-primary" />
               <div>
                 <p className="text-white/60 text-sm">Имя</p>
-                <p className={`text-white text-readable ${theme}`}>{user.full_name}</p>
+                <p className={`text-white text-readable ${theme}`}>{fullProfile?.full_name || user.full_name}</p>
               </div>
             </div>
+            {fullProfile?.bio && (
+              <div>
+                <p className="text-white/60 text-sm mb-1">О себе</p>
+                <p className={`text-white text-readable ${theme}`}>{fullProfile.bio}</p>
+              </div>
+            )}
+            {(fullProfile?.contacts?.email || fullProfile?.contacts?.phone || fullProfile?.contacts?.telegram || fullProfile?.contacts?.vk || fullProfile?.contacts?.instagram) && (
+              <div>
+                <p className="text-white/60 text-sm mb-2">Контакты</p>
+                <div className="space-y-1">
+                  {fullProfile.contacts?.email && (
+                    <p className={`text-white text-readable ${theme}`}>📧 {fullProfile.contacts.email}</p>
+                  )}
+                  {fullProfile.contacts?.phone && (
+                    <p className={`text-white text-readable ${theme}`}>📱 {fullProfile.contacts.phone}</p>
+                  )}
+                  {fullProfile.contacts?.telegram && (
+                    <p className={`text-white text-readable ${theme}`}>💬 {fullProfile.contacts.telegram}</p>
+                  )}
+                  {fullProfile.contacts?.vk && (
+                    <p className={`text-white text-readable ${theme}`}>🌐 {fullProfile.contacts.vk}</p>
+                  )}
+                  {fullProfile.contacts?.instagram && (
+                    <p className={`text-white text-readable ${theme}`}>📷 {fullProfile.contacts.instagram}</p>
+                  )}
+                </div>
+              </div>
+            )}
+            {fullProfile?.skills && fullProfile.skills.length > 0 && (
+              <div>
+                <p className="text-white/60 text-sm mb-2">Навыки</p>
+                <div className="flex flex-wrap gap-2">
+                  {fullProfile.skills.map((skill, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-best-primary/20 text-best-primary rounded-full text-sm"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {user.username && (
               <div className="flex items-center space-x-3">

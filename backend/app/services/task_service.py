@@ -24,14 +24,25 @@ class TaskService:
         task_type: Optional[TaskType] = None,
         status: Optional[TaskStatus] = None,
         priority: Optional[TaskPriority] = None,
-        created_by: Optional[UUID] = None
+        created_by: Optional[UUID] = None,
+        sort_by: Optional[str] = "relevance",  # "relevance", "priority", "due_date", "created_at", "manual"
+        view_mode: str = "normal"  # "compact", "normal", "detailed"
     ) -> tuple[List[Task], int]:
         """
-        Получить список задач с фильтрацией и пагинацией
+        Получить список задач с фильтрацией, сортировкой и пагинацией
+        
+        Сортировка:
+        - "relevance": по важности (сначала ручной порядок, потом приоритет, потом горящие дедлайны)
+        - "priority": по приоритету (critical > high > medium > low)
+        - "due_date": по дедлайну (горящие дедлайны сверху, затем по дате)
+        - "created_at": по дате создания (новые сверху)
+        - "manual": только ручной порядок (sort_order)
         
         Returns:
             tuple: (список задач, общее количество)
         """
+        from datetime import datetime, timezone
+        
         # Базовый запрос
         query = select(Task)
         count_query = select(func.count(Task.id))
@@ -56,14 +67,115 @@ class TaskService:
         total_result = await db.execute(count_query)
         total = total_result.scalar_one()
         
-        # Применяем пагинацию и сортировку
-        query = query.order_by(Task.created_at.desc()).offset(skip).limit(limit)
+        # Применяем сортировку
+        if sort_by == "manual":
+            # Только ручной порядок (sort_order не NULL), затем по дате создания
+            query = query.order_by(
+                Task.sort_order.asc().nulls_last(),
+                Task.created_at.desc()
+            )
+        elif sort_by == "priority":
+            # По приоритету: critical > high > medium > low
+            from sqlalchemy import case
+            priority_order = case(
+                (Task.priority == TaskPriority.CRITICAL, 1),
+                (Task.priority == TaskPriority.HIGH, 2),
+                (Task.priority == TaskPriority.MEDIUM, 3),
+                (Task.priority == TaskPriority.LOW, 4),
+                else_=5
+            )
+            query = query.order_by(
+                priority_order.asc(),
+                Task.created_at.desc()
+            )
+        elif sort_by == "due_date":
+            # По дедлайну: сначала задачи с дедлайном (горящие сверху), затем без дедлайна
+            # Горящие дедлайны = дедлайн в течение 3 дней
+            now = datetime.now(timezone.utc)
+            hot_deadline = now + timedelta(days=3)
+            
+            from sqlalchemy import case
+            due_date_order = case(
+                (
+                    and_(
+                        Task.due_date.isnot(None),
+                        Task.due_date <= hot_deadline,
+                        Task.due_date >= now
+                    ),
+                    1  # Горящие дедлайны (в течение 3 дней)
+                ),
+                (
+                    and_(
+                        Task.due_date.isnot(None),
+                        Task.due_date > hot_deadline
+                    ),
+                    2  # Обычные дедлайны (больше 3 дней)
+                ),
+                (
+                    Task.due_date.isnot(None),
+                    3  # Просроченные дедлайны
+                ),
+                else_=4  # Нет дедлайна
+            )
+            query = query.order_by(
+                due_date_order.asc(),
+                Task.due_date.asc().nulls_last(),
+                Task.created_at.desc()
+            )
+        elif sort_by == "created_at":
+            # По дате создания (новые сверху)
+            query = query.order_by(Task.created_at.desc())
+        else:  # "relevance" - по умолчанию
+            # Сортировка по важности:
+            # 1. Ручной порядок (sort_order не NULL) - меньше число = выше
+            # 2. Приоритет (critical > high > medium > low)
+            # 3. Горящие дедлайны (в течение 3 дней)
+            # 4. Дата создания (новые сверху)
+            from sqlalchemy import case
+            now = datetime.now(timezone.utc)
+            hot_deadline = now + timedelta(days=3)
+            
+            priority_order = case(
+                (Task.priority == TaskPriority.CRITICAL, 1),
+                (Task.priority == TaskPriority.HIGH, 2),
+                (Task.priority == TaskPriority.MEDIUM, 3),
+                (Task.priority == TaskPriority.LOW, 4),
+                else_=5
+            )
+            
+            # Горящий дедлайн = приоритет выше
+            hot_deadline_boost = case(
+                (
+                    and_(
+                        Task.due_date.isnot(None),
+                        Task.due_date <= hot_deadline,
+                        Task.due_date >= now
+                    ),
+                    0  # Горящие дедлайны получают +0 (выше в сортировке)
+                ),
+                else_=1  # Остальные получают +1
+            )
+            
+            query = query.order_by(
+                Task.sort_order.asc().nulls_last(),  # Ручной порядок (меньше = выше)
+                priority_order.asc(),  # Приоритет
+                hot_deadline_boost.asc(),  # Горящие дедлайны
+                Task.due_date.asc().nulls_last(),  # Дедлайн (ближайшие сверху)
+                Task.created_at.desc()  # Новые задачи сверху
+            )
         
-        # Загружаем связанные данные
-        query = query.options(
-            selectinload(Task.stages),
-            selectinload(Task.assignments).selectinload(TaskAssignment.user)
-        )
+        # Применяем пагинацию
+        query = query.offset(skip).limit(limit)
+        
+        # Загружаем связанные данные (опционально, в зависимости от view_mode)
+        if view_mode in ["normal", "detailed"]:
+            query = query.options(
+                selectinload(Task.stages),
+                selectinload(Task.assignments).selectinload(TaskAssignment.user)
+            )
+        elif view_mode == "compact":
+            # В упрощённом виде не загружаем связанные данные для производительности
+            pass
         
         result = await db.execute(query)
         tasks = result.scalars().all()
@@ -75,7 +187,9 @@ class TaskService:
         db: AsyncSession,
         task_id: UUID
     ) -> Optional[Task]:
-        """Получить задачу по ID"""
+        """Получить задачу по ID с загруженными связанными данными"""
+        from app.models.file import File
+        
         query = select(Task).where(Task.id == task_id)
         query = query.options(
             selectinload(Task.stages),
@@ -83,7 +197,16 @@ class TaskService:
         )
         
         result = await db.execute(query)
-        return result.scalar_one_or_none()
+        task = result.scalar_one_or_none()
+        
+        if task:
+            # Загружаем файлы, связанные с задачей (материалы задачи)
+            files_query = select(File).where(File.task_id == task_id).order_by(File.created_at.desc())
+            files_result = await db.execute(files_query)
+            # Устанавливаем файлы как атрибут задачи (для использования в API)
+            task.files = list(files_result.scalars().all())
+        
+        return task
     
     @staticmethod
     async def create_task(
@@ -91,16 +214,58 @@ class TaskService:
         task_data: TaskCreate,
         created_by: UUID
     ) -> Task:
-        """Создать новую задачу"""
+        """
+        Создать новую задачу
+        
+        Автоматически создаёт структуру папок в Google Drive для задачи:
+        - Tasks/{task_id}_{task_name}/
+          - materials/
+          - final/
+          - drafts/
+        """
+        # Извлекаем equipment_available из данных
+        task_dict = task_data.model_dump()
+        equipment_available = task_dict.pop('equipment_available', False)
+        
         task = Task(
-            **task_data.model_dump(),
+            **task_dict,
             created_by=created_by,
-            status=TaskStatus.DRAFT  # Новые задачи создаются как черновики
+            status=TaskStatus.DRAFT,  # Новые задачи создаются как черновики
+            equipment_available=equipment_available
         )
         
         db.add(task)
         await db.commit()
         await db.refresh(task)
+        
+        # Создаём структуру папок в Google Drive (асинхронно, в фоне)
+        # Не ждём завершения - это не критично для создания задачи
+        try:
+            from app.services.drive_structure import DriveStructureService
+            import asyncio
+            
+            # Создаём папки в фоне через executor (синхронная операция)
+            def create_drive_folders():
+                try:
+                    drive_structure = DriveStructureService()
+                    folders = drive_structure.create_task_folder(
+                        task_id=str(task.id),
+                        task_name=task.title
+                    )
+                    logger.info(f"✅ Создана структура папок Google Drive для задачи {task.id}: {folders}")
+                    return folders
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось создать папки Google Drive для задачи {task.id}: {e}")
+                    return None
+            
+            # Запускаем в фоне через executor (не блокируем ответ)
+            loop = asyncio.get_event_loop()
+            loop.run_in_executor(None, create_drive_folders)
+            
+        except Exception as e:
+            # Логируем, но не прерываем создание задачи
+            logger.warning(f"⚠️ Ошибка создания папок Google Drive для задачи {task.id}: {e}")
+            logger.warning("Задача создана, но папки Drive не созданы. Их можно создать позже.")
         
         return task
     
@@ -127,6 +292,12 @@ class TaskService:
         
         # Обновляем поля
         update_data = task_data.model_dump(exclude_unset=True)
+        
+        # Проверка прав на изменение sort_order (только VP4PR)
+        if "sort_order" in update_data and current_user.role != UserRole.VP4PR:
+            # Удаляем sort_order из данных, если пользователь не VP4PR
+            update_data.pop("sort_order", None)
+        
         for field, value in update_data.items():
             setattr(task, field, value)
         

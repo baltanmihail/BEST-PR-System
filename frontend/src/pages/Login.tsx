@@ -129,6 +129,27 @@ export default function Login() {
     },
   })
 
+  // Вычисляем статусы после получения данных
+  const isExpired = statusData?.status === 'expired'
+  const isConfirmed = statusData?.status === 'confirmed'
+  const isPending = (statusData?.status === 'pending' || !statusData) && !isExpired && !isConfirmed
+
+  // Автообновление QR-кода каждые 60 секунд, если он в статусе pending
+  useEffect(() => {
+    if (!sessionToken || isConfirmed || isExpired) return
+    
+    const intervalId = setInterval(() => {
+      // Обновляем QR-код каждые 60 секунд, если он ещё не подтверждён
+      if (statusData?.status === 'pending') {
+        console.log('Auto-refreshing QR code...')
+        setSessionToken(null)
+        refetchQR()
+      }
+    }, 60000) // 60 секунд
+
+    return () => clearInterval(intervalId)
+  }, [sessionToken, isConfirmed, isExpired, statusData?.status, refetchQR])
+
   // Обработка подтверждения
   useEffect(() => {
     if (statusData?.status === 'confirmed' && statusData.access_token && statusData.user) {
@@ -145,10 +166,6 @@ export default function Login() {
     setSessionToken(null)
     refetchQR()
   }
-
-  const isExpired = statusData?.status === 'expired'
-  const isConfirmed = statusData?.status === 'confirmed'
-  const isPending = (statusData?.status === 'pending' || !statusData) && !isExpired && !isConfirmed
 
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>

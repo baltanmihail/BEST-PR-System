@@ -1,11 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
-import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera, Settings } from 'lucide-react'
+import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, Camera, Settings, Users, Shield, Calendar } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
+import { UserRole } from '../../types/user'
 
 const navigation = [
   { name: 'Главная', href: '/', icon: Home },
   { name: 'Задачи', href: '/tasks', icon: CheckSquare },
+  { name: 'Календарь', href: '/calendar', icon: Calendar },
   { name: 'Рейтинг', href: '/leaderboard', icon: Trophy },
   { name: 'Статистика', href: '/stats', icon: Star },
   { name: 'Оборудование', href: '/equipment', icon: Camera, requiresAuth: true },
@@ -14,6 +16,7 @@ const navigation = [
   { name: 'Уведомления', href: '/notifications', icon: Bell, requiresAuth: true },
   { name: 'Поддержка', href: '/support', icon: MessageSquare },
   { name: 'Настройки', href: '/settings', icon: Settings, requiresAuth: true },
+  { name: 'Мониторинг', href: '/users', icon: Shield, requiresCoordinator: true },
 ]
 
 export default function Sidebar() {
@@ -21,10 +24,23 @@ export default function Sidebar() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const isRegistered = user?.is_active || false
+  
+  const isCoordinator = user && (
+    user.role === UserRole.COORDINATOR_SMM ||
+    user.role === UserRole.COORDINATOR_DESIGN ||
+    user.role === UserRole.COORDINATOR_CHANNEL ||
+    user.role === UserRole.COORDINATOR_PRFR ||
+    user.role === UserRole.VP4PR
+  )
 
-  // Фильтруем навигацию для незарегистрированных пользователей
+  // Фильтруем навигацию для незарегистрированных пользователей и координаторов
   const filteredNavigation = navigation.filter(
-    item => !item.requiresAuth || isRegistered
+    item => {
+      if (item.requiresCoordinator) {
+        return isCoordinator
+      }
+      return !item.requiresAuth || isRegistered
+    }
   )
 
   return (

@@ -3,7 +3,7 @@
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from uuid import UUID
 from datetime import datetime, timezone
 
@@ -108,5 +108,100 @@ class ActivityService:
                 "task_title": task_title,
                 "task_type": task_type,
                 "message": f"Создана новая задача '{task_title}'"
+            }
+        )
+    
+    @staticmethod
+    async def log_points_adjustment(
+        db: AsyncSession,
+        user_id: UUID,
+        points_delta: int,
+        reason: str,
+        adjusted_by: UUID
+    ):
+        """Записать изменение баллов пользователя"""
+        await ActivityService.log_activity(
+            db=db,
+            action="points_adjusted",
+            user_id=user_id,
+            details={
+                "points_delta": points_delta,
+                "reason": reason,
+                "adjusted_by": str(adjusted_by),
+                "message": f"Баллы изменены на {points_delta} ({reason})"
+            }
+        )
+    
+    @staticmethod
+    async def log_profile_updated(
+        db: AsyncSession,
+        user_id: UUID,
+        updated_fields: List[str]
+    ):
+        """Записать обновление профиля"""
+        await ActivityService.log_activity(
+            db=db,
+            action="profile_updated",
+            user_id=user_id,
+            details={
+                "updated_fields": updated_fields,
+                "message": f"Обновлены поля профиля: {', '.join(updated_fields)}"
+            }
+        )
+    
+    @staticmethod
+    async def log_user_blocked(
+        db: AsyncSession,
+        user_id: UUID,
+        blocked_by: UUID,
+        reason: Optional[str] = None
+    ):
+        """Записать блокировку пользователя"""
+        await ActivityService.log_activity(
+            db=db,
+            action="user_blocked",
+            user_id=user_id,
+            details={
+                "blocked_by": str(blocked_by),
+                "reason": reason,
+                "message": f"Пользователь заблокирован ({reason or 'без указания причины'})"
+            }
+        )
+    
+    @staticmethod
+    async def log_user_unblocked(
+        db: AsyncSession,
+        user_id: UUID,
+        unblocked_by: UUID
+    ):
+        """Записать разблокировку пользователя"""
+        await ActivityService.log_activity(
+            db=db,
+            action="user_unblocked",
+            user_id=user_id,
+            details={
+                "unblocked_by": str(unblocked_by),
+                "message": "Пользователь разблокирован"
+            }
+        )
+    
+    @staticmethod
+    async def log_role_changed(
+        db: AsyncSession,
+        user_id: UUID,
+        old_role: str,
+        new_role: str,
+        changed_by: UUID
+    ):
+        """Записать изменение роли пользователя"""
+        await ActivityService.log_activity(
+            db=db,
+            action="role_changed",
+            user_id=user_id,
+            details={
+                "old_role": old_role,
+                "new_role": new_role,
+                "changed_by": str(changed_by),
+                "message": f"Роль изменена с '{old_role}' на '{new_role}'"
             }
         )

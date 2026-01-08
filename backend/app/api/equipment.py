@@ -50,6 +50,28 @@ async def get_equipment(
     }
 
 
+@router.get("/{equipment_id}", response_model=EquipmentResponse)
+async def get_equipment_by_id(
+    equipment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить оборудование по ID
+    
+    Доступно всем авторизованным пользователям
+    """
+    equipment = await EquipmentService.get_equipment_by_id(db, equipment_id)
+    
+    if not equipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Equipment not found"
+        )
+    
+    return EquipmentResponse.model_validate(equipment)
+
+
 @router.get("/available", response_model=List[EquipmentResponse])
 async def get_available_equipment(
     start_date: date = Query(..., description="Дата начала"),
@@ -60,6 +82,9 @@ async def get_available_equipment(
 ):
     """
     Получить доступное оборудование на указанные даты
+    
+    Учитывает количество экземпляров: если оборудование имеет quantity > 1,
+    показывает его только если есть свободные экземпляры.
     
     Доступно всем авторизованным пользователям
     """
@@ -91,6 +116,36 @@ async def get_my_requests(
     """
     requests = await EquipmentService.get_user_requests(db, current_user.id)
     return [EquipmentRequestResponse.model_validate(req) for req in requests]
+
+
+@router.get("/requests/all", response_model=dict)
+async def get_all_requests(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=100),
+    status: Optional[EquipmentRequestStatus] = Query(None, description="Фильтр по статусу"),
+    user_id: Optional[UUID] = Query(None, description="Фильтр по пользователю"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Получить все заявки на оборудование (для координаторов)
+    
+    Доступно только координаторам и VP4PR
+    """
+    requests, total = await EquipmentService.get_all_requests(
+        db=db,
+        skip=skip,
+        limit=limit,
+        status=status,
+        user_id=user_id
+    )
+    
+    return {
+        "items": [EquipmentRequestResponse.model_validate(req) for req in requests],
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 
 @router.post("/requests", response_model=EquipmentRequestResponse, status_code=status.HTTP_201_CREATED)
@@ -219,6 +274,133 @@ async def reject_equipment_request(
                 detail="Request not found"
             )
         return EquipmentRequestResponse.model_validate(request)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("", response_model=EquipmentResponse, status_code=status.HTTP_201_CREATED)
+async def create_equipment(
+    equipment_data: EquipmentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Создать новое оборудование
+    
+    Доступно только координаторам и VP4PR
+    """
+    from app.models.equipment import EquipmentCategory
+    
+    # Конвертируем строку категории в enum, если нужно
+    category = equipment_data.category
+    if isinstance(category, str):
+        try:
+            category = EquipmentCategory(category)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid category. Allowed values: {[c.value for c in EquipmentCategory]}"
+            )
+    
+    try:
+        equipment = await EquipmentService.create_equipment(
+            db=db,
+            name=equipment_data.name,
+            category=category,
+            quantity=equipment_data.quantity,
+            specs=equipment_data.specs
+        )
+        return EquipmentResponse.model_validate(equipment)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.put("/{equipment_id}", response_model=EquipmentResponse)
+async def update_equipment(
+    equipment_id: UUID,
+    equipment_data: EquipmentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Обновить оборудование
+    
+    Доступно только координаторам и VP4PR
+    """
+    from app.models.equipment import EquipmentCategory
+    
+    update_kwargs = {}
+    
+    if equipment_data.name is not None:
+        update_kwargs['name'] = equipment_data.name
+    
+    if equipment_data.category is not None:
+        category = equipment_data.category
+        if isinstance(category, str):
+            try:
+                category = EquipmentCategory(category)
+            except ValueError:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid category. Allowed values: {[c.value for c in EquipmentCategory]}"
+                )
+        update_kwargs['category'] = category
+    
+    if equipment_data.quantity is not None:
+        update_kwargs['quantity'] = equipment_data.quantity
+    
+    if equipment_data.specs is not None:
+        update_kwargs['specs'] = equipment_data.specs
+    
+    if equipment_data.status is not None:
+        update_kwargs['status'] = equipment_data.status
+    
+    try:
+        equipment = await EquipmentService.update_equipment(
+            db=db,
+            equipment_id=equipment_id,
+            **update_kwargs
+        )
+        
+        if not equipment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Equipment not found"
+            )
+        
+        return EquipmentResponse.model_validate(equipment)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/{equipment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_equipment(
+    equipment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Удалить оборудование
+    
+    Доступно только координаторам и VP4PR
+    Удаление возможно только если нет активных заявок
+    """
+    try:
+        success = await EquipmentService.delete_equipment(db, equipment_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Equipment not found"
+            )
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

@@ -13,6 +13,7 @@ from app.models.activity import ActivityLog
 from app.models.notification import Notification
 from app.models.task_suggestion import TaskSuggestion
 from app.models.onboarding import OnboardingResponse, OnboardingReminder
+from app.models.gallery import GalleryItem
 
 __all__ = [
     "User",
@@ -32,4 +33,5 @@ __all__ = [
     "TaskSuggestion",
     "OnboardingResponse",
     "OnboardingReminder",
+    "GalleryItem",
 ]

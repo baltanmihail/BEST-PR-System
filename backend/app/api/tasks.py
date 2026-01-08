@@ -6,48 +6,143 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from uuid import UUID
 from datetime import timedelta
+import json
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from app.database import get_db
 from app.models.user import User
 from app.models.task import TaskType, TaskStatus, TaskPriority
 from app.schemas.task import (
-    TaskResponse, TaskDetailResponse, TaskCreate, TaskUpdate
+    TaskResponse, TaskDetailResponse, TaskCreate, TaskUpdate, TaskFileResponse
 )
+from pydantic import BaseModel, Field
 from app.services.task_service import TaskService
 from app.utils.permissions import get_current_user, require_coordinator
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+class TaskReorderRequest(BaseModel):
+    """Схема для изменения порядка задач (только для VP4PR)"""
+    task_orders: dict[str, Optional[int]] = Field(..., description="Словарь {task_id: sort_order} для изменения порядка задач. sort_order: меньше = выше, null = автоматическая сортировка")
+
+
 @router.get("", response_model=dict)
 async def get_tasks(
     skip: int = Query(0, ge=0, description="Количество пропущенных записей"),
     limit: int = Query(100, ge=1, le=100, description="Количество записей"),
-    task_type: Optional[TaskType] = Query(None, description="Фильтр по типу задачи"),
+    task_type: Optional[TaskType] = Query(None, description="Фильтр по типу задачи (smm, design, channel, prfr)"),
     status: Optional[TaskStatus] = Query(None, description="Фильтр по статусу"),
     priority: Optional[TaskPriority] = Query(None, description="Фильтр по приоритету"),
+    sort_by: Optional[str] = Query("relevance", description="Сортировка: relevance (важность), priority (приоритет), due_date (дедлайн), created_at (дата создания), manual (ручной порядок)"),
+    view_mode: Optional[str] = Query("normal", description="Режим отображения: compact (упрощённый), normal (обычный), detailed (подробный)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить список задач с фильтрацией и пагинацией
+    Получить список задач с фильтрацией, сортировкой и пагинацией
+    
+    Упрощённый вид (таблицей):
+    - compact: только основные поля (id, название, тип, статус, приоритет, дедлайн)
+    - normal: основные поля + краткое описание + этапы/назначения (количество)
+    - detailed: все поля задачи
+    
+    Сортировка:
+    - relevance (по умолчанию): по важности (ручной порядок > приоритет > горящие дедлайны)
+    - priority: по приоритету (critical > high > medium > low)
+    - due_date: по дедлайну (горящие сверху, затем по дате)
+    - created_at: по дате создания (новые сверху)
+    - manual: только ручной порядок (для VP4PR)
     
     Доступно всем авторизованным пользователям
     """
+    from typing import Literal
+    
+    # Валидация параметров
+    valid_sort_by = ["relevance", "priority", "due_date", "created_at", "manual"]
+    if sort_by not in valid_sort_by:
+        sort_by = "relevance"
+    
+    valid_view_modes = ["compact", "normal", "detailed"]
+    if view_mode not in valid_view_modes:
+        view_mode = "normal"
+    
     tasks, total = await TaskService.get_tasks(
         db=db,
         skip=skip,
         limit=limit,
         task_type=task_type,
         status=status,
-        priority=priority
+        priority=priority,
+        sort_by=sort_by,
+        view_mode=view_mode
     )
     
+    # Формируем ответ в зависимости от режима отображения
+    if view_mode == "compact":
+        # Упрощённый вид (таблицей) - только основные поля
+        items = []
+        for task in tasks:
+            # Проверяем, есть ли горящий дедлайн (в течение 3 дней)
+            is_hot = False
+            if task.due_date:
+                from datetime import datetime, timezone, timedelta
+                now = datetime.now(timezone.utc)
+                hot_deadline = now + timedelta(days=3)
+                if now <= task.due_date <= hot_deadline:
+                    is_hot = True
+            
+            items.append({
+                "id": str(task.id),
+                "title": task.title,
+                "type": task.type.value,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "is_hot": is_hot,  # Горящий дедлайн (в течение 3 дней)
+                "thumbnail": task.thumbnail_image_url,
+                "sort_order": task.sort_order  # Ручной порядок (для VP4PR)
+            })
+    elif view_mode == "normal":
+        # Обычный вид - основные поля + краткое описание + счётчики
+        items = []
+        for task in tasks:
+            # Проверяем, есть ли горящий дедлайн
+            is_hot = False
+            if task.due_date:
+                from datetime import datetime, timezone, timedelta
+                now = datetime.now(timezone.utc)
+                hot_deadline = now + timedelta(days=3)
+                if now <= task.due_date <= hot_deadline:
+                    is_hot = True
+            
+            items.append({
+                "id": str(task.id),
+                "title": task.title,
+                "type": task.type.value,
+                "status": task.status.value,
+                "priority": task.priority.value,
+                "due_date": task.due_date.isoformat() if task.due_date else None,
+                "is_hot": is_hot,
+                "description": (task.description[:150] + "...") if task.description and len(task.description) > 150 else (task.description or ""),
+                "thumbnail": task.thumbnail_image_url,
+                "assignments_count": len(task.assignments) if hasattr(task, 'assignments') and task.assignments else 0,
+                "stages_count": len(task.stages) if task.stages else 0,
+                "created_at": task.created_at.isoformat(),
+                "sort_order": task.sort_order
+            })
+    else:  # detailed
+        # Подробный вид - все поля задачи
+        items = [TaskResponse.model_validate(task) for task in tasks]
+    
     return {
-        "items": [TaskResponse.model_validate(task) for task in tasks],
+        "items": items,
         "total": total,
         "skip": skip,
-        "limit": limit
+        "limit": limit,
+        "sort_by": sort_by,
+        "view_mode": view_mode
     }
 
 
@@ -58,7 +153,14 @@ async def get_task(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Получить детали задачи по ID
+    Получить детали задачи по ID (карточка задачи)
+    
+    Возвращает полную информацию о задаче:
+    - Основная информация (название, описание, тип, приоритет, дедлайн)
+    - Этапы задачи с дедлайнами
+    - Назначения (исполнители)
+    - Файлы (материалы задачи) из Google Drive
+    - Поля для карточки (фото, ТЗ по ролям, вопросы, примеры)
     
     Доступно всем авторизованным пользователям
     """
@@ -70,7 +172,84 @@ async def get_task(
             detail="Task not found"
         )
     
-    return TaskDetailResponse.model_validate(task)
+    # Преобразуем файлы в формат для ответа
+    files_response = []
+    if hasattr(task, 'files') and task.files:
+        from app.services.google_service import GoogleService
+        from app.models.file import File
+        
+        google_service = GoogleService()
+        _executor = ThreadPoolExecutor(max_workers=5)
+        
+        for file_obj in task.files:
+            # Получаем ссылку на файл в Google Drive (асинхронно через executor)
+            drive_url = None
+            try:
+                drive_url = await asyncio.get_event_loop().run_in_executor(
+                    _executor,
+                    lambda f=file_obj: google_service.get_shareable_link(f.drive_id, background=False)
+                )
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to get Drive URL for file {file_obj.id}: {e}")
+            
+            files_response.append({
+                "id": file_obj.id,
+                "drive_id": file_obj.drive_id,
+                "file_name": file_obj.file_name,
+                "file_type": file_obj.file_type,
+                "drive_url": drive_url,
+                "created_at": file_obj.created_at
+            })
+    
+    # Парсим JSON поля, если они хранятся как строки (для обратной совместимости)
+    role_requirements = task.role_specific_requirements
+    if isinstance(role_requirements, str):
+        try:
+            role_requirements = json.loads(role_requirements) if role_requirements else None
+        except (json.JSONDecodeError, TypeError):
+            role_requirements = None
+    
+    questions = task.questions
+    if isinstance(questions, str):
+        try:
+            questions = json.loads(questions) if questions else None
+        except (json.JSONDecodeError, TypeError):
+            questions = None
+    
+    example_ids = task.example_project_ids
+    if isinstance(example_ids, str):
+        try:
+            # Преобразуем строки UUID в UUID объекты
+            ids_json = json.loads(example_ids) if example_ids else []
+            example_ids = [UUID(id_str) for id_str in ids_json] if ids_json else None
+        except (json.JSONDecodeError, TypeError, ValueError):
+            example_ids = None
+    
+    # Формируем словарь для валидации Pydantic
+    # Используем обработанные значения для JSON полей
+    task_data = {
+        "id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "type": task.type,
+        "event_id": task.event_id,
+        "priority": task.priority,
+        "due_date": task.due_date,
+        "status": task.status,
+        "created_by": task.created_by,
+        "created_at": task.created_at,
+        "updated_at": task.updated_at,
+        "stages": list(task.stages) if task.stages else [],
+        "assignments": list(task.assignments) if task.assignments else [],
+        "files": files_response,
+        "thumbnail_image_url": task.thumbnail_image_url,
+        "role_specific_requirements": role_requirements,
+        "questions": questions,
+        "example_project_ids": example_ids
+    }
+    
+    return TaskDetailResponse.model_validate(task_data)
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -132,6 +311,91 @@ async def update_task(
         )
     
     return TaskResponse.model_validate(task)
+
+
+@router.post("/reorder", response_model=dict)
+async def reorder_tasks(
+    request: TaskReorderRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Изменить порядок задач (ручная сортировка)
+    
+    Доступно только VP4PR.
+    Позволяет вручную установить порядок задач в списке.
+    
+    Request body:
+    {
+        "task_orders": {
+            "task_id_1": 1,  // sort_order = 1 (будет первым)
+            "task_id_2": 2,  // sort_order = 2 (будет вторым)
+            "task_id_3": null  // sort_order = null (автоматическая сортировка)
+        }
+    }
+    
+    Parameters:
+    - task_orders: Словарь {task_id: sort_order}, где sort_order - порядок (меньше = выше)
+      Если sort_order = null, то автоматическая сортировка (по приоритету/срокам)
+    
+    Returns:
+    - updated_count: Количество обновлённых задач
+    """
+    from app.models.user import UserRole
+    from fastapi import HTTPException, status
+    
+    # Проверка прав - только VP4PR может менять порядок
+    if current_user.role != UserRole.VP4PR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only VP4PR can reorder tasks"
+        )
+    
+    task_orders = request.task_orders
+    
+    if not task_orders or not isinstance(task_orders, dict):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="task_orders must be a dictionary with task_id: sort_order pairs"
+        )
+    
+    updated_count = 0
+    
+    try:
+        for task_id_str, sort_order in task_orders.items():
+            try:
+                task_id = UUID(task_id_str)
+            except (ValueError, TypeError):
+                continue  # Пропускаем невалидные ID
+            
+            # Получаем задачу
+            task = await TaskService.get_task_by_id(db, task_id)
+            if not task:
+                continue  # Пропускаем несуществующие задачи
+            
+            # Обновляем порядок
+            task.sort_order = sort_order if sort_order is not None else None
+            
+            updated_count += 1
+        
+        # Сохраняем изменения
+        await db.commit()
+        
+        return {
+            "status": "success",
+            "updated_count": updated_count,
+            "message": f"Порядок {updated_count} задач обновлён"
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to reorder tasks: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при изменении порядка задач: {str(e)}"
+        )
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -267,9 +531,12 @@ async def assign_task(
     # Обновляем статус задачи
     task.status = TaskStatus.ASSIGNED
     
-    # Если это задача типа Channel, предлагаем оборудование
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = datetime.now(timezone.utc)
+    
+    # Если это задача типа Channel и отмечена возможность получения оборудования, предлагаем оборудование
     equipment_suggestions = []
-    if task.type == TaskType.CHANNEL:
+    if task.type == TaskType.CHANNEL and task.equipment_available:
         # Находим этап "Съёмка"
         shooting_stage = None
         for stage in task.stages:
@@ -320,6 +587,81 @@ async def assign_task(
     except Exception as e:
         import logging
         logging.error(f"Failed to send notification: {e}")
+    
+    # Если есть предложения по оборудованию, отправляем уведомление в бот с кнопкой для быстрой подачи заявки
+    if equipment_suggestions and task.equipment_available and current_user.telegram_id:
+        try:
+            from app.utils.telegram_sender import send_telegram_message
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            
+            # Формируем сообщение с предложением оборудования
+            equipment_list = "\n".join([f"• {eq.name}" for eq in equipment_suggestions[:5]])
+            if len(equipment_suggestions) > 5:
+                equipment_list += f"\n... и ещё {len(equipment_suggestions) - 5}"
+            
+            shooting_date_str = shooting_stage.due_date.strftime('%d.%m.%Y') if shooting_stage and shooting_stage.due_date else "не указана"
+            
+            message_text = (
+                f"📦 <b>Оборудование для задачи</b>\n\n"
+                f"✅ Ты взял задачу: <b>{task.title}</b>\n\n"
+                f"💡 <b>Для этой задачи доступно оборудование!</b>\n\n"
+                f"📅 <b>Дата съёмки:</b> {shooting_date_str}\n\n"
+                f"📦 <b>Доступное оборудование:</b>\n{equipment_list}\n\n"
+                f"💬 Хочешь подать заявку на оборудование прямо сейчас?"
+            )
+            
+            # Отправляем сообщение в бот (без клавиатуры, так как send_telegram_message не поддерживает клавиатуры)
+            # Пользователь может использовать команду /equipment или callback "equipment" для подачи заявки
+            await send_telegram_message(
+                chat_id=current_user.telegram_id,
+                message=message_text,
+                parse_mode="HTML"
+            )
+            
+            # Также отправляем отдельное сообщение с кнопкой для быстрой подачи заявки
+            # Для этого нужно использовать aiogram напрямую, так как send_telegram_message не поддерживает клавиатуры
+            try:
+                from aiogram import Bot
+                from aiogram.enums import ParseMode
+                from app.config import settings
+                
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+                
+                # Формируем callback_data для быстрой подачи заявки (с предзаполненными данными)
+                # Сохраняем данные задачи в состояние пользователя для быстрой подачи заявки
+                from app.services.telegram_chat_service import TelegramChatService
+                # Можно использовать временное хранение данных в базе или в состоянии бота
+                # Пока просто отправляем сообщение с кнопкой на меню оборудования
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📝 Подать заявку на оборудование",
+                            callback_data=f"equipment_quick_request_{task_id}"
+                        ),
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            text="📦 Меню оборудования",
+                            callback_data="equipment"
+                        ),
+                    ],
+                ])
+                
+                await bot.send_message(
+                    chat_id=current_user.telegram_id,
+                    text=message_text + "\n\n💡 Нажми кнопку ниже для быстрой подачи заявки:",
+                    reply_markup=keyboard
+                )
+                
+                await bot.session.close()
+            except Exception as e:
+                import logging
+                logging.warning(f"Failed to send equipment suggestion with keyboard to user {current_user.telegram_id}: {e}")
+                # Если не удалось отправить с клавиатурой, хотя бы отправили текстовое сообщение выше
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to send equipment suggestion to user {current_user.telegram_id}: {e}")
     
     # Логируем активность
     from app.services.activity_service import ActivityService
@@ -445,6 +787,9 @@ async def complete_task(
     
     # Обновляем статус задачи
     task.status = TaskStatus.COMPLETED
+    
+    # Обновляем время последней активности пользователя
+    current_user.last_activity_at = datetime.now(timezone.utc)
     
     # Начисляем баллы за выполнение задачи
     from app.services.gamification_service import GamificationService

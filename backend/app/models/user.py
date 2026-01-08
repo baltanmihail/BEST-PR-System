@@ -1,9 +1,9 @@
 """
 Модель пользователя
 """
-from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator
+from sqlalchemy import Column, BigInteger, String, Integer, Boolean, DateTime, Enum, TypeDecorator, Text
 from sqlalchemy.orm import validates, relationship
-from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM, JSON, ARRAY
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -74,10 +74,17 @@ class User(Base):
     level = Column(Integer, nullable=False, default=1)
     points = Column(Integer, nullable=False, default=0, index=True)
     streak_days = Column(Integer, nullable=False, default=0)
-    last_activity = Column(DateTime(timezone=True), nullable=True)
+    last_activity_at = Column(DateTime(timezone=True), nullable=True, index=True)  # Время последней активности (для онлайн-статуса)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True, index=True)
+    
+    # Поля профиля пользователя
+    avatar_url = Column(String, nullable=True)  # URL фото профиля (из Google Drive или загруженного)
+    bio = Column(Text, nullable=True)  # Описание/био пользователя
+    contacts = Column(JSON, nullable=True)  # Контакты: {"email": "...", "phone": "...", "telegram": "...", "vk": "...", "instagram": "..."}
+    skills = Column(ARRAY(String), nullable=True)  # Навыки/теги: ["SMM", "Design", "Video", ...]
+    portfolio = Column(JSON, nullable=True)  # Портфолио: [{"title": "...", "description": "...", "url": "...", "type": "photo|video|link", "gallery_item_id": "..."}, ...]
     # Мягкое удаление (soft delete)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     # Согласие на обработку персональных данных

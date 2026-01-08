@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, Edit, Trash2, Settings, Eye } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse } from '../services/equipment'
+import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate, type EquipmentUpdate } from '../services/equipment'
+import { UserRole } from '../types/user'
 
 export default function Equipment() {
   const { theme } = useThemeStore()
@@ -79,17 +80,60 @@ export default function Equipment() {
     createRequestMutation.mutate(requestData)
   }
 
-  const getCategoryIcon = (category: string) => {
-    switch (category.toLowerCase()) {
+  const isCoordinator = user && (
+    user.role === UserRole.COORDINATOR_SMM ||
+    user.role === UserRole.COORDINATOR_DESIGN ||
+    user.role === UserRole.COORDINATOR_CHANNEL ||
+    user.role === UserRole.COORDINATOR_PRFR ||
+    user.role === UserRole.VP4PR
+  )
+
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null)
+  const [equipmentFormData, setEquipmentFormData] = useState<EquipmentCreate>({
+    name: '',
+    category: 'other',
+    quantity: 1,
+    specs: {},
+  })
+
+  const getCategoryEmoji = (category: EquipmentCategory): string => {
+    const emojiMap: Record<EquipmentCategory, string> = {
+      camera: '📷',
+      lens: '🔍',
+      lighting: '💡',
+      audio: '🎤',
+      tripod: '📐',
+      accessories: '🔧',
+      storage: '💾',
+      other: '📦'
+    }
+    return emojiMap[category] || '📦'
+  }
+
+  const getCategoryName = (category: EquipmentCategory): string => {
+    const nameMap: Record<EquipmentCategory, string> = {
+      camera: 'Камера',
+      lens: 'Объектив',
+      lighting: 'Свет',
+      audio: 'Аудио',
+      tripod: 'Штатив',
+      accessories: 'Аксессуары',
+      storage: 'Накопитель',
+      other: 'Прочее'
+    }
+    return nameMap[category] || category
+  }
+
+  const getCategoryIcon = (category: EquipmentCategory) => {
+    switch (category) {
       case 'camera':
-      case 'камера':
         return <Camera className="h-6 w-6" />
-      case 'video':
-      case 'видео':
-        return <Video className="h-6 w-6" />
       case 'audio':
-      case 'аудио':
         return <Mic className="h-6 w-6" />
+      case 'video':
+        return <Video className="h-6 w-6" />
       default:
         return <Camera className="h-6 w-6" />
     }
@@ -128,17 +172,38 @@ export default function Equipment() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center space-x-4 mb-8">
-        <Link
-          to="/"
-          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-        >
-          <ArrowLeft className="h-6 w-6 text-white" />
-        </Link>
-        <div className="flex items-center space-x-3">
-          <Camera className="h-8 w-8 text-best-primary" />
-          <h1 className={`text-3xl md:text-4xl font-bold text-readable ${theme}`}>Оборудование</h1>
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center space-x-4">
+          <Link
+            to="/"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <ArrowLeft className="h-6 w-6 text-white" />
+          </Link>
+          <div className="flex items-center space-x-3">
+            <Camera className="h-8 w-8 text-best-primary" />
+            <h1 className={`text-3xl md:text-4xl font-bold text-readable ${theme}`}>Оборудование</h1>
+          </div>
         </div>
+        {isCoordinator && (
+          <button
+            onClick={() => {
+              setShowCreateForm(true)
+              setShowEditForm(false)
+              setEditingEquipment(null)
+              setEquipmentFormData({
+                name: '',
+                category: 'other',
+                quantity: 1,
+                specs: {},
+              })
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
+          >
+            <Plus className="h-5 w-5" />
+            <span>Добавить оборудование</span>
+          </button>
+        )}
       </div>
 
       {/* Предупреждение для незарегистрированных */}
@@ -270,7 +335,16 @@ export default function Equipment() {
                     <h3 className={`text-white font-semibold text-lg text-readable ${theme}`}>
                       {equipment.name}
                     </h3>
-                    <p className="text-white/60 text-sm">{equipment.category}</p>
+                    <div className="flex items-center space-x-2">
+                      <span className="text-white/60 text-sm">
+                        {getCategoryEmoji(equipment.category)} {getCategoryName(equipment.category)}
+                      </span>
+                      {equipment.quantity > 1 && (
+                        <span className="text-white/40 text-xs">
+                          ({equipment.quantity} шт.)
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -280,21 +354,66 @@ export default function Equipment() {
                 </p>
               )}
               <div className="flex items-center justify-between">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                    equipment.status
-                  )}`}
-                >
-                  {getStatusText(equipment.status)}
-                </span>
-                {isRegistered && equipment.status === 'available' && (
-                  <button
-                    onClick={() => handleRequestClick(equipment)}
-                    className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all text-sm font-medium"
+                <div className="flex items-center space-x-2">
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                      equipment.status
+                    )}`}
                   >
-                    Забронировать
-                  </button>
-                )}
+                    {getStatusText(equipment.status)}
+                  </span>
+                  {equipment.quantity > 1 && (
+                    <span className="text-white/60 text-xs">
+                      {equipment.quantity} шт.
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  {isCoordinator && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditingEquipment(equipment)
+                          setEquipmentFormData({
+                            name: equipment.name,
+                            category: equipment.category,
+                            quantity: equipment.quantity,
+                            specs: equipment.specs || {},
+                          })
+                          setShowEditForm(true)
+                        }}
+                        className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                        title="Редактировать"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Удалить оборудование "${equipment.name}"?`)) {
+                            try {
+                              await equipmentApi.deleteEquipment(equipment.id)
+                              queryClient.invalidateQueries({ queryKey: ['equipment'] })
+                            } catch (error) {
+                              alert('Ошибка при удалении оборудования')
+                            }
+                          }
+                        }}
+                        className="p-2 text-red-400/70 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                        title="Удалить"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                  {isRegistered && equipment.status === 'available' && (
+                    <button
+                      onClick={() => handleRequestClick(equipment)}
+                      className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all text-sm font-medium"
+                    >
+                      Забронировать
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -339,6 +458,117 @@ export default function Equipment() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Форма создания/редактирования оборудования (для координаторов) */}
+      {(showCreateForm || showEditForm) && (
+        <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-best-primary/50`}>
+          <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+            {showEditForm ? 'Редактировать оборудование' : 'Добавить оборудование'}
+          </h2>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault()
+              try {
+                if (showEditForm && editingEquipment) {
+                  await equipmentApi.updateEquipment(editingEquipment.id, equipmentFormData)
+                } else {
+                  await equipmentApi.createEquipment(equipmentFormData)
+                }
+                queryClient.invalidateQueries({ queryKey: ['equipment'] })
+                setShowCreateForm(false)
+                setShowEditForm(false)
+                setEditingEquipment(null)
+                setEquipmentFormData({
+                  name: '',
+                  category: 'other',
+                  quantity: 1,
+                  specs: {},
+                })
+              } catch (error: any) {
+                alert(error.response?.data?.detail || 'Ошибка при сохранении оборудования')
+              }
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Название *
+              </label>
+              <input
+                type="text"
+                value={equipmentFormData.name}
+                onChange={(e) =>
+                  setEquipmentFormData({ ...equipmentFormData, name: e.target.value })
+                }
+                required
+                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              />
+            </div>
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Категория *
+              </label>
+              <select
+                value={equipmentFormData.category}
+                onChange={(e) =>
+                  setEquipmentFormData({ ...equipmentFormData, category: e.target.value as EquipmentCategory })
+                }
+                required
+                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              >
+                <option value="camera">📷 Камера</option>
+                <option value="lens">🔍 Объектив</option>
+                <option value="lighting">💡 Свет</option>
+                <option value="audio">🎤 Аудио</option>
+                <option value="tripod">📐 Штатив</option>
+                <option value="accessories">🔧 Аксессуары</option>
+                <option value="storage">💾 Накопитель</option>
+                <option value="other">📦 Прочее</option>
+              </select>
+            </div>
+            <div>
+              <label className={`block text-white mb-2 text-readable ${theme}`}>
+                Количество экземпляров *
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={equipmentFormData.quantity}
+                onChange={(e) =>
+                  setEquipmentFormData({ ...equipmentFormData, quantity: parseInt(e.target.value) || 1 })
+                }
+                required
+                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              />
+            </div>
+            <div className="flex space-x-3">
+              <button
+                type="submit"
+                className="flex-1 bg-best-primary text-white py-2 px-4 rounded-lg font-semibold hover:bg-best-primary/80 transition-all"
+              >
+                {showEditForm ? 'Сохранить' : 'Создать'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm(false)
+                  setShowEditForm(false)
+                  setEditingEquipment(null)
+                  setEquipmentFormData({
+                    name: '',
+                    category: 'other',
+                    quantity: 1,
+                    specs: {},
+                  })
+                }}
+                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
+              >
+                Отмена
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

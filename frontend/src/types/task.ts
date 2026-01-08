@@ -16,6 +16,16 @@ export interface Task {
   updated_at: string
   stages?: TaskStage[]
   assignments?: TaskAssignment[]
+  thumbnail_image_url?: string
+  role_specific_requirements?: {
+    smm?: string
+    design?: string
+    channel?: string
+    prfr?: string
+  }
+  questions?: string[]
+  example_project_ids?: string[]
+  equipment_available?: boolean
 }
 
 export interface TaskStage {

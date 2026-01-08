@@ -876,7 +876,7 @@ async def callback_my_stats(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "equipment")
 async def callback_equipment(callback: CallbackQuery, state: FSMContext):
-    """Оборудование - требует регистрации"""
+    """Меню работы с оборудованием - улучшенный UI"""
     try:
         await callback.answer()
         data = await state.get_data()
@@ -899,32 +899,61 @@ async def callback_equipment(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer("⚠️ Для работы с оборудованием нужно быть активным пользователем!")
             return
         
-        # Получаем оборудование
-        equipment_response = await call_api("GET", "/equipment", headers=headers)
+        # Удаляем предыдущее сообщение с меню (если есть), чтобы не было нагромождения
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         
-        if "error" in equipment_response:
-            await callback.message.answer("❌ Ошибка при загрузке оборудования. Попробуйте позже.")
-            return
+        # Получаем мои заявки для отображения в меню
+        requests_response = await call_api("GET", "/equipment/requests", headers=headers)
+        requests = requests_response if isinstance(requests_response, list) else []
+        pending_count = len([r for r in requests if r.get("status") == "pending"])
         
-        equipment_list = equipment_response.get("items", [])
+        # Создаём меню с кнопками
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📝 Подать заявку",
+                    callback_data="equipment_new_request"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=f"📋 Мои заявки{f' ({len(requests)})' if requests else ''}",
+                    callback_data="equipment_my_requests"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📦 Доступное оборудование",
+                    callback_data="equipment_available_list"
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔙 Назад",
+                    callback_data="main_menu"
+                ),
+            ],
+        ])
         
-        if not equipment_list:
-            await callback.message.answer("📦 Оборудование пока не добавлено.")
-            return
+        text = (
+            f"📦 <b>Оборудование BEST Channel</b>\n\n"
+            f"💡 <b>Что можно сделать:</b>\n"
+            f"• 📝 Подать заявку на оборудование\n"
+            f"• 📋 Посмотреть свои заявки"
+        )
         
-        text = "📦 Доступное оборудование:\n\n"
-        for i, eq in enumerate(equipment_list[:10], 1):
-            status_emoji = {
-                "available": "✅",
-                "rented": "🔴",
-                "maintenance": "🔧",
-                "broken": "❌",
-            }.get(eq.get("status"), "❓")
-            
-            text += f"{i}. {status_emoji} {eq.get('name', 'Unknown')}\n"
-            text += f"   Категория: {eq.get('category', 'unknown')}\n\n"
+        if pending_count > 0:
+            text += f"\n   ⏳ На рассмотрении: {pending_count}"
         
-        await callback.message.answer(text, parse_mode="HTML")
+        text += (
+            f"\n• 📦 Посмотреть доступное оборудование\n\n"
+            f"💬 <b>Совет:</b> При взятии задачи типа Channel с возможностью получения оборудования, система автоматически предложит его."
+        )
+        
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error in callback_equipment: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
@@ -1066,7 +1095,7 @@ async def cmd_leaderboard(message: Message, state: FSMContext):
 
 @router.message(Command("equipment"))
 async def cmd_equipment(message: Message, state: FSMContext):
-    """Команда /equipment - работа с оборудованием"""
+    """Команда /equipment - работа с оборудованием (улучшенный UI)"""
     data = await state.get_data()
     access_token = data.get("access_token")
     
@@ -1086,37 +1115,46 @@ async def cmd_equipment(message: Message, state: FSMContext):
         return
     
     requests = requests_response if isinstance(requests_response, list) else []
+    pending_count = len([r for r in requests if r.get("status") == "pending"])
     
-    if not requests:
-        text = (
-            f"📦 У тебя нет заявок на оборудование.\n\n"
-            f"💡 Для создания заявки используй веб-интерфейс:\n"
-            f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>\n\n"
-            f"Или возьми задачу типа Channel - система автоматически предложит оборудование."
-        )
-        parse_mode_val = "HTML"
-    else:
-        text = f"📦 Твои заявки на оборудование ({len(requests)}):\n\n"
-        
-        status_emoji = {
-            "pending": "⏳",
-            "approved": "✅",
-            "rejected": "❌",
-            "active": "📦",
-            "completed": "✔️",
-            "cancelled": "🚫"
-        }
-        
-        for i, req in enumerate(requests[:5], 1):  # Показываем первые 5
-            emoji = status_emoji.get(req.get("status"), "❓")
-            text += (
-                f"{i}. {emoji} {req.get('equipment_name', 'Unknown')}\n"
-                f"   Статус: {req.get('status')}\n"
-                f"   Даты: {req.get('start_date')} - {req.get('end_date')}\n\n"
-            )
-        parse_mode_val = None
+    # Создаём меню с кнопками
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="📝 Подать заявку",
+                callback_data="equipment_new_request"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"📋 Мои заявки{f' ({len(requests)})' if requests else ''}",
+                callback_data="equipment_my_requests"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="📦 Доступное оборудование",
+                callback_data="equipment_available_list"
+            ),
+        ],
+    ])
     
-    await message.answer(text, parse_mode=parse_mode_val if parse_mode_val else None)
+    text = (
+        f"📦 <b>Оборудование BEST Channel</b>\n\n"
+        f"💡 <b>Что можно сделать:</b>\n"
+        f"• 📝 Подать заявку на оборудование\n"
+        f"• 📋 Посмотреть свои заявки"
+    )
+    
+    if pending_count > 0:
+        text += f"\n   ⏳ На рассмотрении: {pending_count}"
+    
+    text += (
+        f"\n• 📦 Посмотреть доступное оборудование\n\n"
+        f"💬 <b>Совет:</b> При взятии задачи типа Channel с возможностью получения оборудования, система автоматически предложит его."
+    )
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.message(Command("notifications"))
@@ -1766,18 +1804,18 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
             # Сохраняем токен для последующих запросов
             await state.update_data(access_token=access_token)
             
-            # Показываем уведомление (alert) поверх экрана
-            await callback.answer(
-                "✅ Сессия запущена на устройстве!",
-                show_alert=True
-            )
+            # Удаляем сообщение с подтверждением входа
+            try:
+                await callback.message.delete()
+            except Exception as e:
+                logger.warning(f"Failed to delete confirmation message: {e}")
             
             # Получаем данные пользователя для краткой сводки
             headers = {"Authorization": f"Bearer {access_token}"}
             user_response = await call_api("GET", "/auth/me", headers=headers)
             user_data = user_response.get("user", {}) if "error" not in user_response else {}
             
-            # Формируем URL для возврата на сайт
+            # Формируем URL для возврата на сайт (без access_token в URL - фронтенд получит через polling)
             site_url = f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&logged_in=true"
             
             # Получаем статистику для сводки
@@ -1789,62 +1827,31 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
             active_tasks = tasks_response.get("items", [])[:3] if "error" not in tasks_response else []
             
             # Формируем краткую сводку
-            summary_parts = []
-            if stats.get("active_tasks", 0) > 0:
-                summary_parts.append(f"📋 Активных задач: {stats.get('active_tasks', 0)}")
-            if stats.get("points", 0) > 0:
-                summary_parts.append(f"⭐ Баллов: {stats.get('points', 0)}")
-            if stats.get("level", 1) > 1:
-                summary_parts.append(f"🎯 Уровень: {stats.get('level', 1)}")
-            
-            summary_text = "\n".join(summary_parts) if summary_parts else "Добро пожаловать обратно!"
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🌐 Вернуться на сайт",
-                        url=site_url
-                    ),
-                ],
-                [
-                    InlineKeyboardButton(text="📋 Мои задачи", callback_data="my_tasks"),
-                    InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
-                ],
-            ])
-            
-            # Отправляем сообщение с информацией и кнопкой
-            await callback.message.answer(
-                f"✅ <b>Сессия запущена на устройстве</b>\n\n"
-                f"Вы успешно вошли в свой аккаунт на сайте.\n\n"
-                f"📊 <b>Краткая сводка:</b>\n"
-                f"{summary_text}\n\n"
-                f"🔔 Важные уведомления и изменения будут приходить сюда в бот.\n\n"
-                f"💡 <b>Как дела?</b> Всё идёт по плану? Если есть вопросы - пиши!",
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-            
-            # Спустя небольшое время (через 2 секунды) отправляем приветственное окно с краткой сводкой
-            import asyncio
-            await asyncio.sleep(2)
-            
-            # Получаем информацию о ключевых изменениях, задачах, рейтинге
-            # Получаем последние задачи
             recent_tasks_text = ""
             if active_tasks:
-                recent_tasks_text = "\n\n📋 <b>Твои активные задачи:</b>\n"
+                recent_tasks_text = "\n📋 <b>Твои активные задачи:</b>\n"
                 for i, task in enumerate(active_tasks[:3], 1):
                     recent_tasks_text += f"{i}. {task.get('title', 'Без названия')[:40]}...\n"
             
-            # Формируем приветственное сообщение с краткой сводкой
+            # Формируем приветственное сообщение с краткой сводкой (одно сообщение вместо двух)
             welcome_summary = (
                 f"👋 <b>Привет, {user_data.get('full_name', user.first_name or 'друг')}!</b>\n\n"
+                f"✅ Сессия успешно запущена на устройстве.\n\n"
                 f"💡 <b>Краткая сводка:</b>\n"
-                f"• 📊 Твоя статистика: {stats.get('points', 0)} баллов, уровень {stats.get('level', 1)}\n"
-                f"• 📋 Активных задач: {stats.get('active_tasks', 0)}\n"
-                f"• ✅ Выполнено: {stats.get('completed_tasks', 0)} задач\n"
-                f"{recent_tasks_text}\n"
-                f"💬 <b>Как дела?</b> Всё идёт по плану? Если есть вопросы - пиши!\n\n"
+            )
+            
+            if stats.get("active_tasks", 0) > 0:
+                welcome_summary += f"• 📋 Активных задач: {stats.get('active_tasks', 0)}\n"
+            if stats.get("points", 0) > 0:
+                welcome_summary += f"• ⭐ Баллов: {stats.get('points', 0)}\n"
+            if stats.get("level", 1) > 1:
+                welcome_summary += f"• 🎯 Уровень: {stats.get('level', 1)}\n"
+            if stats.get("completed_tasks", 0) > 0:
+                welcome_summary += f"• ✅ Выполнено: {stats.get('completed_tasks', 0)} задач\n"
+            
+            welcome_summary += f"{recent_tasks_text}\n"
+            welcome_summary += (
+                f"🔔 Важные уведомления и изменения будут приходить сюда в бот.\n\n"
                 f"🎯 <b>Помни:</b> ты важен для PR-отдела! Твоя работа помогает нам развиваться."
             )
             
@@ -1883,6 +1890,7 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
                 InlineKeyboardButton(text="📊 Статистика", callback_data="my_stats"),
             ])
             
+            # Отправляем одно приветственное сообщение вместо двух
             await callback.message.answer(
                 welcome_summary,
                 reply_markup=keyboard_summary,
@@ -2604,6 +2612,1681 @@ async def handle_text_message(message: Message, state: FSMContext):
         await message.answer(
             "❓ Неизвестная команда. Используйте /help для списка доступных команд."
         )
+
+
+# ========== FSM для создания задач ==========
+from bot.states import TaskCreationStates, EquipmentRequestStates
+from app.models.task import TaskType, TaskPriority
+from datetime import datetime, timedelta, timezone
+from aiogram import F
+from aiogram.types import ContentType
+
+
+@router.message(Command("create_task"))
+async def cmd_create_task(message: Message, state: FSMContext):
+    """Команда /create_task - создание новой задачи (только для координаторов)"""
+    user = message.from_user
+    
+    # Проверяем авторизацию
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await message.answer(
+            "❌ Вы не авторизованы. Используйте /start для авторизации."
+        )
+        return
+    
+    # Проверяем права доступа (только координаторы и VP4PR)
+    headers = {"Authorization": f"Bearer {access_token}"}
+    user_response = await call_api("GET", "/auth/me", headers=headers)
+    
+    if "error" in user_response:
+        await message.answer(
+            "❌ Ошибка проверки прав доступа. Попробуйте позже."
+        )
+        return
+    
+    user_data = user_response.get("user", {})
+    user_role = user_data.get("role")
+    
+    from app.models.user import UserRole
+    allowed_roles = [
+        UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+    ]
+    
+    if user_role not in [r.value for r in allowed_roles]:
+        await message.answer(
+            "❌ У вас нет прав для создания задач.\n\n"
+            "Создавать задачи могут только координаторы и VP4PR."
+        )
+        return
+    
+    # Начинаем процесс создания задачи
+    await message.answer(
+        "📝 <b>Создание новой задачи</b>\n\n"
+        "Давай создадим задачу пошагово! Это займёт всего пару минут.\n\n"
+        "📋 <b>Шаг 1 из 7:</b> Введи название задачи\n\n"
+        "Напиши название задачи текстом:",
+        parse_mode="HTML"
+    )
+    
+    # Устанавливаем состояние
+    await state.set_state(TaskCreationStates.waiting_for_title)
+    await state.update_data(
+        task_creation_step=1,
+        task_files=[]  # Список для хранения файлов
+    )
+
+
+@router.message(TaskCreationStates.waiting_for_title)
+async def process_task_title(message: Message, state: FSMContext):
+    """Обработка названия задачи"""
+    title = message.text.strip()
+    
+    if len(title) < 3:
+        await message.answer(
+            "❌ Название слишком короткое. Пожалуйста, введи название задачи (минимум 3 символа):"
+        )
+        return
+    
+    if len(title) > 200:
+        await message.answer(
+            "❌ Название слишком длинное. Пожалуйста, введи название задачи (максимум 200 символов):"
+        )
+        return
+    
+    # Сохраняем название
+    await state.update_data(task_title=title, task_creation_step=2)
+    
+    # Переходим к выбору типа задачи
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📢 SMM", callback_data="task_type_smm"),
+            InlineKeyboardButton(text="🎨 Design", callback_data="task_type_design"),
+        ],
+        [
+            InlineKeyboardButton(text="📹 Channel", callback_data="task_type_channel"),
+            InlineKeyboardButton(text="📣 PR-FR", callback_data="task_type_prfr"),
+        ],
+    ])
+    
+    await message.answer(
+        f"✅ Название сохранено: <b>{title}</b>\n\n"
+        f"📋 <b>Шаг 2 из 7:</b> Выбери тип задачи\n\n"
+        f"Нажми на кнопку с нужным типом:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_type)
+
+
+@router.callback_query(F.data.startswith("task_type_"))
+async def process_task_type(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора типа задачи"""
+    await callback.answer()
+    
+    task_type_str = callback.data.replace("task_type_", "")
+    
+    # Маппинг типов
+    type_map = {
+        "smm": TaskType.SMM,
+        "design": TaskType.DESIGN,
+        "channel": TaskType.CHANNEL,
+        "prfr": TaskType.PRFR,
+    }
+    
+    task_type = type_map.get(task_type_str)
+    if not task_type:
+        await callback.message.answer("❌ Неверный тип задачи. Попробуйте ещё раз.")
+        return
+    
+    # Сохраняем тип
+    await state.update_data(task_type=task_type.value, task_creation_step=3)
+    
+    type_names = {
+        "smm": "SMM",
+        "design": "Design",
+        "channel": "Channel",
+        "prfr": "PR-FR",
+    }
+    
+    await callback.message.edit_text(
+        f"✅ Тип задачи: <b>{type_names[task_type_str]}</b>\n\n"
+        f"📋 <b>Шаг 3 из 7:</b> Введи описание задачи\n\n"
+        f"Опиши задачу подробно (что нужно сделать, какие требования, формат результата и т.д.):\n\n"
+        f"💡 <i>Можно написать подробно, это поможет исполнителям лучше понять задачу.</i>",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_description)
+
+
+@router.message(TaskCreationStates.waiting_for_description)
+async def process_task_description(message: Message, state: FSMContext):
+    """Обработка описания задачи"""
+    description = message.text.strip()
+    
+    if len(description) < 10:
+        await message.answer(
+            "❌ Описание слишком короткое. Пожалуйста, опиши задачу подробнее (минимум 10 символов):"
+        )
+        return
+    
+    # Сохраняем описание
+    await state.update_data(task_description=description, task_creation_step=4)
+    
+    # Переходим к выбору приоритета
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔴 Высокий", callback_data="task_priority_high"),
+            InlineKeyboardButton(text="🟠 Средний", callback_data="task_priority_medium"),
+        ],
+        [
+            InlineKeyboardButton(text="🟡 Низкий", callback_data="task_priority_low"),
+            InlineKeyboardButton(text="⚡ Критический", callback_data="task_priority_critical"),
+        ],
+    ])
+    
+    await message.answer(
+        f"✅ Описание сохранено\n\n"
+        f"📋 <b>Шаг 4 из 7:</b> Выбери приоритет задачи\n\n"
+        f"Нажми на кнопку с нужным приоритетом:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_priority)
+
+
+@router.callback_query(F.data.startswith("task_priority_"))
+async def process_task_priority(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора приоритета задачи"""
+    await callback.answer()
+    
+    priority_str = callback.data.replace("task_priority_", "")
+    
+    # Маппинг приоритетов
+    priority_map = {
+        "low": TaskPriority.LOW,
+        "medium": TaskPriority.MEDIUM,
+        "high": TaskPriority.HIGH,
+        "critical": TaskPriority.CRITICAL,
+    }
+    
+    task_priority = priority_map.get(priority_str)
+    if not task_priority:
+        await callback.message.answer("❌ Неверный приоритет. Попробуйте ещё раз.")
+        return
+    
+    # Сохраняем приоритет
+    await state.update_data(task_priority=task_priority.value, task_creation_step=5)
+    
+    priority_names = {
+        "low": "Низкий",
+        "medium": "Средний",
+        "high": "Высокий",
+        "critical": "Критический",
+    }
+    
+    await callback.message.edit_text(
+        f"✅ Приоритет: <b>{priority_names[priority_str]}</b>\n\n"
+        f"📋 <b>Шаг 5 из 7:</b> Введи дедлайн задачи\n\n"
+        f"Напиши дату и время дедлайна в формате:\n"
+        f"• <code>ДД.ММ.ГГГГ ЧЧ:ММ</code> (например: 25.12.2024 18:00)\n"
+        f"• или просто дату: <code>ДД.ММ.ГГГГ</code> (например: 25.12.2024)\n\n"
+        f"💡 <i>Если дедлайна нет, напиши \"нет\" или \"-\"</i>",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_due_date)
+
+
+@router.message(TaskCreationStates.waiting_for_due_date)
+async def process_task_due_date(message: Message, state: FSMContext):
+    """Обработка дедлайна задачи"""
+    due_date_text = message.text.strip().lower()
+    
+    due_date = None
+    
+    # Если дедлайна нет
+    if due_date_text in ["нет", "-", "без дедлайна", "no", "none"]:
+        due_date = None
+    else:
+        # Парсим дату
+        try:
+            # Пробуем разные форматы
+            formats = [
+                "%d.%m.%Y %H:%M",  # ДД.ММ.ГГГГ ЧЧ:ММ
+                "%d.%m.%Y",        # ДД.ММ.ГГГГ
+                "%Y-%m-%d %H:%M",  # ГГГГ-ММ-ДД ЧЧ:ММ
+                "%Y-%m-%d",        # ГГГГ-ММ-ДД
+            ]
+            
+            parsed = False
+            for fmt in formats:
+                try:
+                    due_date = datetime.strptime(due_date_text, fmt)
+                    # Если не указано время, ставим 18:00 по умолчанию
+                    if "%H:%M" not in fmt:
+                        due_date = due_date.replace(hour=18, minute=0)
+                    parsed = True
+                    break
+                except ValueError:
+                    continue
+            
+            if not parsed:
+                raise ValueError("Не удалось распарсить дату")
+            
+            # Делаем дату timezone-aware (UTC)
+            if due_date.tzinfo is None:
+                due_date = due_date.replace(tzinfo=timezone.utc)
+            
+            # Проверяем, что дата в будущем
+            if due_date < datetime.now(timezone.utc):
+                await message.answer(
+                    "❌ Дедлайн не может быть в прошлом. Пожалуйста, введи дату в будущем:"
+                )
+                return
+            
+        except Exception as e:
+            await message.answer(
+                "❌ Неверный формат даты. Пожалуйста, введи дату в формате ДД.ММ.ГГГГ или ДД.ММ.ГГГГ ЧЧ:ММ:\n\n"
+                "Пример: 25.12.2024 или 25.12.2024 18:00"
+            )
+            return
+    
+    # Сохраняем дедлайн
+    await state.update_data(
+        task_due_date=due_date.isoformat() if due_date else None,
+        task_creation_step=6
+    )
+    
+    # Проверяем тип задачи - для всех типов нужны этапы
+    data = await state.get_data()
+    task_type = data.get("task_type")
+    
+    # Определяем этапы по умолчанию для каждого типа задачи
+    stage_templates = {
+        TaskType.SMM.value: [
+            ("Исследование/Анализ", "green"),
+            ("Написание текста", "yellow"),
+            ("Редактура", "orange"),
+            ("Публикация", "red"),
+        ],
+        TaskType.DESIGN.value: [
+            ("Исследование", "green"),
+            ("Концепция", "yellow"),
+            ("Дизайн", "orange"),
+            ("Редактура", "red"),
+            ("Финальная версия", "red"),
+        ],
+        TaskType.CHANNEL.value: [
+            ("Сценарий", "green"),
+            ("Съёмка", "yellow"),
+            ("Монтаж", "orange"),
+            ("Публикация", "red"),
+        ],
+        TaskType.PRFR.value: [
+            ("Исследование", "green"),
+            ("Подготовка контента", "yellow"),
+            ("Редактура", "orange"),
+            ("Публикация", "red"),
+        ],
+    }
+    
+    stages_info = stage_templates.get(task_type, [])
+    stages_text = "\n".join([f"• {stage[0]}" for stage in stages_info])
+    
+    type_names = {
+        TaskType.SMM.value: "SMM",
+        TaskType.DESIGN.value: "Design",
+        TaskType.CHANNEL.value: "Channel",
+        TaskType.PRFR.value: "PR-FR",
+    }
+    
+    await message.answer(
+        f"✅ Дедлайн сохранен\n\n"
+        f"📋 <b>Шаг 6 из 7:</b> Этапы задачи (для {type_names.get(task_type, task_type)} задач)\n\n"
+        f"Этапы создадутся автоматически по стандартному шаблону:\n"
+        f"{stages_text}\n\n"
+        f"💡 Если нужны дополнительные этапы, их можно добавить позже на сайте.\n\n"
+        f"Продолжить с этапами по умолчанию?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, продолжить", callback_data="task_stages_default"),
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="task_stages_skip"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+    await state.set_state(TaskCreationStates.waiting_for_stages)
+
+
+@router.callback_query(F.data == "task_stages_default")
+async def process_task_stages_default(callback: CallbackQuery, state: FSMContext):
+    """Создание этапов по умолчанию для всех типов задач"""
+    await callback.answer()
+    
+    # Сохраняем, что этапы будут созданы по умолчанию
+    await state.update_data(task_stages_default=True, task_creation_step=6)
+    
+    await callback.message.edit_text(
+        f"✅ Этапы будут созданы автоматически\n\n"
+        f"📋 <b>Шаг 6 из 7:</b> Добавь материалы (файлы) для задачи\n\n"
+        f"Можешь прикрепить файлы (фото, документы, видео), которые помогут исполнителям:\n"
+        f"• Прикрепи файлы одним сообщением\n"
+        f"• Или нажми «Пропустить», если файлов нет\n\n"
+        f"💡 <i>Можно добавить несколько файлов сразу.</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="task_files_skip"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_files)
+
+
+@router.callback_query(F.data == "task_stages_skip")
+async def process_task_stages_skip(callback: CallbackQuery, state: FSMContext):
+    """Пропуск этапов"""
+    await callback.answer()
+    
+    # Сохраняем, что этапы пропущены
+    await state.update_data(task_stages_default=False, task_creation_step=6)
+    
+    await callback.message.edit_text(
+        f"✅ Этапы пропущены (можно добавить позже)\n\n"
+        f"📋 <b>Шаг 6 из 7:</b> Добавь материалы (файлы) для задачи\n\n"
+        f"Можешь прикрепить файлы (фото, документы, видео), которые помогут исполнителям:\n"
+        f"• Прикрепи файлы одним сообщением\n"
+        f"• Или нажми «Пропустить», если файлов нет\n\n"
+        f"💡 <i>Можно добавить несколько файлов сразу.</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="task_files_skip"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(TaskCreationStates.waiting_for_files)
+
+
+@router.message(TaskCreationStates.waiting_for_files, F.content_type.in_([ContentType.PHOTO, ContentType.DOCUMENT, ContentType.VIDEO]))
+async def process_task_files(message: Message, state: FSMContext):
+    """Обработка файлов задачи"""
+    data = await state.get_data()
+    task_files = data.get("task_files", [])
+    
+    # Обрабатываем файлы
+    file_id = None
+    file_type = None
+    file_name = None
+    
+    if message.photo:
+        # Фото
+        file_id = message.photo[-1].file_id  # Берём самое большое фото
+        file_type = "photo"
+        file_name = f"photo_{message.photo[-1].file_unique_id}.jpg"
+    elif message.document:
+        # Документ
+        file_id = message.document.file_id
+        file_type = "document"
+        file_name = message.document.file_name or f"document_{message.document.file_unique_id}"
+    elif message.video:
+        # Видео
+        file_id = message.video.file_id
+        file_type = "video"
+        file_name = message.video.file_name or f"video_{message.video.file_unique_id}.mp4"
+    
+    if file_id:
+        task_files.append({
+            "file_id": file_id,
+            "type": file_type,
+            "name": file_name
+        })
+        await state.update_data(task_files=task_files)
+        
+        await message.answer(
+            f"✅ Файл добавлен ({len(task_files)})\n\n"
+            f"💡 Можешь добавить ещё файлы или нажми «Продолжить», чтобы перейти к подтверждению.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="✅ Продолжить", callback_data="task_files_done"),
+                    InlineKeyboardButton(text="➕ Добавить ещё", callback_data="task_files_more"),
+                ],
+            ])
+        )
+
+
+@router.callback_query(F.data == "task_files_skip")
+async def process_task_files_skip(callback: CallbackQuery, state: FSMContext):
+    """Пропуск добавления файлов"""
+    await callback.answer()
+    
+    await state.update_data(task_files=[], task_creation_step=7)
+    
+    # Переходим к подтверждению
+    await show_task_confirmation(callback.message, state)
+
+
+@router.callback_query(F.data == "task_files_done")
+async def process_task_files_done(callback: CallbackQuery, state: FSMContext):
+    """Завершение добавления файлов"""
+    await callback.answer()
+    
+    await state.update_data(task_creation_step=7)
+    
+    # Переходим к подтверждению
+    await show_task_confirmation(callback.message, state)
+
+
+@router.callback_query(F.data == "task_files_more")
+async def process_task_files_more(callback: CallbackQuery, state: FSMContext):
+    """Продолжение добавления файлов"""
+    await callback.answer()
+    
+    data = await state.get_data()
+    files_count = len(data.get("task_files", []))
+    
+    await callback.message.edit_text(
+        f"✅ Добавлено файлов: {files_count}\n\n"
+        f"📋 <b>Шаг 6 из 7:</b> Добавь материалы (файлы) для задачи\n\n"
+        f"Можешь прикрепить ещё файлы или нажми «Продолжить», чтобы перейти к подтверждению.\n\n"
+        f"💡 <i>Можно добавить несколько файлов сразу.</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Продолжить", callback_data="task_files_done"),
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="task_files_skip"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+
+
+async def show_task_confirmation(message_or_callback, state: FSMContext):
+    """Показать подтверждение создания задачи"""
+    data = await state.get_data()
+    
+    task_title = data.get("task_title")
+    task_type = data.get("task_type")
+    task_description = data.get("task_description", "")
+    task_priority = data.get("task_priority")
+    task_due_date = data.get("task_due_date")
+    task_files = data.get("task_files", [])
+    task_stages_default = data.get("task_stages_default", False)
+    
+    # Формируем текст подтверждения
+    type_names = {
+        "smm": "SMM",
+        "design": "Design",
+        "channel": "Channel",
+        "prfr": "PR-FR",
+    }
+    priority_names = {
+        "low": "Низкий",
+        "medium": "Средний",
+        "high": "Высокий",
+        "critical": "Критический",
+    }
+    
+    confirmation_text = (
+        f"📝 <b>Подтверждение создания задачи</b>\n\n"
+        f"📋 <b>Название:</b> {task_title}\n"
+        f"📌 <b>Тип:</b> {type_names.get(task_type, task_type)}\n"
+        f"🎯 <b>Приоритет:</b> {priority_names.get(task_priority, task_priority)}\n"
+    )
+    
+    if task_due_date:
+        due_date_obj = datetime.fromisoformat(task_due_date)
+        confirmation_text += f"📅 <b>Дедлайн:</b> {due_date_obj.strftime('%d.%m.%Y %H:%M')}\n"
+    else:
+        confirmation_text += f"📅 <b>Дедлайн:</b> Не установлен\n"
+    
+    if task_stages_default:
+        confirmation_text += f"📑 <b>Этапы:</b> Будют созданы автоматически\n"
+    
+    confirmation_text += f"\n📄 <b>Описание:</b>\n{task_description[:200]}{'...' if len(task_description) > 200 else ''}\n"
+    
+    if task_files:
+        confirmation_text += f"\n📎 <b>Файлы:</b> {len(task_files)} файл(ов)\n"
+    
+    confirmation_text += (
+        f"\n\n💡 Проверь данные и подтверди создание задачи:"
+    )
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Создать задачу", callback_data="task_confirm_create"),
+            InlineKeyboardButton(text="✏️ Изменить", callback_data="task_confirm_edit"),
+        ],
+        [
+            InlineKeyboardButton(text="❌ Отменить", callback_data="task_confirm_cancel"),
+        ],
+    ])
+    
+    if hasattr(message_or_callback, 'edit_text'):
+        await message_or_callback.edit_text(confirmation_text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await message_or_callback.answer(confirmation_text, reply_markup=keyboard, parse_mode="HTML")
+    
+    await state.set_state(TaskCreationStates.confirming)
+
+
+@router.callback_query(F.data == "task_confirm_create", TaskCreationStates.confirming)
+async def process_task_confirm_create(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение и создание задачи"""
+    await callback.answer()
+    
+    user = callback.from_user
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.message.edit_text("❌ Ошибка: не найден токен авторизации.")
+        await state.clear()
+        return
+    
+    # Получаем данные задачи
+    task_title = data.get("task_title")
+    task_type = data.get("task_type")
+    task_description = data.get("task_description", "")
+    task_priority = data.get("task_priority")
+    task_due_date = data.get("task_due_date")
+    task_files = data.get("task_files", [])
+    task_stages_default = data.get("task_stages_default", False)
+    
+    # Подготавливаем данные для API
+    task_data = {
+        "title": task_title,
+        "description": task_description,
+        "type": task_type,
+        "priority": task_priority,
+        "due_date": task_due_date,
+    }
+    
+    # Если нужны этапы по умолчанию (для всех типов задач)
+    if task_stages_default:
+        if task_due_date:
+            due_date_obj = datetime.fromisoformat(task_due_date)
+            if due_date_obj.tzinfo is None:
+                due_date_obj = due_date_obj.replace(tzinfo=timezone.utc)
+        else:
+            due_date_obj = datetime.now(timezone.utc) + timedelta(days=7)
+        
+        # Определяем этапы по умолчанию для каждого типа задачи
+        stage_templates = {
+            TaskType.SMM.value: [
+                ("Исследование/Анализ", "green", 3),  # за 3 дня до дедлайна
+                ("Написание текста", "yellow", 2),    # за 2 дня
+                ("Редактура", "orange", 1),           # за 1 день
+                ("Публикация", "red", 0),             # в день дедлайна
+            ],
+            TaskType.DESIGN.value: [
+                ("Исследование", "green", 4),         # за 4 дня
+                ("Концепция", "yellow", 3),           # за 3 дня
+                ("Дизайн", "orange", 2),              # за 2 дня
+                ("Редактура", "red", 1),              # за 1 день
+                ("Финальная версия", "red", 0),       # в день дедлайна
+            ],
+            TaskType.CHANNEL.value: [
+                ("Сценарий", "green", 3),             # за 3 дня
+                ("Съёмка", "yellow", 1),              # за 1 день
+                ("Монтаж", "orange", 0.25),           # за 6 часов
+                ("Публикация", "red", 0),             # в день дедлайна
+            ],
+            TaskType.PRFR.value: [
+                ("Исследование", "green", 3),         # за 3 дня
+                ("Подготовка контента", "yellow", 2), # за 2 дня
+                ("Редактура", "orange", 1),           # за 1 день
+                ("Публикация", "red", 0),             # в день дедлайна
+            ],
+        }
+        
+        stages_template = stage_templates.get(task_type, [])
+        
+        # Создаём этапы по умолчанию (дедлайны рассчитываем от общего дедлайна задачи)
+        stages = []
+        for i, (stage_name, status_color, days_before) in enumerate(stages_template, 1):
+            # Рассчитываем дедлайн этапа
+            if days_before >= 1:
+                stage_due_date = due_date_obj - timedelta(days=int(days_before))
+            else:
+                # Для дробных значений (например, 0.25 дня = 6 часов)
+                stage_due_date = due_date_obj - timedelta(hours=int(days_before * 24))
+            
+            stages.append({
+                "stage_name": stage_name,
+                "stage_order": i,
+                "due_date": stage_due_date.isoformat(),
+                "status_color": status_color
+            })
+        
+        task_data["stages"] = stages
+    
+    # Создаём задачу через API
+    headers = {"Authorization": f"Bearer {access_token}"}
+    create_response = await call_api("POST", "/tasks", data=task_data, headers=headers)
+    
+    if "error" in create_response:
+        await callback.message.edit_text(
+            f"❌ Ошибка создания задачи: {create_response.get('error', 'Неизвестная ошибка')}\n\n"
+            f"Попробуйте позже или создайте задачу на сайте.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    task_id = create_response.get("id")
+    task_title_created = create_response.get("title")
+    
+    # Если есть файлы, загружаем их в Google Drive
+    if task_files and task_id:
+        try:
+            # Получаем папку задачи в Google Drive
+            drive_folders_response = await call_api("POST", f"/drive/tasks/{task_id}/folders", 
+                                                    data={"task_name": task_title_created}, 
+                                                    headers=headers)
+            
+            if "error" not in drive_folders_response:
+                materials_folder_id = drive_folders_response.get("folders", {}).get("materials_folder_id")
+                
+                # Загружаем файлы (это будет сделано асинхронно через executor, так как это долгая операция)
+                # Пока просто логируем
+                logger.info(f"Task {task_id} created, {len(task_files)} files to upload to Drive")
+        except Exception as e:
+            logger.warning(f"Failed to create Drive folders or upload files for task {task_id}: {e}")
+    
+    # Успешное создание задачи
+    await callback.message.edit_text(
+        f"✅ <b>Задача успешно создана!</b>\n\n"
+        f"📋 <b>Название:</b> {task_title_created}\n"
+        f"🆔 <b>ID:</b> <code>{task_id}</code>\n\n"
+        f"💡 Задача создана в статусе <b>Черновик</b>. Опубликуй её, когда будешь готов.\n\n"
+        f"🌐 <a href=\"{settings.FRONTEND_URL}/tasks/{task_id}\">Открыть задачу на сайте</a>",
+        parse_mode="HTML"
+    )
+    
+    # Очищаем состояние
+    await state.clear()
+
+
+@router.callback_query(F.data == "task_confirm_edit", TaskCreationStates.confirming)
+async def process_task_confirm_edit(callback: CallbackQuery, state: FSMContext):
+    """Редактирование данных задачи перед созданием"""
+    await callback.answer()
+    
+    await callback.message.edit_text(
+        "✏️ <b>Редактирование задачи</b>\n\n"
+        "В данный момент редактирование в процессе создания задачи не реализовано.\n\n"
+        "💡 <b>Решение:</b>\n"
+        "• Отмени создание задачи и начни заново командой /create_task\n"
+        "• Или создай задачу как есть, а затем отредактируй её на сайте\n\n"
+        "Продолжить с текущими данными?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, создать", callback_data="task_confirm_create"),
+                InlineKeyboardButton(text="❌ Отменить", callback_data="task_confirm_cancel"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "task_confirm_cancel", TaskCreationStates.confirming)
+async def process_task_confirm_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена создания задачи"""
+    await callback.answer()
+    
+    await callback.message.edit_text(
+        "❌ <b>Создание задачи отменено</b>\n\n"
+        "Ты можешь создать задачу позже командой /create_task или на сайте.",
+        parse_mode="HTML"
+    )
+    
+    # Очищаем состояние
+    await state.clear()
+
+
+# ========== Обработчики для меню оборудования ==========
+
+@router.callback_query(F.data == "equipment_my_requests")
+async def callback_equipment_my_requests(callback: CallbackQuery, state: FSMContext):
+    """Показать мои заявки на оборудование"""
+    try:
+        await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        requests_response = await call_api("GET", "/equipment/requests", headers=headers)
+        
+        if "error" in requests_response:
+            await callback.message.answer("❌ Ошибка при загрузке заявок.")
+            return
+        
+        requests = requests_response if isinstance(requests_response, list) else []
+        
+        # Удаляем предыдущее сообщение
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        if not requests:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📝 Подать заявку", callback_data="equipment_new_request"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="equipment"),
+                ],
+            ])
+            
+            await callback.message.answer(
+                f"📦 <b>Мои заявки на оборудование</b>\n\n"
+                f"У тебя пока нет заявок.\n\n"
+                f"💡 <b>Совет:</b> При взятии задачи типа Channel с возможностью получения оборудования, система автоматически предложит его.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+        else:
+            status_emoji = {
+                "pending": "⏳",
+                "approved": "✅",
+                "rejected": "❌",
+                "active": "📦",
+                "completed": "✔️",
+                "cancelled": "🚫"
+            }
+            
+            status_names = {
+                "pending": "На рассмотрении",
+                "approved": "Одобрена",
+                "rejected": "Отклонена",
+                "active": "Активна",
+                "completed": "Завершена",
+                "cancelled": "Отменена"
+            }
+            
+            text = f"📦 <b>Мои заявки на оборудование ({len(requests)})</b>\n\n"
+            
+            for i, req in enumerate(requests[:10], 1):  # Показываем первые 10
+                emoji = status_emoji.get(req.get("status"), "❓")
+                status_name = status_names.get(req.get("status"), req.get("status"))
+                text += (
+                    f"{i}. {emoji} <b>{req.get('equipment_name', 'Unknown')}</b>\n"
+                    f"   Статус: {status_name}\n"
+                    f"   Даты: {req.get('start_date')} - {req.get('end_date')}\n\n"
+                )
+            
+            if len(requests) > 10:
+                text += f"... и ещё {len(requests) - 10} заявок\n\n"
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="📝 Подать новую заявку", callback_data="equipment_new_request"),
+                ],
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="equipment"),
+                ],
+            ])
+            
+            await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_equipment_my_requests: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "equipment_available_list")
+async def callback_equipment_available_list(callback: CallbackQuery, state: FSMContext):
+    """Показать доступное оборудование"""
+    try:
+        await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        headers = {"Authorization": f"Bearer {access_token}"}
+        equipment_response = await call_api("GET", "/equipment", headers=headers)
+        
+        if "error" in equipment_response:
+            await callback.message.answer("❌ Ошибка при загрузке оборудования. Попробуйте позже.")
+            return
+        
+        equipment_list = equipment_response.get("items", [])
+        
+        # Удаляем предыдущее сообщение
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        if not equipment_list:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🔙 Назад", callback_data="equipment"),
+                ],
+            ])
+            
+            await callback.message.answer(
+                f"📦 <b>Доступное оборудование</b>\n\n"
+                f"Оборудование пока не добавлено.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            return
+        
+        status_emoji = {
+            "available": "✅",
+            "rented": "🔴",
+            "maintenance": "🔧",
+            "broken": "❌",
+        }
+        
+        status_names = {
+            "available": "Доступно",
+            "rented": "В аренде",
+            "maintenance": "На обслуживании",
+            "broken": "Сломано",
+        }
+        
+        text = f"📦 <b>Доступное оборудование ({len(equipment_list)})</b>\n\n"
+        
+        # Группируем по категориям
+        by_category = {}
+        for eq in equipment_list:
+            category = eq.get('category', 'other')
+            if category not in by_category:
+                by_category[category] = []
+            by_category[category].append(eq)
+        
+        category_names = {
+            "camera": "📷 Камеры",
+            "lens": "🔍 Объективы",
+            "lighting": "💡 Освещение",
+            "audio": "🎤 Аудио",
+            "tripod": "📐 Штативы",
+            "accessories": "🔧 Аксессуары",
+            "storage": "💾 Накопители",
+            "other": "📦 Другое",
+        }
+        
+        for category, items in sorted(by_category.items()):
+            category_name = category_names.get(category, f"📦 {category}")
+            text += f"{category_name}:\n"
+            for eq in items[:5]:  # Показываем первые 5 в каждой категории
+                emoji = status_emoji.get(eq.get("status"), "❓")
+                status_name = status_names.get(eq.get("status"), eq.get("status"))
+                eq_name = eq.get('name', 'Unknown')
+                eq_quantity = eq.get('quantity', 1)
+                
+                # Показываем количество, если больше 1
+                if eq_quantity > 1:
+                    text += f"  {emoji} {eq_name} ({status_name}, {eq_quantity} шт.)\n"
+                else:
+                    text += f"  {emoji} {eq_name} ({status_name})\n"
+            if len(items) > 5:
+                text += f"  ... и ещё {len(items) - 5}\n"
+            text += "\n"
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📝 Подать заявку", callback_data="equipment_new_request"),
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data="equipment"),
+            ],
+        ])
+        
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_equipment_available_list: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "equipment_new_request")
+async def callback_equipment_new_request(callback: CallbackQuery, state: FSMContext):
+    """Начать процесс подачи заявки на оборудование"""
+    try:
+        await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        # Удаляем предыдущее сообщение
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        # Начинаем FSM для подачи заявки
+        await callback.message.answer(
+            "📝 <b>Подача заявки на оборудование</b>\n\n"
+            "Давай заполним заявку пошагово!\n\n"
+            "📋 <b>Шаг 1 из 6:</b> Введи название съёмки\n\n"
+            "Напиши название съёмки или проекта, для которого нужно оборудование:",
+            parse_mode="HTML"
+        )
+        
+        await state.set_state(EquipmentRequestStates.waiting_for_shooting_name)
+        await state.update_data(equipment_request_step=1)
+        
+    except Exception as e:
+        logger.error(f"Error in callback_equipment_new_request: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.message(EquipmentRequestStates.waiting_for_shooting_name)
+async def process_equipment_shooting_name(message: Message, state: FSMContext):
+    """Обработка названия съёмки"""
+    shooting_name = message.text.strip()
+    
+    if len(shooting_name) < 3:
+        await message.answer("❌ Название слишком короткое. Введи название съёмки (минимум 3 символа):")
+        return
+    
+    # Сохраняем название
+    await state.update_data(
+        equipment_shooting_name=shooting_name,
+        equipment_request_step=2
+    )
+    
+    # Переходим к дате съёмки
+    await message.answer(
+        f"✅ Название сохранено: <b>{shooting_name}</b>\n\n"
+        f"📋 <b>Шаг 2 из 6:</b> Введи дату съёмки\n\n"
+        f"Напиши дату съёмки в формате <code>ДД.ММ.ГГГГ</code> (например: 25.12.2024):\n\n"
+        f"💡 <i>Заявку нужно подавать минимум за 2 дня до съёмки.</i>",
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(EquipmentRequestStates.waiting_for_shooting_date)
+
+
+@router.message(EquipmentRequestStates.waiting_for_shooting_date)
+async def process_equipment_shooting_date(message: Message, state: FSMContext):
+    """Обработка даты съёмки"""
+    from datetime import datetime, timedelta, timezone as tz
+    
+    shooting_date_text = message.text.strip()
+    
+    try:
+        # Парсим дату
+        shooting_date = datetime.strptime(shooting_date_text, "%d.%m.%Y").date()
+        
+        # Проверяем, что дата не в прошлом
+        if shooting_date < datetime.now(tz.utc).date():
+            await message.answer("❌ Дата съёмки не может быть в прошлом. Введи дату в будущем:")
+            return
+        
+        # Проверяем, что заявка подаётся минимум за 2 дня
+        min_date = datetime.now(tz.utc).date() + timedelta(days=2)
+        if shooting_date < min_date:
+            await message.answer(
+                f"❌ Заявку нужно подавать минимум за 2 дня до съёмки.\n\n"
+                f"Минимальная дата: {min_date.strftime('%d.%m.%Y')}\n\n"
+                f"Введи дату съёмки:"
+            )
+            return
+        
+        # Сохраняем дату
+        await state.update_data(
+            equipment_shooting_date=shooting_date.isoformat(),
+            equipment_request_step=3
+        )
+        
+        # Переходим к дате получения оборудования
+        await message.answer(
+            f"✅ Дата съёмки сохранена: <b>{shooting_date.strftime('%d.%m.%Y')}</b>\n\n"
+            f"📋 <b>Шаг 3 из 6:</b> Введи дату получения оборудования\n\n"
+            f"Напиши дату, когда нужно получить оборудование в формате <code>ДД.ММ.ГГГГ</code>:\n\n"
+            f"💡 <i>Обычно оборудование получают за день до съёмки или в день съёмки.</i>",
+            parse_mode="HTML"
+        )
+        
+        await state.set_state(EquipmentRequestStates.waiting_for_rental_start)
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Введи дату в формате ДД.ММ.ГГГГ (например: 25.12.2024):"
+        )
+
+
+@router.message(EquipmentRequestStates.waiting_for_rental_start)
+async def process_equipment_rental_start(message: Message, state: FSMContext):
+    """Обработка даты получения оборудования"""
+    from datetime import datetime, timezone as tz
+    
+    rental_start_text = message.text.strip()
+    
+    try:
+        rental_start = datetime.strptime(rental_start_text, "%d.%m.%Y").date()
+        
+        # Получаем дату съёмки из состояния
+        data = await state.get_data()
+        shooting_date_str = data.get("equipment_shooting_date")
+        if shooting_date_str:
+            shooting_date = datetime.fromisoformat(shooting_date_str).date()
+            
+            # Проверяем, что дата получения не позже даты съёмки
+            if rental_start > shooting_date:
+                await message.answer(
+                    f"❌ Дата получения оборудования не может быть позже даты съёмки ({shooting_date.strftime('%d.%m.%Y')}).\n\n"
+                    f"Введи дату получения оборудования:"
+                )
+                return
+        
+        # Сохраняем дату
+        await state.update_data(
+            equipment_rental_start=rental_start.isoformat(),
+            equipment_request_step=4
+        )
+        
+        # Переходим к дате возврата
+        await message.answer(
+            f"✅ Дата получения сохранена: <b>{rental_start.strftime('%d.%m.%Y')}</b>\n\n"
+            f"📋 <b>Шаг 4 из 6:</b> Введи дату возврата оборудования\n\n"
+            f"Напиши дату, когда нужно вернуть оборудование в формате <code>ДД.ММ.ГГГГ</code>:\n\n"
+            f"💡 <i>Обычно оборудование возвращают в день съёмки или на следующий день.</i>",
+            parse_mode="HTML"
+        )
+        
+        await state.set_state(EquipmentRequestStates.waiting_for_rental_end)
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Введи дату в формате ДД.ММ.ГГГГ (например: 25.12.2024):"
+        )
+
+
+@router.message(EquipmentRequestStates.waiting_for_rental_end)
+async def process_equipment_rental_end(message: Message, state: FSMContext):
+    """Обработка даты возврата оборудования"""
+    from datetime import datetime, timezone as tz
+    
+    rental_end_text = message.text.strip()
+    
+    try:
+        rental_end = datetime.strptime(rental_end_text, "%d.%m.%Y").date()
+        
+        # Получаем дату получения из состояния
+        data = await state.get_data()
+        rental_start_str = data.get("equipment_rental_start")
+        if rental_start_str:
+            rental_start = datetime.fromisoformat(rental_start_str).date()
+            
+            # Проверяем, что дата возврата не раньше даты получения
+            if rental_end < rental_start:
+                await message.answer(
+                    f"❌ Дата возврата не может быть раньше даты получения ({rental_start.strftime('%d.%m.%Y')}).\n\n"
+                    f"Введи дату возврата оборудования:"
+                )
+                return
+        
+        # Сохраняем дату
+        await state.update_data(
+            equipment_rental_end=rental_end.isoformat(),
+            equipment_request_step=5
+        )
+        
+        # Получаем доступное оборудование на эти даты
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        try:
+            available_response = await call_api(
+                "GET",
+                f"/equipment/available?start_date={rental_start.isoformat()}&end_date={rental_end.isoformat()}",
+                headers=headers
+            )
+            available_equipment = available_response if isinstance(available_response, list) else []
+        except Exception as e:
+            logger.warning(f"Failed to get available equipment: {e}")
+            available_equipment = []
+        
+        if not available_equipment:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="➡️ Продолжить без оборудования", callback_data="equipment_selection_skip"),
+                ],
+                [
+                    InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+                ],
+            ])
+            
+            await message.answer(
+                f"✅ Дата возврата сохранена: <b>{rental_end.strftime('%d.%m.%Y')}</b>\n\n"
+                f"⚠️ <b>На указанные даты нет доступного оборудования.</b>\n\n"
+                f"Можешь продолжить без выбора оборудования или отменить заявку.",
+                reply_markup=keyboard,
+                parse_mode="HTML"
+            )
+            await state.set_state(EquipmentRequestStates.waiting_for_equipment_selection)
+            return
+        
+        # Формируем кнопки для выбора оборудования с информацией о количестве
+        keyboard_buttons = []
+        equipment_list_items = []
+        
+        for eq in available_equipment[:10]:  # Показываем первые 10
+            eq_name = eq.get('name', 'Unknown')
+            eq_quantity = eq.get('quantity', 1)
+            eq_category = eq.get('category', 'other')
+            
+            # Подсчитываем, сколько экземпляров уже забронировано на эти даты
+            # (это уже учтено в get_available_equipment, но показываем для информации)
+            available_count = eq_quantity  # В будущем можно добавить точный подсчёт
+            
+            # Формируем текст кнопки с количеством
+            if eq_quantity > 1:
+                button_text = f"📦 {eq_name} ({available_count}/{eq_quantity} шт.)"
+            else:
+                button_text = f"📦 {eq_name}"
+            
+            keyboard_buttons.append([
+                InlineKeyboardButton(
+                    text=button_text,
+                    callback_data=f"equipment_select_{eq.get('id')}"
+                ),
+            ])
+            
+            # Формируем текст для списка
+            category_emoji = {
+                'camera': '📷',
+                'lens': '🔍',
+                'lighting': '💡',
+                'audio': '🎤',
+                'tripod': '📐',
+                'accessories': '🔧',
+                'storage': '💾',
+                'other': '📦'
+            }.get(eq_category, '📦')
+            
+            if eq_quantity > 1:
+                equipment_list_items.append(f"{category_emoji} {eq_name} ({available_count}/{eq_quantity} шт.)")
+            else:
+                equipment_list_items.append(f"{category_emoji} {eq_name}")
+        
+        keyboard_buttons.append([
+            InlineKeyboardButton(text="➡️ Продолжить без оборудования", callback_data="equipment_selection_skip"),
+        ])
+        keyboard_buttons.append([
+            InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+        ])
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+        
+        equipment_list_text = "\n".join(equipment_list_items)
+        
+        await message.answer(
+            f"✅ Дата возврата сохранена: <b>{rental_end.strftime('%d.%m.%Y')}</b>\n\n"
+            f"📋 <b>Шаг 5 из 6:</b> Выбери оборудование\n\n"
+            f"Доступное оборудование на даты {rental_start.strftime('%d.%m.%Y')} - {rental_end.strftime('%d.%m.%Y')}:\n"
+            f"{equipment_list_text}\n\n"
+            f"Нажми на кнопку с нужным оборудованием:",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+        
+        await state.set_state(EquipmentRequestStates.waiting_for_equipment_selection)
+        
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Введи дату в формате ДД.ММ.ГГГГ (например: 25.12.2024):"
+        )
+
+
+@router.callback_query(F.data.startswith("equipment_select_"))
+async def process_equipment_selection(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора оборудования"""
+    await callback.answer()
+    
+    equipment_id = callback.data.replace("equipment_select_", "")
+    
+    # Сохраняем выбранное оборудование
+    await state.update_data(
+        equipment_selected_id=equipment_id,
+        equipment_request_step=6
+    )
+    
+    # Получаем информацию об оборудовании
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        equipment_response = await call_api("GET", f"/equipment/{equipment_id}", headers=headers)
+        equipment_name = equipment_response.get("name", "Unknown") if "error" not in equipment_response else "Unknown"
+    except Exception:
+        equipment_name = "Unknown"
+    
+    await callback.message.edit_text(
+        f"✅ Оборудование выбрано: <b>{equipment_name}</b>\n\n"
+        f"📋 <b>Шаг 6 из 6:</b> Комментарий (опционально)\n\n"
+        f"Можешь добавить комментарий к заявке или нажми «Пропустить»:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="equipment_comment_skip"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(EquipmentRequestStates.waiting_for_comment)
+
+
+@router.callback_query(F.data == "equipment_selection_skip")
+async def process_equipment_selection_skip(callback: CallbackQuery, state: FSMContext):
+    """Пропуск выбора оборудования"""
+    await callback.answer()
+    
+    await state.update_data(
+        equipment_selected_id=None,
+        equipment_request_step=6
+    )
+    
+    await callback.message.edit_text(
+        f"✅ Выбор оборудования пропущен\n\n"
+        f"📋 <b>Шаг 6 из 6:</b> Комментарий (опционально)\n\n"
+        f"Можешь добавить комментарий к заявке или нажми «Пропустить»:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="➡️ Пропустить", callback_data="equipment_comment_skip"),
+            ],
+            [
+                InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+            ],
+        ]),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(EquipmentRequestStates.waiting_for_comment)
+
+
+@router.message(EquipmentRequestStates.waiting_for_comment)
+async def process_equipment_comment(message: Message, state: FSMContext):
+    """Обработка комментария к заявке"""
+    comment = message.text.strip()
+    
+    await state.update_data(
+        equipment_comment=comment,
+        equipment_request_step=7
+    )
+    
+    # Переходим к подтверждению
+    await show_equipment_request_confirmation(message, state)
+
+
+@router.callback_query(F.data == "equipment_comment_skip")
+async def process_equipment_comment_skip(callback: CallbackQuery, state: FSMContext):
+    """Пропуск комментария"""
+    await callback.answer()
+    
+    await state.update_data(
+        equipment_comment=None,
+        equipment_request_step=7
+    )
+    
+    # Переходим к подтверждению
+    await show_equipment_request_confirmation(callback.message, state)
+
+
+async def show_equipment_request_confirmation(message_or_callback, state: FSMContext):
+    """Показать подтверждение заявки на оборудование"""
+    from datetime import datetime
+    from uuid import UUID
+    
+    data = await state.get_data()
+    
+    shooting_name = data.get("equipment_shooting_name")
+    shooting_date_str = data.get("equipment_shooting_date")
+    rental_start_str = data.get("equipment_rental_start")
+    rental_end_str = data.get("equipment_rental_end")
+    equipment_id = data.get("equipment_selected_id")
+    comment = data.get("equipment_comment")
+    
+    # Форматируем даты
+    shooting_date = datetime.fromisoformat(shooting_date_str).date() if shooting_date_str else None
+    rental_start = datetime.fromisoformat(rental_start_str).date() if rental_start_str else None
+    rental_end = datetime.fromisoformat(rental_end_str).date() if rental_end_str else None
+    
+    # Получаем название оборудования
+    equipment_name = "Не выбрано"
+    if equipment_id:
+        access_token = data.get("access_token")
+        headers = {"Authorization": f"Bearer {access_token}"}
+        try:
+            equipment_response = await call_api("GET", f"/equipment/{equipment_id}", headers=headers)
+            equipment_name = equipment_response.get("name", "Unknown") if "error" not in equipment_response else "Unknown"
+        except Exception:
+            pass
+    
+    confirmation_text = (
+        f"📝 <b>Подтверждение заявки на оборудование</b>\n\n"
+        f"📋 <b>Название съёмки:</b> {shooting_name}\n"
+        f"📅 <b>Дата съёмки:</b> {shooting_date.strftime('%d.%m.%Y') if shooting_date else 'Не указана'}\n"
+        f"📦 <b>Оборудование:</b> {equipment_name}\n"
+        f"📥 <b>Получение:</b> {rental_start.strftime('%d.%m.%Y') if rental_start else 'Не указана'}\n"
+        f"📤 <b>Возврат:</b> {rental_end.strftime('%d.%m.%Y') if rental_end else 'Не указана'}\n"
+    )
+    
+    if comment:
+        confirmation_text += f"\n💬 <b>Комментарий:</b>\n{comment}\n"
+    
+    confirmation_text += "\n\n💡 Проверь данные и подтверди заявку:"
+    
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить заявку", callback_data="equipment_request_confirm"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+        ],
+    ])
+    
+    if hasattr(message_or_callback, 'edit_text'):
+        await message_or_callback.edit_text(confirmation_text, reply_markup=keyboard, parse_mode="HTML")
+    else:
+        await message_or_callback.answer(confirmation_text, reply_markup=keyboard, parse_mode="HTML")
+    
+    await state.set_state(EquipmentRequestStates.confirming)
+
+
+@router.callback_query(F.data == "equipment_request_confirm", EquipmentRequestStates.confirming)
+async def process_equipment_request_confirm(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение и создание заявки на оборудование"""
+    await callback.answer()
+    
+    from datetime import datetime
+    from uuid import UUID
+    
+    data = await state.get_data()
+    access_token = data.get("access_token")
+    
+    if not access_token:
+        await callback.message.edit_text("❌ Ошибка: не найден токен авторизации.")
+        await state.clear()
+        return
+    
+    # Получаем данные заявки
+    shooting_name = data.get("equipment_shooting_name")
+    rental_start_str = data.get("equipment_rental_start")
+    rental_end_str = data.get("equipment_rental_end")
+    equipment_id = data.get("equipment_selected_id")
+    comment = data.get("equipment_comment")
+    task_id = data.get("equipment_task_id")  # Если заявка связана с задачей
+    
+    if not equipment_id:
+        await callback.message.edit_text(
+            "❌ Ошибка: не выбрано оборудование.\n\n"
+            "Пожалуйста, начни заявку заново.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    # Подготавливаем данные для API
+    request_data = {
+        "equipment_id": equipment_id,
+        "start_date": rental_start_str,
+        "end_date": rental_end_str,
+    }
+    
+    if task_id:
+        request_data["task_id"] = task_id
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # Создаём заявку через API
+    create_response = await call_api("POST", "/equipment/requests", data=request_data, headers=headers)
+    
+    if "error" in create_response:
+        await callback.message.edit_text(
+            f"❌ Ошибка создания заявки: {create_response.get('error', 'Неизвестная ошибка')}\n\n"
+            f"Попробуйте позже или создайте заявку на сайте.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    request_id = create_response.get("id")
+    equipment_name = create_response.get("equipment_name", "Unknown")
+    
+    # Успешное создание заявки
+    await callback.message.edit_text(
+        f"✅ <b>Заявка успешно создана!</b>\n\n"
+        f"📦 <b>Оборудование:</b> {equipment_name}\n"
+        f"📅 <b>Даты:</b> {rental_start_str} - {rental_end_str}\n"
+        f"🆔 <b>ID заявки:</b> <code>{request_id}</code>\n\n"
+        f"⏳ Заявка отправлена на рассмотрение координаторам.\n\n"
+        f"🔔 Мы уведомим тебя, когда заявка будет одобрена или отклонена.\n\n"
+        f"🌐 <a href=\"{settings.FRONTEND_URL}/equipment\">Посмотреть заявку на сайте</a>",
+        parse_mode="HTML"
+    )
+    
+    # Очищаем состояние
+    await state.clear()
+
+
+@router.callback_query(F.data == "equipment_request_cancel")
+async def process_equipment_request_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена подачи заявки на оборудование"""
+    await callback.answer()
+    
+    await callback.message.edit_text(
+        "❌ <b>Подача заявки отменена</b>\n\n"
+        "Ты можешь подать заявку позже через меню оборудования или на сайте.",
+        parse_mode="HTML"
+    )
+    
+    # Очищаем состояние
+    await state.clear()
+
+
+@router.callback_query(F.data == "main_menu")
+async def callback_main_menu(callback: CallbackQuery, state: FSMContext):
+    """Возврат в главное меню (эмулирует /start)"""
+    try:
+        await callback.answer()
+        # Удаляем предыдущее сообщение
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        # Эмулируем команду /start - просто вызываем cmd_start
+        await cmd_start(callback.message, state)
+    except Exception as e:
+        logger.error(f"Error in callback_main_menu: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("equipment_quick_request_"))
+async def callback_equipment_quick_request(callback: CallbackQuery, state: FSMContext):
+    """Быстрая подача заявки на оборудование для задачи"""
+    try:
+        await callback.answer()
+        data = await state.get_data()
+        access_token = data.get("access_token")
+        
+        if not access_token:
+            await callback.message.answer("⚠️ Сначала выполните /start для авторизации.")
+            return
+        
+        # Извлекаем task_id из callback_data
+        task_id_str = callback.data.replace("equipment_quick_request_", "")
+        
+        # Получаем информацию о задаче
+        headers = {"Authorization": f"Bearer {access_token}"}
+        task_response = await call_api("GET", f"/tasks/{task_id_str}", headers=headers)
+        
+        if "error" in task_response:
+            await callback.message.answer("❌ Ошибка при загрузке задачи.")
+            return
+        
+        task = task_response
+        task_title = task.get("title", "Unknown")
+        
+        # Находим этап "Съёмка" для предзаполнения дат
+        stages = task.get("stages", [])
+        shooting_stage = None
+        for stage in stages:
+            if stage.get("stage_name", "").lower() in ["съёмка", "shooting", "съемка"]:
+                shooting_stage = stage
+                break
+        
+        # Удаляем предыдущее сообщение
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        
+        # Предзаполняем данные из задачи
+        if shooting_stage and shooting_stage.get("due_date"):
+            from datetime import datetime
+            shooting_date = datetime.fromisoformat(shooting_stage["due_date"]).date()
+            rental_start = shooting_date  # Получение в день съёмки
+            rental_end = shooting_date  # Возврат в день съёмки
+            
+            await state.update_data(
+                equipment_shooting_name=task_title,
+                equipment_shooting_date=shooting_date.isoformat(),
+                equipment_rental_start=rental_start.isoformat(),
+                equipment_rental_end=rental_end.isoformat(),
+                equipment_task_id=task_id_str,
+                equipment_request_step=5  # Пропускаем шаги 1-4, сразу к выбору оборудования
+            )
+            
+            # Получаем доступное оборудование
+            try:
+                available_response = await call_api(
+                    "GET",
+                    f"/equipment/available?start_date={rental_start.isoformat()}&end_date={rental_end.isoformat()}",
+                    headers=headers
+                )
+                available_equipment = available_response if isinstance(available_response, list) else []
+            except Exception:
+                available_equipment = []
+            
+            if available_equipment:
+                # Формируем кнопки для выбора оборудования с информацией о количестве
+                keyboard_buttons = []
+                equipment_list_items = []
+                
+                for eq in available_equipment[:10]:
+                    eq_name = eq.get('name', 'Unknown')
+                    eq_quantity = eq.get('quantity', 1)
+                    eq_category = eq.get('category', 'other')
+                    
+                    # Формируем текст кнопки с количеством
+                    if eq_quantity > 1:
+                        button_text = f"📦 {eq_name} ({eq_quantity} шт.)"
+                    else:
+                        button_text = f"📦 {eq_name}"
+                    
+                    keyboard_buttons.append([
+                        InlineKeyboardButton(
+                            text=button_text,
+                            callback_data=f"equipment_select_{eq.get('id')}"
+                        ),
+                    ])
+                    
+                    # Формируем текст для списка
+                    category_emoji = {
+                        'camera': '📷',
+                        'lens': '🔍',
+                        'lighting': '💡',
+                        'audio': '🎤',
+                        'tripod': '📐',
+                        'accessories': '🔧',
+                        'storage': '💾',
+                        'other': '📦'
+                    }.get(eq_category, '📦')
+                    
+                    if eq_quantity > 1:
+                        equipment_list_items.append(f"{category_emoji} {eq_name} ({eq_quantity} шт.)")
+                    else:
+                        equipment_list_items.append(f"{category_emoji} {eq_name}")
+                
+                keyboard_buttons.append([
+                    InlineKeyboardButton(text="➡️ Продолжить без оборудования", callback_data="equipment_selection_skip"),
+                ])
+                keyboard_buttons.append([
+                    InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
+                ])
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+                
+                equipment_list_text = "\n".join(equipment_list_items)
+                
+                await callback.message.answer(
+                    f"📝 <b>Быстрая подача заявки на оборудование</b>\n\n"
+                    f"📋 <b>Задача:</b> {task_title}\n"
+                    f"📅 <b>Дата съёмки:</b> {shooting_date.strftime('%d.%m.%Y')}\n\n"
+                    f"Доступное оборудование на дату съёмки:\n"
+                    f"{equipment_list_text}\n\n"
+                    f"Выбери оборудование:",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+                
+                await state.set_state(EquipmentRequestStates.waiting_for_equipment_selection)
+            else:
+                # Нет доступного оборудования
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="📝 Подать заявку вручную", callback_data="equipment_new_request"),
+                    ],
+                    [
+                        InlineKeyboardButton(text="🔙 Назад", callback_data="equipment"),
+                    ],
+                ])
+                
+                await callback.message.answer(
+                    f"📝 <b>Быстрая подача заявки на оборудование</b>\n\n"
+                    f"📋 <b>Задача:</b> {task_title}\n"
+                    f"📅 <b>Дата съёмки:</b> {shooting_date.strftime('%d.%m.%Y')}\n\n"
+                    f"⚠️ <b>На указанную дату нет доступного оборудования.</b>\n\n"
+                    f"Можешь подать заявку вручную или выбрать другую дату.",
+                    reply_markup=keyboard,
+                    parse_mode="HTML"
+                )
+        else:
+            # Нет этапа "Съёмка" или даты, начинаем обычный процесс
+            await callback.message.answer(
+                f"📝 <b>Подача заявки на оборудование для задачи</b>\n\n"
+                f"📋 <b>Задача:</b> {task_title}\n\n"
+                f"Давай заполним заявку пошагово!\n\n"
+                f"📋 <b>Шаг 1 из 6:</b> Введи название съёмки\n\n"
+                f"Напиши название съёмки или проекта:",
+                parse_mode="HTML"
+            )
+            
+            await state.update_data(equipment_task_id=task_id_str)
+            await state.set_state(EquipmentRequestStates.waiting_for_shooting_name)
+            await state.update_data(equipment_request_step=1)
+        
+    except Exception as e:
+        logger.error(f"Error in callback_equipment_quick_request: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.message()

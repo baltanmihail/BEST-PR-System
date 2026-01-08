@@ -1,12 +1,14 @@
 """
 Модели задач
 """
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Enum, Integer, CheckConstraint, TypeDecorator
-from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Enum, Integer, Boolean, CheckConstraint, TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM, JSON
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
+from sqlalchemy.ext.mutable import MutableDict, MutableList
 import uuid
 import enum
+import json
 
 from app.database import Base
 
@@ -129,9 +131,23 @@ class Task(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
+    # Поле для ручного управления порядком задач (только для VP4PR)
+    sort_order = Column(Integer, nullable=True, index=True)  # NULL = автоматическая сортировка, число = ручной порядок (меньше = выше)
+    
+    # Поле для отметки возможности получения оборудования (для Channel задач)
+    equipment_available = Column(Boolean, nullable=False, default=False, index=True)  # True = можно получить оборудование для этой задачи
+    
+    # Поля для карточки задачи
+    thumbnail_image_url = Column(String, nullable=True)  # URL превью изображения (из Google Drive)
+    role_specific_requirements = Column(JSON, nullable=True)  # JSON с ТЗ для каждой роли: {"smm": "...", "design": "...", "channel": "...", "prfr": "..."}
+    questions = Column(JSON, nullable=True)  # JSON список вопросов по задаче: ["вопрос1", "вопрос2", ...]
+    example_project_ids = Column(JSON, nullable=True)  # JSON список ID примеров прошлых работ (как строки UUID): ["task_id1", "task_id2", ...]
+    
     # Relationships
-    stages = relationship("TaskStage", back_populates="task", cascade="all, delete-orphan")
+    stages = relationship("TaskStage", back_populates="task", cascade="all, delete-orphan", order_by="TaskStage.stage_order")
     assignments = relationship("TaskAssignment", back_populates="task", cascade="all, delete-orphan")
+    # Файлы (материалы задачи) - связь будет определена в модели File через back_populates
+    files = None  # Будет динамически загружаться через TaskService
     
     __table_args__ = (
         CheckConstraint("LENGTH(TRIM(title)) > 0", name="tasks_title_not_empty"),

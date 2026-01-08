@@ -12,10 +12,24 @@ export interface GalleryFile {
 export interface GalleryItem {
   id: string
   title: string
-  type: string
-  completed_at: string
+  description?: string
+  category: 'photo' | 'video' | 'final' | 'wip'
+  tags?: string[]
+  task_id?: string
+  thumbnail_url?: string
   files: GalleryFile[]
   files_count: number
+  created_by?: string
+  creator_name?: string
+  sort_order?: number
+  created_at: string
+  updated_at: string
+  completed_at?: string
+  status?: 'wip' | 'ready' | 'published'
+  metrics?: {
+    views?: number
+    likes?: number
+  }
 }
 
 export interface GalleryResponse {

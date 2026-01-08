@@ -1,12 +1,13 @@
-export type UserRole = 
-  | 'novice'
-  | 'participant'
-  | 'active_participant'
-  | 'coordinator_smm'
-  | 'coordinator_design'
-  | 'coordinator_channel'
-  | 'coordinator_prfr'
-  | 'vp4pr'
+export enum UserRole {
+  NOVICE = 'novice',
+  PARTICIPANT = 'participant',
+  ACTIVE_PARTICIPANT = 'active_participant',
+  COORDINATOR_SMM = 'coordinator_smm',
+  COORDINATOR_DESIGN = 'coordinator_design',
+  COORDINATOR_CHANNEL = 'coordinator_channel',
+  COORDINATOR_PRFR = 'coordinator_prfr',
+  VP4PR = 'vp4pr'
+}
 
 export interface User {
   id: string

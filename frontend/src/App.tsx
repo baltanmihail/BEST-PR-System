@@ -14,6 +14,8 @@ import Register from './pages/Register'
 import Login from './pages/Login'
 import Equipment from './pages/Equipment'
 import Settings from './pages/Settings'
+import UserMonitoring from './pages/UserMonitoring'
+import Calendar from './pages/Calendar'
 import { useAuthStore } from './store/authStore'
 import { authApi } from './services/auth'
 
@@ -91,6 +93,8 @@ function AppContent() {
             <Route path="/login" element={<Login />} />
             <Route path="/equipment" element={<Equipment />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/users" element={<UserMonitoring />} />
+            <Route path="/calendar" element={<Calendar />} />
           </Routes>
         </Layout>
   )

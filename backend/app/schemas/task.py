@@ -19,13 +19,22 @@ class TaskBase(BaseModel):
     event_id: Optional[UUID] = None
     priority: TaskPriority = TaskPriority.MEDIUM
     due_date: Optional[datetime] = None
+    equipment_available: bool = Field(default=False, description="Можно ли получить оборудование для этой задачи (для Channel задач)")
+    thumbnail_image_url: Optional[str] = Field(None, description="URL превью изображения для карточки задачи")
+    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям: {'smm': '...', 'design': '...', 'channel': '...', 'prfr': '...'}")
+    questions: Optional[List[str]] = Field(None, description="Список вопросов по задаче")
+    example_project_ids: Optional[List[UUID]] = Field(None, description="ID примеров прошлых работ")
 
 
 class TaskCreate(TaskBase):
     """Схема для создания задачи"""
-    stages: Optional[List["TaskStageCreate"]] = Field(default=None, description="Этапы задачи (для Channel задач)")
-    requires_equipment: Optional[bool] = Field(default=False, description="Требуется ли оборудование (для Channel задач)")
+    stages: Optional[List["TaskStageCreate"]] = Field(default=None, description="Этапы задачи (для всех типов задач)")
+    equipment_available: Optional[bool] = Field(default=False, description="Можно ли получить оборудование для этой задачи (для Channel задач, устанавливается координатором/VP4PR)")
     script_ready: Optional[bool] = Field(default=True, description="Готов ли сценарий (если False, добавляется этап 'Сценарий')")
+    thumbnail_image_url: Optional[str] = Field(None, description="URL превью изображения для карточки задачи")
+    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям: {'smm': '...', 'design': '...', 'channel': '...', 'prfr': '...'}")
+    questions: Optional[List[str]] = Field(None, description="Список вопросов по задаче")
+    example_project_ids: Optional[List[UUID]] = Field(None, description="ID примеров прошлых работ")
 
 
 class TaskUpdate(BaseModel):
@@ -35,6 +44,12 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     status: Optional[TaskStatus] = None
     due_date: Optional[datetime] = None
+    equipment_available: Optional[bool] = Field(None, description="Можно ли получить оборудование для этой задачи (для Channel задач, только координаторы/VP4PR)")
+    thumbnail_image_url: Optional[str] = Field(None, description="URL превью изображения для карточки задачи")
+    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям: {'smm': '...', 'design': '...', 'channel': '...', 'prfr': '...'}")
+    questions: Optional[List[str]] = Field(None, description="Список вопросов по задаче")
+    example_project_ids: Optional[List[UUID]] = Field(None, description="ID примеров прошлых работ")
+    sort_order: Optional[int] = Field(None, description="Ручной порядок задачи (меньше = выше, только для VP4PR)")
 
 
 class TaskResponse(TaskBase):
@@ -107,10 +122,31 @@ class TaskAssignmentResponse(TaskAssignmentBase):
         from_attributes = True
 
 
+class TaskFileResponse(BaseModel):
+    """Схема ответа с файлом задачи"""
+    id: UUID
+    drive_id: str
+    file_name: str
+    file_type: str
+    drive_url: Optional[str] = None  # Ссылка на файл в Google Drive
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 class TaskDetailResponse(TaskResponse):
-    """Детальная схема задачи с этапами и назначениями"""
+    """Детальная схема задачи (карточка задачи) с этапами, назначениями и материалами"""
     stages: List[TaskStageResponse] = []
     assignments: List[TaskAssignmentResponse] = []
+    files: List[TaskFileResponse] = []  # Файлы (материалы задачи) из Google Drive
+    thumbnail_image_url: Optional[str] = None
+    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям: {'smm': '...', 'design': '...', 'channel': '...', 'prfr': '...'}")
+    questions: Optional[List[str]] = Field(None, description="Список вопросов по задаче")
+    example_project_ids: Optional[List[UUID]] = Field(None, description="ID примеров прошлых работ")
+    
+    class Config:
+        from_attributes = True
 
 
 # Обновляем модель для корректной работы forward references

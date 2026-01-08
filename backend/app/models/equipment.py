@@ -1,8 +1,8 @@
 """
 Модели оборудования
 """
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum, CheckConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum, CheckConstraint, Integer, TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM as PG_ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -17,6 +17,53 @@ class EquipmentStatus(str, enum.Enum):
     RENTED = "rented"
     MAINTENANCE = "maintenance"
     BROKEN = "broken"
+
+
+class EquipmentCategory(str, enum.Enum):
+    """Категории оборудования"""
+    CAMERA = "camera"  # Камеры
+    LENS = "lens"  # Объективы
+    LIGHTING = "lighting"  # Свет
+    AUDIO = "audio"  # Аудио оборудование
+    TRIPOD = "tripod"  # Штативы
+    ACCESSORIES = "accessories"  # Аксессуары
+    STORAGE = "storage"  # Накопители
+    OTHER = "other"  # Прочее
+
+
+class EquipmentCategoryType(TypeDecorator):
+    """TypeDecorator для правильной конвертации EquipmentCategory в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_ENUM(EquipmentCategory, name='equipmentcategory', create_type=False, values_callable=lambda x: [e.value for e in EquipmentCategory]))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, EquipmentCategory):
+            return value.value
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return EquipmentCategory(value)
+            except ValueError:
+                return EquipmentCategory.OTHER
+        return value
 
 
 class EquipmentRequestStatus(str, enum.Enum):
@@ -34,8 +81,9 @@ class Equipment(Base):
     __tablename__ = "equipment"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)
-    category = Column(String, nullable=False, index=True)  # 'camera', 'audio', 'lighting', 'accessories'
+    name = Column(String, nullable=False, index=True)
+    category = Column(EquipmentCategoryType(), nullable=False, index=True)  # Категория оборудования
+    quantity = Column(Integer, nullable=False, default=1)  # Количество экземпляров (по умолчанию 1)
     specs = Column(JSONB, nullable=True)  # Дополнительные характеристики
     status = Column(Enum(EquipmentStatus), nullable=False, default=EquipmentStatus.AVAILABLE, index=True)
     current_holder_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -44,10 +92,11 @@ class Equipment(Base):
     
     __table_args__ = (
         CheckConstraint("LENGTH(TRIM(name)) > 0", name="equipment_name_not_empty"),
+        CheckConstraint("quantity > 0", name="equipment_quantity_positive"),
     )
     
     def __repr__(self):
-        return f"<Equipment {self.name} ({self.status})>"
+        return f"<Equipment {self.name} ({self.category.value}, qty: {self.quantity})>"
 
 
 class EquipmentRequest(Base):

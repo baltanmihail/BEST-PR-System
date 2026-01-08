@@ -7,7 +7,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import date
 
-from app.models.equipment import Equipment, EquipmentRequest, EquipmentStatus, EquipmentRequestStatus
+from app.models.equipment import Equipment, EquipmentRequest, EquipmentStatus, EquipmentRequestStatus, EquipmentCategory
 
 
 class EquipmentService:
@@ -64,42 +64,55 @@ class EquipmentService:
         """
         Получить доступное оборудование на указанные даты
         
-        Исключает оборудование, которое уже забронировано на эти даты
+        Учитывает количество экземпляров: если оборудование имеет quantity > 1,
+        проверяет, сколько экземпляров уже забронировано на эти даты
         """
-        # Находим оборудование, которое забронировано на эти даты
-        booked_query = select(EquipmentRequest.equipment_id).where(
-            and_(
-                EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.PENDING,
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
-                ]),
-                or_(
-                    # Пересечение дат
-                    and_(
-                        EquipmentRequest.start_date <= end_date,
-                        EquipmentRequest.end_date >= start_date
-                    )
-                )
-            )
-        )
+        from app.models.equipment import EquipmentCategory
         
-        booked_result = await db.execute(booked_query)
-        booked_ids = [row[0] for row in booked_result.all()]
-        
-        # Получаем доступное оборудование
+        # Получаем всё оборудование с нужным статусом и категорией
         query = select(Equipment).where(
             Equipment.status == EquipmentStatus.AVAILABLE
         )
         
-        if booked_ids:
-            query = query.where(~Equipment.id.in_(booked_ids))
-        
         if category:
-            query = query.where(Equipment.category == category)
+            # Поддерживаем как строку, так и enum
+            try:
+                category_enum = EquipmentCategory(category)
+                query = query.where(Equipment.category == category_enum)
+            except ValueError:
+                # Если не удалось распарсить как enum, используем строку
+                query = query.where(Equipment.category == category)
         
-        result = await db.execute(query)
-        return list(result.scalars().all())
+        all_equipment_result = await db.execute(query)
+        all_equipment = list(all_equipment_result.scalars().all())
+        
+        # Для каждого оборудования считаем, сколько экземпляров забронировано на эти даты
+        available_equipment = []
+        
+        for equipment in all_equipment:
+            # Находим количество забронированных экземпляров на эти даты
+            booked_count_query = select(func.count(EquipmentRequest.id)).where(
+                and_(
+                    EquipmentRequest.equipment_id == equipment.id,
+                    EquipmentRequest.status.in_([
+                        EquipmentRequestStatus.PENDING,
+                        EquipmentRequestStatus.APPROVED,
+                        EquipmentRequestStatus.ACTIVE
+                    ]),
+                    # Пересечение дат
+                    EquipmentRequest.start_date <= end_date,
+                    EquipmentRequest.end_date >= start_date
+                )
+            )
+            
+            booked_count_result = await db.execute(booked_count_query)
+            booked_count = booked_count_result.scalar_one() or 0
+            
+            # Если есть свободные экземпляры, добавляем оборудование в список
+            if booked_count < equipment.quantity:
+                available_equipment.append(equipment)
+        
+        return available_equipment
     
     @staticmethod
     async def create_equipment_request(
@@ -147,6 +160,37 @@ class EquipmentService:
         
         result = await db.execute(query)
         return list(result.scalars().all())
+    
+    @staticmethod
+    async def get_all_requests(
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 100,
+        status: Optional[EquipmentRequestStatus] = None,
+        user_id: Optional[UUID] = None
+    ) -> tuple[List[EquipmentRequest], int]:
+        """Получить все заявки на оборудование (для координаторов)"""
+        query = select(EquipmentRequest)
+        count_query = select(func.count(EquipmentRequest.id))
+        
+        conditions = []
+        if status:
+            conditions.append(EquipmentRequest.status == status)
+        if user_id:
+            conditions.append(EquipmentRequest.user_id == user_id)
+        
+        if conditions:
+            query = query.where(and_(*conditions))
+            count_query = count_query.where(and_(*conditions))
+        
+        total_result = await db.execute(count_query)
+        total = total_result.scalar_one()
+        
+        query = query.order_by(EquipmentRequest.created_at.desc()).offset(skip).limit(limit)
+        result = await db.execute(query)
+        requests = result.scalars().all()
+        
+        return list(requests), total
     
     @staticmethod
     async def get_request_by_id(
@@ -206,3 +250,96 @@ class EquipmentService:
         await db.refresh(request)
         
         return request
+    
+    @staticmethod
+    async def create_equipment(
+        db: AsyncSession,
+        name: str,
+        category: EquipmentCategory,
+        quantity: int = 1,
+        specs: Optional[dict] = None,
+        status: EquipmentStatus = EquipmentStatus.AVAILABLE
+    ) -> Equipment:
+        """Создать новое оборудование"""
+        if quantity < 1:
+            raise ValueError("Quantity must be at least 1")
+        
+        equipment = Equipment(
+            name=name,
+            category=category,
+            quantity=quantity,
+            specs=specs,
+            status=status
+        )
+        
+        db.add(equipment)
+        await db.commit()
+        await db.refresh(equipment)
+        
+        return equipment
+    
+    @staticmethod
+    async def update_equipment(
+        db: AsyncSession,
+        equipment_id: UUID,
+        name: Optional[str] = None,
+        category: Optional[EquipmentCategory] = None,
+        quantity: Optional[int] = None,
+        specs: Optional[dict] = None,
+        status: Optional[EquipmentStatus] = None
+    ) -> Optional[Equipment]:
+        """Обновить оборудование"""
+        equipment = await EquipmentService.get_equipment_by_id(db, equipment_id)
+        if not equipment:
+            return None
+        
+        if name is not None:
+            equipment.name = name
+        if category is not None:
+            equipment.category = category
+        if quantity is not None:
+            if quantity < 1:
+                raise ValueError("Quantity must be at least 1")
+            equipment.quantity = quantity
+        if specs is not None:
+            equipment.specs = specs
+        if status is not None:
+            equipment.status = status
+        
+        await db.commit()
+        await db.refresh(equipment)
+        
+        return equipment
+    
+    @staticmethod
+    async def delete_equipment(
+        db: AsyncSession,
+        equipment_id: UUID
+    ) -> bool:
+        """Удалить оборудование (только если нет активных заявок)"""
+        equipment = await EquipmentService.get_equipment_by_id(db, equipment_id)
+        if not equipment:
+            return False
+        
+        # Проверяем, есть ли активные заявки
+        active_requests_query = select(func.count(EquipmentRequest.id)).where(
+            and_(
+                EquipmentRequest.equipment_id == equipment_id,
+                EquipmentRequest.status.in_([
+                    EquipmentRequestStatus.PENDING,
+                    EquipmentRequestStatus.APPROVED,
+                    EquipmentRequestStatus.ACTIVE
+                ])
+            )
+        )
+        
+        active_requests_result = await db.execute(active_requests_query)
+        active_requests_count = active_requests_result.scalar_one() or 0
+        
+        if active_requests_count > 0:
+            raise ValueError(f"Cannot delete equipment with {active_requests_count} active request(s)")
+        
+        await db.delete(equipment)
+        await db.commit()
+        
+        return True
