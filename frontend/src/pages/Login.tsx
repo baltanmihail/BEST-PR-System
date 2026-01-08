@@ -1,19 +1,17 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { QrCode, Loader2, CheckCircle2, AlertCircle, Smartphone, ArrowLeft } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { qrAuthApi, QRStatusResponse } from '../services/qrAuth'
+import { qrAuthApi, QRStatusResponse, QRGenerateResponse } from '../services/qrAuth'
 
 export default function Login() {
   const { theme } = useThemeStore()
   const { login, user } = useAuthStore()
   const navigate = useNavigate()
   const [sessionToken, setSessionToken] = useState<string | null>(null)
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
-  const pollingRef = useRef(false)
 
   // Проверяем, не авторизован ли уже пользователь
   useEffect(() => {
@@ -23,17 +21,21 @@ export default function Login() {
   }, [user, navigate])
 
   // Генерация QR-кода
-  const { data: qrData, isLoading: qrLoading, refetch: refetchQR } = useQuery({
+  const { data: qrData, isLoading: qrLoading, refetch: refetchQR } = useQuery<QRGenerateResponse>({
     queryKey: ['qr-generate'],
     queryFn: () => qrAuthApi.generate(),
     enabled: !sessionToken,
-    onSuccess: (data) => {
-      setSessionToken(data.session_token)
-    },
   })
 
+  // Устанавливаем токен когда QR-код сгенерирован
+  useEffect(() => {
+    if (qrData?.session_token) {
+      setSessionToken(qrData.session_token)
+    }
+  }, [qrData])
+
   // Polling статуса QR-кода
-  const { data: statusData, refetch: refetchStatus } = useQuery({
+  const { data: statusData } = useQuery<QRStatusResponse>({
     queryKey: ['qr-status', sessionToken],
     queryFn: () => {
       if (!sessionToken) throw new Error('No session token')
@@ -49,26 +51,19 @@ export default function Login() {
       // Polling каждые 2 секунды
       return 2000
     },
-    onSuccess: (data) => {
-      if (data.status === 'confirmed' && data.access_token && data.user) {
-        // Сохраняем токен
-        localStorage.setItem('access_token', data.access_token)
-        // Обновляем состояние авторизации
-        login(data.access_token)
-        // Редирект на главную
-        navigate('/')
-      }
-    },
   })
 
-  // Очистка polling при размонтировании
+  // Обработка подтверждения
   useEffect(() => {
-    return () => {
-      if (pollingInterval) {
-        clearInterval(pollingInterval)
-      }
+    if (statusData?.status === 'confirmed' && statusData.access_token && statusData.user) {
+      // Сохраняем токен
+      localStorage.setItem('access_token', statusData.access_token)
+      // Обновляем состояние авторизации
+      login(statusData.access_token)
+      // Редирект на главную
+      navigate('/')
     }
-  }, [pollingInterval])
+  }, [statusData, login, navigate])
 
   const handleRefreshQR = () => {
     setSessionToken(null)
@@ -77,7 +72,7 @@ export default function Login() {
 
   const isExpired = statusData?.status === 'expired'
   const isConfirmed = statusData?.status === 'confirmed'
-  const isPending = statusData?.status === 'pending' || !statusData
+  const isPending = (statusData?.status === 'pending' || !statusData) && !isExpired && !isConfirmed
 
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 ${theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50'}`}>
