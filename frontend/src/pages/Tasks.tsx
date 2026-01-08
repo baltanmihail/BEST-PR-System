@@ -18,9 +18,9 @@ export default function Tasks() {
     queryFn: async () => {
       try {
         if (isRegistered) {
-          return await tasksApi.getTasks({ limit: 100 })
+          return await tasksApi.getTasks({ limit: 50 })
         } else {
-          const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
+          const publicTasksResponse = await publicApi.getTasks({ limit: 50 })
           // Преобразуем формат публичных задач в полный формат Task для TaskCard
           return {
             items: publicTasksResponse.items.map(task => ({

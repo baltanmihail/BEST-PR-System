@@ -2,7 +2,7 @@
 cd "BEST PR System"
 git status
 git add .
-git commit -m "Деградация"
+git commit -m "Вход и регистрация (2 в 1 или 1 в 2)"
 git push origin main
 ```
 # 🚂 Railway Deployment Guide

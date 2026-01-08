@@ -6,12 +6,27 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { qrAuthApi, QRStatusResponse, QRGenerateResponse } from '../services/qrAuth'
+import { registrationApi } from '../services/registration'
 
 export default function Login() {
   const { theme } = useThemeStore()
   const { login, user } = useAuthStore()
   const navigate = useNavigate()
   const [sessionToken, setSessionToken] = useState<string | null>(null)
+  const [showAgreement, setShowAgreement] = useState(false)
+  const [agreementContent, setAgreementContent] = useState<string>('')
+
+  // Получаем пользовательское соглашение
+  const { data: agreementData } = useQuery({
+    queryKey: ['agreement'],
+    queryFn: () => registrationApi.getAgreement(),
+  })
+
+  useEffect(() => {
+    if (agreementData?.content) {
+      setAgreementContent(agreementData.content)
+    }
+  }, [agreementData])
 
   // Проверяем, не авторизован ли уже пользователь
   useEffect(() => {
@@ -21,10 +36,11 @@ export default function Login() {
   }, [user, navigate])
 
   // Генерация QR-кода
-  const { data: qrData, isLoading: qrLoading, refetch: refetchQR } = useQuery<QRGenerateResponse>({
+  const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
     queryKey: ['qr-generate'],
     queryFn: () => qrAuthApi.generate(),
     enabled: !sessionToken,
+    retry: 2,
   })
 
   // Устанавливаем токен когда QR-код сгенерирован
@@ -125,6 +141,16 @@ export default function Login() {
                 </div>
               )}
             </div>
+          ) : qrError ? (
+            <div className="w-64 h-64 flex flex-col items-center justify-center border-2 border-dashed border-red-500/50 rounded-lg p-4">
+              <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
+              <p className={`text-sm text-center ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}`}>
+                Ошибка генерации QR-кода
+              </p>
+              <p className={`text-xs text-center mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+                Попробуйте обновить страницу
+              </p>
+            </div>
           ) : (
             <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed rounded-lg">
               <AlertCircle className="w-8 h-8 text-gray-400" />
@@ -162,19 +188,71 @@ export default function Login() {
             Как войти:
           </h3>
           <ol className={`list-decimal list-inside space-y-1 text-sm ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-            <li>Откройте Telegram бота @BESTPRSystemBot</li>
+            <li>
+              Откройте Telegram бота{' '}
+              <a
+                href="https://t.me/BESTPRSystemBot"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:underline font-medium"
+              >
+                @BESTPRSystemBot
+              </a>
+            </li>
             <li>Нажмите /scan или отправьте QR-код боту</li>
             <li>Подтвердите вход в боте</li>
             <li>Вы автоматически войдёте на сайт</li>
           </ol>
         </div>
 
-        {/* Кнопки */}
-        <div className="flex gap-3">
+        {/* Пользовательское соглашение и обработка данных */}
+        <div className={`rounded-lg p-4 mb-6 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-100'}`}>
+          <p className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+            Входя в систему, вы соглашаетесь с{' '}
+            <button
+              onClick={() => setShowAgreement(true)}
+              className="text-blue-500 hover:underline font-medium"
+            >
+              пользовательским соглашением
+            </button>
+            {' '}и{' '}
+            <button
+              onClick={() => {
+                const consentWindow = window.open('', '_blank', 'width=800,height=600')
+                if (consentWindow) {
+                  consentWindow.document.write(`
+                    <html>
+                      <head>
+                        <title>Согласие на обработку персональных данных</title>
+                        <style>
+                          body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; max-width: 800px; margin: 0 auto; }
+                          h1 { color: #333; }
+                          p { margin-bottom: 1em; }
+                        </style>
+                      </head>
+                      <body>
+                        <h1>Согласие на обработку персональных данных</h1>
+                        <p>Настоящим я даю согласие на обработку моих персональных данных (Telegram ID, имя, username) в целях использования системы управления PR-отделом BEST Москва.</p>
+                        <p>Обработка персональных данных осуществляется в соответствии с Федеральным законом № 152-ФЗ "О персональных данных".</p>
+                        <p>Я понимаю, что могу отозвать согласие в любое время, обратившись к администратору системы.</p>
+                      </body>
+                    </html>
+                  `)
+                }
+              }}
+              className="text-blue-500 hover:underline font-medium"
+            >
+              обработкой персональных данных
+            </button>
+          </p>
+        </div>
+
+        {/* Кнопка обновления */}
+        <div className="flex justify-center">
           <button
             onClick={handleRefreshQR}
             disabled={qrLoading}
-            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors ${
               theme === 'dark'
                 ? 'bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50'
                 : 'bg-gray-200 text-gray-900 hover:bg-gray-300 disabled:opacity-50'
@@ -189,28 +267,42 @@ export default function Login() {
               'Обновить QR-код'
             )}
           </button>
-          <Link
-            to="/register"
-            className={`flex-1 py-2 px-4 rounded-lg font-medium text-center transition-colors ${
-              theme === 'dark'
-                ? 'bg-blue-600 text-white hover:bg-blue-700'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
-            }`}
-          >
-            Регистрация
-          </Link>
-        </div>
-
-        {/* Альтернативный способ */}
-        <div className="mt-6 text-center">
-          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-            Нет Telegram бота?{' '}
-            <Link to="/register" className="text-blue-500 hover:underline">
-              Зарегистрируйтесь
-            </Link>
-          </p>
         </div>
       </div>
+
+      {/* Модальное окно для пользовательского соглашения */}
+      {showAgreement && (
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setShowAgreement(false)}
+        >
+          <div 
+            className={`${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} rounded-xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto w-full shadow-xl`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
+                Пользовательское соглашение
+              </h2>
+              <button
+                onClick={() => setShowAgreement(false)}
+                className={`${theme === 'dark' ? 'text-white/70 hover:text-white' : 'text-gray-600 hover:text-gray-900'} text-2xl leading-none`}
+              >
+                ×
+              </button>
+            </div>
+            <div className={`${theme === 'dark' ? 'text-white/80' : 'text-gray-700'} text-sm whitespace-pre-wrap`}>
+              {agreementContent || 'Загрузка...'}
+            </div>
+            <button
+              onClick={() => setShowAgreement(false)}
+              className={`mt-4 w-full ${theme === 'dark' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white py-2 px-4 rounded-lg transition-all`}
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

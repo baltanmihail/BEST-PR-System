@@ -28,9 +28,9 @@ export default function Home() {
     queryKey: ['tasks', 'stats', isRegistered],
     queryFn: async () => {
       if (isRegistered) {
-        return tasksApi.getTasks({ limit: 100 })
+        return tasksApi.getTasks({ limit: 50 })
       } else {
-        const publicTasksResponse = await publicApi.getTasks({ limit: 100 })
+        const publicTasksResponse = await publicApi.getTasks({ limit: 50 })
         return {
           items: publicTasksResponse.items.map(task => ({
             id: task.id,
