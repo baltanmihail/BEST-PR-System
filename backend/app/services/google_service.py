@@ -7,6 +7,7 @@ import time
 import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Callable, Tuple
+from app.config import settings
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
@@ -704,3 +705,141 @@ class GoogleService:
             logger.error(f"❌ Ошибка создания публичной ссылки для {file_id}: {e}")
             # Возвращаем обычную ссылку даже при ошибке
             return self.get_file_url(file_id)
+    
+    def create_spreadsheet(
+        self,
+        title: str,
+        folder_id: Optional[str] = None,
+        background: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Создать Google Sheets документ
+        
+        Args:
+            title: Название таблицы
+            folder_id: ID папки для размещения (если не указан, используется из настроек)
+            background: Если True, использовать фоновый клиент
+        
+        Returns:
+            Словарь с информацией о созданной таблице: {"id": "...", "url": "..."}
+        """
+        folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
+        
+        sheets_service = self._get_sheets_service(background=background)
+        drive_service = self._get_drive_service(background=background)
+        
+        try:
+            # Создаём таблицу через Drive API (так можно сразу указать папку)
+            file_metadata = {
+                'name': title,
+                'mimeType': 'application/vnd.google-apps.spreadsheet'
+            }
+            
+            if folder_id:
+                file_metadata['parents'] = [folder_id]
+            
+            spreadsheet = drive_service.files().create(
+                body=file_metadata,
+                fields='id, name, webViewLink'
+            ).execute()
+            
+            spreadsheet_id = spreadsheet.get('id')
+            spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
+            
+            # Инвалидируем кэш для папки
+            if folder_id:
+                self.invalidate_cache(pattern=f"file_list:{folder_id}")
+            
+            logger.info(f"✅ Создана Google Sheets таблица '{title}' (ID: {spreadsheet_id})")
+            
+            return {
+                "id": spreadsheet_id,
+                "url": spreadsheet_url,
+                "name": title
+            }
+            
+        except HttpError as e:
+            logger.error(f"❌ Ошибка создания Google Sheets таблицы '{title}': {e}")
+            raise
+    
+    def create_sheet_tab(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        background: bool = False
+    ) -> int:
+        """
+        Создать новый лист в Google Sheets таблице
+        
+        Args:
+            spreadsheet_id: ID таблицы
+            sheet_name: Название листа
+            background: Если True, использовать фоновый клиент
+        
+        Returns:
+            ID созданного листа (sheetId)
+        """
+        sheets_service = self._get_sheets_service(background=background)
+        
+        try:
+            request_body = {
+                'requests': [{
+                    'addSheet': {
+                        'properties': {
+                            'title': sheet_name
+                        }
+                    }
+                }]
+            }
+            
+            response = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body=request_body
+            ).execute()
+            
+            sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
+            
+            # Инвалидируем кэш для этой таблицы
+            self.invalidate_cache(pattern=f"sheet:{spreadsheet_id}")
+            
+            logger.info(f"✅ Создан лист '{sheet_name}' (sheetId: {sheet_id}) в таблице {spreadsheet_id}")
+            
+            return sheet_id
+            
+        except HttpError as e:
+            logger.error(f"❌ Ошибка создания листа '{sheet_name}': {e}")
+            raise
+    
+    def batch_update_sheet(
+        self,
+        spreadsheet_id: str,
+        requests: List[Dict[str, Any]],
+        background: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Выполнить батч обновлений в Google Sheets
+        
+        Args:
+            spreadsheet_id: ID таблицы
+            requests: Список запросов для batchUpdate
+            background: Если True, использовать фоновый клиент
+        
+        Returns:
+            Результат batchUpdate
+        """
+        sheets_service = self._get_sheets_service(background=background)
+        
+        try:
+            response = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={'requests': requests}
+            ).execute()
+            
+            # Инвалидируем кэш для этой таблицы
+            self.invalidate_cache(pattern=f"sheet:{spreadsheet_id}")
+            
+            return response
+            
+        except HttpError as e:
+            logger.error(f"❌ Ошибка batch update в таблице {spreadsheet_id}: {e}")
+            raise

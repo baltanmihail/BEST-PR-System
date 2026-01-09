@@ -149,5 +149,55 @@ class TaskDetailResponse(TaskResponse):
         from_attributes = True
 
 
+# ========== Task Templates ==========
+
+class TaskTemplateBase(BaseModel):
+    """Базовая схема шаблона задачи"""
+    name: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    task_type: TaskType
+    priority: TaskPriority = TaskPriority.MEDIUM
+    default_description: Optional[str] = None
+    equipment_available: bool = False
+    role_specific_requirements: Optional[dict] = None
+    questions: Optional[List[str]] = None
+    example_project_ids: Optional[List[UUID]] = None
+    stages_template: Optional[List[dict]] = Field(None, description="Шаблон этапов: [{'stage_name': '...', 'stage_order': 1, 'due_date_offset': 7, 'status_color': 'green'}, ...]")
+
+
+class TaskTemplateCreate(TaskTemplateBase):
+    """Схема для создания шаблона"""
+    pass
+
+
+class TaskTemplateUpdate(BaseModel):
+    """Схема для обновления шаблона"""
+    name: Optional[str] = Field(None, min_length=1)
+    description: Optional[str] = None
+    priority: Optional[TaskPriority] = None
+    default_description: Optional[str] = None
+    equipment_available: Optional[bool] = None
+    role_specific_requirements: Optional[dict] = None
+    questions: Optional[List[str]] = None
+    example_project_ids: Optional[List[UUID]] = None
+    stages_template: Optional[List[dict]] = None
+    is_active: Optional[bool] = None
+
+
+class TaskTemplateResponse(TaskTemplateBase):
+    """Схема ответа с шаблоном"""
+    id: UUID
+    category: str
+    created_by: UUID
+    drive_file_id: Optional[str] = None
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 # Обновляем модель для корректной работы forward references
 TaskCreate.model_rebuild()

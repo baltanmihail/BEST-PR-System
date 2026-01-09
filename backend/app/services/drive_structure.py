@@ -257,6 +257,33 @@ class DriveStructureService:
             background=False
         )
     
+    def get_templates_folder_id(self) -> str:
+        """Получить ID папки для шаблонов задач"""
+        google_service = self._get_google_service()
+        bot_folder_id = self.get_bot_folder_id()
+        
+        # Создаём структуру: Templates/ -> Coordinators/, VP4PR/
+        templates_folder_id = google_service.get_or_create_folder(
+            "Templates",
+            parent_folder_id=bot_folder_id,
+            background=False
+        )
+        
+        # Создаём подпапки
+        google_service.get_or_create_folder(
+            "Coordinators",
+            parent_folder_id=templates_folder_id,
+            background=False
+        )
+        
+        google_service.get_or_create_folder(
+            "VP4PR",
+            parent_folder_id=templates_folder_id,
+            background=False
+        )
+        
+        return templates_folder_id
+    
     def create_task_folder(self, task_id: str, task_name: str) -> Dict[str, str]:
         """
         Создать структуру папок для задачи

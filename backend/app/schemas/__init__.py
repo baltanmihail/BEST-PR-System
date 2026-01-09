@@ -5,7 +5,8 @@ from app.schemas.user import UserBase, UserCreate, UserUpdate, UserResponse, Use
 from app.schemas.task import (
     TaskBase, TaskCreate, TaskUpdate, TaskResponse, TaskDetailResponse,
     TaskStageBase, TaskStageCreate, TaskStageUpdate, TaskStageResponse,
-    TaskAssignmentBase, TaskAssignmentCreate, TaskAssignmentResponse
+    TaskAssignmentBase, TaskAssignmentCreate, TaskAssignmentResponse,
+    TaskTemplateBase, TaskTemplateCreate, TaskTemplateUpdate, TaskTemplateResponse
 )
 from app.schemas.equipment import (
     EquipmentBase, EquipmentCreate, EquipmentUpdate, EquipmentResponse,
@@ -17,6 +18,7 @@ __all__ = [
     "TaskBase", "TaskCreate", "TaskUpdate", "TaskResponse", "TaskDetailResponse",
     "TaskStageBase", "TaskStageCreate", "TaskStageUpdate", "TaskStageResponse",
     "TaskAssignmentBase", "TaskAssignmentCreate", "TaskAssignmentResponse",
+    "TaskTemplateBase", "TaskTemplateCreate", "TaskTemplateUpdate", "TaskTemplateResponse",
     "EquipmentBase", "EquipmentCreate", "EquipmentUpdate", "EquipmentResponse",
     "EquipmentRequestBase", "EquipmentRequestCreate", "EquipmentRequestUpdate", "EquipmentRequestResponse",
 ]

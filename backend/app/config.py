@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # Google
     GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")
     GOOGLE_DRIVE_FOLDER_ID: str = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
+    GOOGLE_TIMELINE_SHEETS_ID: str = os.getenv("GOOGLE_TIMELINE_SHEETS_ID", "")  # ID таблицы с таймлайнами
+    GOOGLE_EQUIPMENT_SHEETS_ID: str = os.getenv("GOOGLE_EQUIPMENT_SHEETS_ID", "")  # ID таблицы с оборудованием (будет найден в папке Equipment)
+    GOOGLE_EQUIPMENT_TIMELINE_SHEETS_ID: str = os.getenv("GOOGLE_EQUIPMENT_TIMELINE_SHEETS_ID", "")  # ID таблицы с таймлайном занятости оборудования
     
     # Google Credentials (для ротации клиентов, как в существующем боте)
     # Формат: JSON строка из credentials-1.json, credentials-2.json и т.д.

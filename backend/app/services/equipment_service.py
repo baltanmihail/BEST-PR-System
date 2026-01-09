@@ -146,6 +146,37 @@ class EquipmentService:
         await db.commit()
         await db.refresh(request)
         
+        # Синхронизируем заявку с Google Sheets (в фоне)
+        try:
+            from app.services.google_service import GoogleService
+            from app.services.equipment_sheets_sync import EquipmentSheetsSync
+            from app.models.user import User
+            
+            # Загружаем пользователя и оборудование
+            user_result = await db.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one()
+            
+            equipment_result = await db.execute(select(Equipment).where(Equipment.id == equipment_id))
+            equipment = equipment_result.scalar_one()
+            
+            # Синхронизируем в фоне
+            async def sync_request():
+                try:
+                    google_service = GoogleService()
+                    sync_service = EquipmentSheetsSync(google_service)
+                    await sync_service.log_equipment_request(db, request, equipment, user)
+                except Exception as e:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Не удалось синхронизировать заявку с Sheets: {e}")
+            
+            import asyncio
+            asyncio.create_task(sync_request())
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Ошибка запуска синхронизации заявки: {e}")
+        
         return request
     
     @staticmethod
@@ -224,9 +255,56 @@ class EquipmentService:
         if request.equipment_id not in available_ids:
             raise ValueError("Equipment is no longer available")
         
+        old_status = request.status
         request.status = EquipmentRequestStatus.APPROVED
         await db.commit()
         await db.refresh(request)
+        
+        # Загружаем связанные данные для синхронизации и уведомлений
+        from app.models.user import User
+        from app.models.equipment import Equipment
+        
+        user_result = await db.execute(select(User).where(User.id == request.user_id))
+        user = user_result.scalar_one()
+        
+        equipment_result = await db.execute(select(Equipment).where(Equipment.id == request.equipment_id))
+        equipment = equipment_result.scalar_one()
+        
+        # Синхронизируем статус с Google Sheets и отправляем уведомления (в фоне)
+        async def sync_and_notify():
+            try:
+                from app.services.google_service import GoogleService
+                from app.services.equipment_sheets_sync import EquipmentSheetsSync
+                from app.services.equipment_notifications import EquipmentNotifications
+                
+                google_service = GoogleService()
+                sync_service = EquipmentSheetsSync(google_service)
+                
+                # Синхронизируем статус с Sheets
+                await sync_service.update_request_status(
+                    db, request, old_status, EquipmentRequestStatus.APPROVED, equipment, user
+                )
+                
+                # Отправляем уведомление об одобрении
+                notifications = EquipmentNotifications()
+                await notifications.send_status_change_notifications(
+                    db=db,
+                    status_changes=[{
+                        'request_id': request.id,
+                        'old_status': old_status.value if old_status else EquipmentRequestStatus.PENDING.value,
+                        'new_status': EquipmentRequestStatus.APPROVED.value,
+                        'user_id': user.id
+                    }],
+                    bot=None  # TODO: Передать bot instance если доступен
+                )
+                
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Не удалось синхронизировать статус заявки или отправить уведомление: {e}")
+        
+        import asyncio
+        asyncio.create_task(sync_and_notify())
         
         return request
     
@@ -244,10 +322,58 @@ class EquipmentService:
         if request.status != EquipmentRequestStatus.PENDING:
             raise ValueError("Request is not pending")
         
+        old_status = request.status
         request.status = EquipmentRequestStatus.REJECTED
         request.rejection_reason = reason
         await db.commit()
         await db.refresh(request)
+        
+        # Загружаем связанные данные для синхронизации и уведомлений
+        from app.models.user import User
+        from app.models.equipment import Equipment
+        
+        user_result = await db.execute(select(User).where(User.id == request.user_id))
+        user = user_result.scalar_one()
+        
+        equipment_result = await db.execute(select(Equipment).where(Equipment.id == request.equipment_id))
+        equipment = equipment_result.scalar_one()
+        
+        # Синхронизируем статус с Google Sheets и отправляем уведомления (в фоне)
+        async def sync_and_notify():
+            try:
+                from app.services.google_service import GoogleService
+                from app.services.equipment_sheets_sync import EquipmentSheetsSync
+                from app.services.equipment_notifications import EquipmentNotifications
+                
+                google_service = GoogleService()
+                sync_service = EquipmentSheetsSync(google_service)
+                
+                # Синхронизируем статус с Sheets
+                await sync_service.update_request_status(
+                    request, equipment, user, EquipmentRequestStatus.REJECTED
+                )
+                
+                # Отправляем уведомление об отклонении
+                notifications = EquipmentNotifications()
+                await notifications.send_status_change_notifications(
+                    db=db,
+                    status_changes=[{
+                        'request_id': request.id,
+                        'old_status': old_status.value if old_status else EquipmentRequestStatus.PENDING.value,
+                        'new_status': EquipmentRequestStatus.REJECTED.value,
+                        'user_id': user.id,
+                        'rejection_reason': reason
+                    }],
+                    bot=None  # TODO: Передать bot instance если доступен
+                )
+                
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Не удалось синхронизировать статус заявки или отправить уведомление: {e}")
+        
+        import asyncio
+        asyncio.create_task(sync_and_notify())
         
         return request
     

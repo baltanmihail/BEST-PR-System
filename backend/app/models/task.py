@@ -143,6 +143,10 @@ class Task(Base):
     questions = Column(JSON, nullable=True)  # JSON список вопросов по задаче: ["вопрос1", "вопрос2", ...]
     example_project_ids = Column(JSON, nullable=True)  # JSON список ID примеров прошлых работ (как строки UUID): ["task_id1", "task_id2", ...]
     
+    # Google Drive интеграция
+    drive_folder_id = Column(String, nullable=True, index=True)  # ID папки задачи в Google Drive
+    drive_last_sync = Column(DateTime(timezone=True), nullable=True)  # Время последней синхронизации с Drive
+    
     # Relationships
     stages = relationship("TaskStage", back_populates="task", cascade="all, delete-orphan", order_by="TaskStage.stage_order")
     assignments = relationship("TaskAssignment", back_populates="task", cascade="all, delete-orphan")

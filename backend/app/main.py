@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.config import settings
-from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth, onboarding, tour, telegram_chats, drive, users
+from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth, onboarding, tour, telegram_chats, drive, users, task_templates
 
 # Настройка логирования
 logging.basicConfig(
@@ -53,6 +53,7 @@ app.include_router(tour.router, prefix=settings.API_V1_PREFIX)
 app.include_router(telegram_chats.router, prefix=settings.API_V1_PREFIX)
 app.include_router(drive.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
+app.include_router(task_templates.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():
@@ -137,8 +138,90 @@ async def startup_event():
                 logger.info("ℹ️ Google credentials не найдены, Google Drive функции будут недоступны")
                 logger.info("💡 Для использования Google Drive добавьте GOOGLE_CREDENTIALS_*_JSON в переменные окружения")
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось инициализировать Google Drive структуру: {e}")
-            logger.warning("Google Drive функции будут недоступны до добавления credentials")
+            logger.warning(f"⚠️ Ошибка инициализации Google Drive: {e}")
+    
+    # Инициализация системных шаблонов задач (в фоне)
+    try:
+        import asyncio
+        from app.database import get_db
+        from app.models.task_template import TaskTemplate
+        from sqlalchemy import select, func
+        
+        async def init_system_templates():
+            try:
+                async for db in get_db():
+                    try:
+                        # Проверяем, есть ли уже системные шаблоны
+                        count_query = select(func.count(TaskTemplate.id)).where(TaskTemplate.is_system == True)
+                        result = await db.execute(count_query)
+                        count = result.scalar()
+                        
+                        if count == 0:
+                            logger.info("📋 Создание системных шаблонов задач...")
+                            from scripts.create_system_templates import create_system_templates
+                            await create_system_templates(db)
+                            logger.info("✅ Системные шаблоны созданы")
+                        else:
+                            logger.debug(f"ℹ️ Системные шаблоны уже существуют ({count} шт.)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка создания системных шаблонов: {e}")
+                    finally:
+                        break
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка инициализации системных шаблонов: {e}")
+        
+        # Запускаем инициализацию шаблонов в фоне (не блокируем старт приложения)
+        asyncio.create_task(init_system_templates())
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось запустить инициализацию системных шаблонов: {e}")
+    
+    # Запускаем фоновые задачи для оборудования
+    try:
+        import asyncio
+        from app.database import get_db
+        
+        async def periodic_equipment_tasks():
+            """Периодические задачи для оборудования"""
+            # Ждём 1 час перед первым запуском (чтобы дать время системе запуститься)
+            await asyncio.sleep(60 * 60)
+            
+            while True:
+                try:
+                    async for db in get_db():
+                        try:
+                            # Обновление статусов оборудования
+                            from app.services.google_service import GoogleService
+                            from app.services.equipment_status_sync import EquipmentStatusSync
+                            
+                            google_service = GoogleService()
+                            status_sync = EquipmentStatusSync(google_service)
+                            result = await status_sync.update_equipment_statuses_by_date(db)
+                            logger.info(f"✅ Периодическое обновление статусов оборудования: {result}")
+                            
+                            # Проверка напоминаний
+                            from app.services.equipment_reminders import EquipmentReminders
+                            
+                            reminders = EquipmentReminders(google_service)
+                            reminder_result = await reminders.check_and_send_reminders(db, bot=None)
+                            logger.info(f"✅ Проверка напоминаний: {reminder_result}")
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Ошибка в периодических задачах оборудования: {e}", exc_info=True)
+                        finally:
+                            break
+                    
+                    # Ждём 6 часов до следующего запуска
+                    await asyncio.sleep(6 * 60 * 60)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Ошибка в цикле периодических задач оборудования: {e}", exc_info=True)
+                    await asyncio.sleep(60 * 60)  # Ждём час перед повтором при ошибке
+        
+        # Запускаем периодические задачи в фоне
+        asyncio.create_task(periodic_equipment_tasks())
+        logger.info("✅ Периодические задачи для оборудования запущены (каждые 6 часов)")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось запустить периодические задачи для оборудования: {e}")
 
 
 @app.on_event("shutdown")

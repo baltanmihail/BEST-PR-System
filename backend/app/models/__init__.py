@@ -14,6 +14,7 @@ from app.models.notification import Notification
 from app.models.task_suggestion import TaskSuggestion
 from app.models.onboarding import OnboardingResponse, OnboardingReminder
 from app.models.gallery import GalleryItem
+from app.models.task_template import TaskTemplate
 
 __all__ = [
     "User",
@@ -34,4 +35,5 @@ __all__ = [
     "OnboardingResponse",
     "OnboardingReminder",
     "GalleryItem",
+    "TaskTemplate",
 ]

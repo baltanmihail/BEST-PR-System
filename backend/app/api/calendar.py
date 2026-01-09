@@ -68,6 +68,7 @@ async def sync_calendar_to_sheets(
     month: Optional[int] = Query(None, description="Месяц для синхронизации (1-12)"),
     year: Optional[int] = Query(None, description="Год для синхронизации"),
     role: Optional[Literal["smm", "design", "channel", "prfr", "all"]] = Query("all", description="Роль для синхронизации"),
+    statuses: Optional[List[str]] = Query(None, description="Фильтр по статусам задач (draft, open, assigned, in_progress, review, completed, cancelled)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -121,7 +122,7 @@ async def sync_calendar_to_sheets(
             try:
                 # Используем асинхронную версию синхронизации
                 result = await sheets_sync.sync_calendar_to_sheets_async(
-                    month, year, roles_to_sync, db
+                    month, year, roles_to_sync, db, statuses
                 )
                 logger.info(f"✅ Синхронизация завершена: {result}")
                 return result
@@ -136,6 +137,7 @@ async def sync_calendar_to_sheets(
             "status": "sync_started",
             "message": f"Синхронизация календаря с Google Sheets запущена для {month}/{year}",
             "roles": roles_to_sync,
+            "statuses": statuses,
             "month": month,
             "year": year,
             "note": "Синхронизация выполняется в фоне. Проверьте Google Sheets через несколько секунд."
@@ -149,6 +151,79 @@ async def sync_calendar_to_sheets(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при синхронизации с Google Sheets: {str(e)}"
+        )
+
+
+@router.post("/sync/sheets-from-db")
+async def sync_sheets_changes_from_db(
+    sheet_name: Optional[str] = Query("Общий", description="Имя листа для синхронизации"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Синхронизировать изменения из Google Sheets обратно в БД
+    
+    Отслеживает изменения дедлайнов, статусов и этапов в таблице
+    и обновляет БД при обнаружении расхождений.
+    
+    Доступно только координаторам и VP4PR
+    """
+    from app.models.user import UserRole
+    from fastapi import HTTPException, status
+    from app.config import settings
+    
+    # Проверка прав
+    if current_user.role not in [
+        UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only coordinators and VP4PR can sync changes from Google Sheets"
+        )
+    
+    if not settings.GOOGLE_TIMELINE_SHEETS_ID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google Sheets ID not configured. Please sync calendar first."
+        )
+    
+    try:
+        from app.services.google_service import GoogleService
+        from app.services.sheets_sync import SheetsSyncService
+        
+        google_service = GoogleService()
+        sheets_sync = SheetsSyncService(google_service)
+        
+        # Запускаем синхронизацию в фоне
+        async def sync_async():
+            try:
+                result = await sheets_sync.sync_sheets_changes_to_db(
+                    settings.GOOGLE_TIMELINE_SHEETS_ID,
+                    db,
+                    sheet_name
+                )
+                logger.info(f"✅ Синхронизация изменений из Sheets завершена: {result}")
+                return result
+            except Exception as e:
+                logger.error(f"❌ Ошибка синхронизации изменений из Sheets: {e}", exc_info=True)
+                raise
+        
+        import asyncio
+        asyncio.create_task(sync_async())
+        
+        return {
+            "status": "sync_started",
+            "message": f"Синхронизация изменений из Google Sheets запущена для листа '{sheet_name}'",
+            "sheet": sheet_name,
+            "note": "Синхронизация выполняется в фоне. Изменения будут применены через несколько секунд."
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to sync changes from sheets: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при синхронизации изменений из Google Sheets: {str(e)}"
         )
 
 

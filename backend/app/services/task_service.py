@@ -248,22 +248,35 @@ class TaskService:
             import asyncio
             
             # Создаём папки в фоне через executor (синхронная операция)
-            def create_drive_folders():
+            async def create_drive_folders_async():
                 try:
-                    drive_structure = DriveStructureService()
-                    folders = drive_structure.create_task_folder(
-                        task_id=str(task.id),
-                        task_name=task.title
-                    )
+                    def create_folders_sync():
+                        drive_structure = DriveStructureService()
+                        return drive_structure.create_task_folder(
+                            task_id=str(task.id),
+                            task_name=task.title
+                        )
+                    
+                    # Выполняем синхронную операцию в executor
+                    loop = asyncio.get_event_loop()
+                    folders = await loop.run_in_executor(None, create_folders_sync)
+                    
                     logger.info(f"✅ Создана структура папок Google Drive для задачи {task.id}: {folders}")
+                    
+                    # Сохраняем drive_folder_id в задачу
+                    if folders and folders.get('task_folder_id'):
+                        task.drive_folder_id = folders['task_folder_id']
+                        await db.commit()
+                        await db.refresh(task)
+                        logger.info(f"✅ Сохранён drive_folder_id для задачи {task.id}: {folders['task_folder_id']}")
+                    
                     return folders
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось создать папки Google Drive для задачи {task.id}: {e}")
                     return None
             
-            # Запускаем в фоне через executor (не блокируем ответ)
-            loop = asyncio.get_event_loop()
-            loop.run_in_executor(None, create_drive_folders)
+            # Запускаем в фоне (не блокируем ответ)
+            asyncio.create_task(create_drive_folders_async())
             
         except Exception as e:
             # Логируем, но не прерываем создание задачи
