@@ -247,6 +247,6 @@ export default function TourGuide({ steps, onComplete, onSkip, showSkip = true }
           </button>
         </div>
       </div>
-    </>
+    </div>
   )
 }
