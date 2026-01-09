@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, CalendarDays, Grid3x3, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
+import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
@@ -102,13 +102,6 @@ export default function Calendar() {
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     }
     setCurrentDate(newDate)
-  }
-  
-  const navigateToSemester = () => {
-    // Переход на семестр (6 месяцев вперед)
-    const semesterDate = new Date(currentDate)
-    semesterDate.setMonth(semesterDate.getMonth() + 6)
-    setCurrentDate(semesterDate)
   }
 
   const getViewTitle = () => {
@@ -396,128 +389,6 @@ export default function Calendar() {
           </p>
         </div>
       )}
-    </div>
-  )
-}
-
-// Компонент для Kanban представления
-function KanbanView({ columns, theme }: { columns: Array<{ status: string; title: string; tasks_count: number; tasks: any[] }>; theme: string }) {
-  const getColumnColor = (status: string) => {
-    const colors: Record<string, string> = {
-      draft: 'bg-gray-500/20 border-gray-500/50',
-      open: 'bg-blue-500/20 border-blue-500/50',
-      assigned: 'bg-purple-500/20 border-purple-500/50',
-      in_progress: 'bg-yellow-500/20 border-yellow-500/50',
-      review: 'bg-orange-500/20 border-orange-500/50',
-      completed: 'bg-green-500/20 border-green-500/50',
-      cancelled: 'bg-red-500/20 border-red-500/50',
-    }
-    return colors[status] || 'bg-white/10 border-white/20'
-  }
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto">
-      {columns.map((column) => (
-        <div
-          key={column.status}
-          className={`${getColumnColor(column.status)} rounded-lg p-4 border-2 min-w-[250px]`}
-        >
-          <h3 className={`text-white font-semibold mb-4 text-readable ${theme}`}>
-            {column.title} ({column.tasks_count})
-          </h3>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto">
-            {column.tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`glass-enhanced ${theme} rounded-lg p-3 cursor-pointer hover:scale-105 transition-transform`}
-              >
-                {task.thumbnail && (
-                  <img
-                    src={task.thumbnail}
-                    alt={task.title}
-                    className="w-full h-24 object-cover rounded mb-2"
-                  />
-                )}
-                <h4 className={`text-white font-medium text-sm text-readable ${theme}`}>
-                  {task.title}
-                </h4>
-                {task.due_date && (
-                  <p className="text-white/60 text-xs mt-1">
-                    {new Date(task.due_date).toLocaleDateString('ru-RU')}
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// Компонент для Gantt представления
-function GanttView({ tasks, theme }: { tasks: any[]; theme: string }) {
-  return (
-    <div className="overflow-x-auto">
-      <div className="min-w-[800px]">
-        <div className="space-y-2">
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
-            >
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-2">
-                  <div
-                    className="w-4 h-4 rounded"
-                    style={{ backgroundColor: task.color || '#757575' }}
-                  />
-                  <h4 className={`text-white font-medium text-readable ${theme}`}>
-                    {task.title}
-                  </h4>
-                </div>
-                <p className="text-white/60 text-sm">
-                  {task.start && task.end
-                    ? `${new Date(task.start).toLocaleDateString('ru-RU')} - ${new Date(task.end).toLocaleDateString('ru-RU')}`
-                    : task.start_date && task.end_date
-                    ? `${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`
-                    : task.due_date
-                    ? `До ${new Date(task.due_date).toLocaleDateString('ru-RU')}`
-                    : 'Без дедлайна'}
-                </p>
-                {task.stages && task.stages.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {task.stages.map((stage: any) => (
-                      <span
-                        key={stage.id}
-                        className="px-2 py-1 rounded text-xs bg-white/10 text-white/70"
-                      >
-                        {stage.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center space-x-2">
-                <span
-                  className={`px-2 py-1 rounded text-xs ${
-                    task.status === 'completed'
-                      ? 'bg-green-500/20 text-green-400'
-                      : task.status === 'in_progress'
-                      ? 'bg-yellow-500/20 text-yellow-400'
-                      : 'bg-blue-500/20 text-blue-400'
-                  }`}
-                >
-                  {task.status}
-                </span>
-              </div>
-            </div>
-          ))}
-          {tasks.length === 0 && (
-            <p className="text-white/60 text-center py-8">Нет задач для отображения</p>
-          )}
-        </div>
-      </div>
     </div>
   )
 }
