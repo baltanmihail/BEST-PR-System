@@ -48,9 +48,8 @@ function AppContent() {
 
   // Инициализация Telegram WebApp
   useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp
-      
+    const tg = window.Telegram?.WebApp
+    if (tg) {
       // Инициализируем WebApp
       tg.ready()
       

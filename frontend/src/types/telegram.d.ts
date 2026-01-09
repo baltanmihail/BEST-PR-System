@@ -32,11 +32,13 @@ declare global {
         HapticFeedback?: any
         CloudStorage?: any
         BiometricManager?: any
-        ready?: () => void
-        expand?: () => void
-        close?: () => void
-        enableClosingConfirmation?: () => void
-        disableClosingConfirmation?: () => void
+        ready: () => void
+        expand: () => void
+        close: () => void
+        enableClosingConfirmation: () => void
+        disableClosingConfirmation: () => void
+        setHeaderColor: (color: string) => void
+        setBackgroundColor: (color: string) => void
         onEvent?: (eventType: string, eventHandler: () => void) => void
         offEvent?: (eventType: string, eventHandler: () => void) => void
         sendData?: (data: string) => void
