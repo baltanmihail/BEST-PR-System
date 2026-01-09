@@ -716,19 +716,59 @@ async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
         # Получаем публичные задачи
         response = await call_api("GET", "/public/tasks?limit=5")
         
-        if "error" in response or not response.get("items"):
-            await callback.message.answer("❌ Ошибка при загрузке задач. Попробуйте позже.")
+        if "error" in response:
+            await callback.answer("❌ Ошибка при загрузке задач. Попробуйте позже.", show_alert=True)
             return
         
-        tasks = response.get("items", [])[:5]
-        text = "📋 Доступные задачи:\n\n"
+        tasks = response.get("items", [])
         
-        for i, task in enumerate(tasks, 1):
-            text += f"{i}. {task.get('title', 'Без названия')}\n"
-            text += f"   Тип: {task.get('type', 'unknown')}\n\n"
+        if not tasks or len(tasks) == 0:
+            # Если задач нет, показываем информативное сообщение
+            await callback.message.answer(
+                "📋 <b>Доступные задачи</b>\n\n"
+                "🔍 Пока нет открытых задач.\n\n"
+                "💡 <b>Что делать?</b>\n"
+                "• Зарегистрируйся, чтобы получать уведомления о новых задачах\n"
+                "• Следи за обновлениями на сайте\n\n"
+                f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>",
+                parse_mode="HTML"
+            )
+            return
         
-        text += "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся по ссылке:\n"
-        text += f"🔗 <a href=\"{settings.FRONTEND_URL}\">{settings.FRONTEND_URL}</a>"
+        text = "📋 <b>Доступные задачи:</b>\n\n"
+        
+        for i, task in enumerate(tasks[:5], 1):
+            task_type = task.get('type', 'unknown')
+            type_emoji = {
+                'smm': '📱',
+                'design': '🎨',
+                'channel': '🎬',
+                'prfr': '🤝'
+            }.get(task_type, '📋')
+            
+            priority = task.get('priority', 'medium')
+            priority_emoji = {
+                'critical': '🔴',
+                'high': '🟠',
+                'medium': '🟡',
+                'low': '🟢'
+            }.get(priority, '⚪')
+            
+            due_date = task.get('due_date_relative', 'не указан')
+            
+            text += (
+                f"{i}. {type_emoji} <b>{task.get('title', 'Без названия')}</b>\n"
+                f"   {priority_emoji} Приоритет: {priority}\n"
+                f"   📅 Дедлайн: {due_date}\n\n"
+            )
+        
+        if response.get("total", 0) > 5:
+            text += f"📊 <i>Показано 5 из {response.get('total', 0)} задач</i>\n\n"
+        
+        text += (
+            "💡 <b>Для взятия задачи и оборудования BEST Channel</b> зарегистрируйся:\n"
+            f"🔗 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>"
+        )
         
         await callback.message.answer(text, parse_mode="HTML")
     except Exception as e:
@@ -738,33 +778,60 @@ async def callback_view_tasks(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "view_leaderboard")
 async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
-    """Просмотр рейтинга (публичный)"""
-    response = await call_api("GET", "/public/leaderboard?limit=10")
-    
-    if "error" in response or not response:
-        await callback.answer("❌ Ошибка при загрузке рейтинга.", show_alert=True)
-        return
-    
-    leaderboard = response if isinstance(response, list) else []
-    
-    if not leaderboard:
-        await callback.message.answer("📊 Рейтинг пока пуст.")
-        await callback.answer()
-        return
-    
-    text = "🏆 ТОП-10 участников:\n\n"
-    medals = ["🥇", "🥈", "🥉"] + ["🏅"] * 7
-    
-    for i, user in enumerate(leaderboard[:10], 1):
-        medal = medals[i-1] if i <= 3 else f"{i}."
+    """Просмотр рейтинга (публичный) - ТОП участников"""
+    try:
+        await callback.answer()  # Сначала отвечаем на callback
+        response = await call_api("GET", "/public/leaderboard?limit=10")
+        
+        if "error" in response:
+            await callback.answer("❌ Ошибка при загрузке рейтинга. Попробуйте позже.", show_alert=True)
+            return
+        
+        # API возвращает список напрямую, не dict с items
+        leaderboard = response if isinstance(response, list) else []
+        
+        if not leaderboard or len(leaderboard) == 0:
+            await callback.message.answer(
+                "🏆 <b>ТОП участников</b>\n\n"
+                "📊 Рейтинг пока пуст.\n\n"
+                "💡 <b>Стань первым!</b>\n"
+                "Зарегистрируйся и начни выполнять задачи, чтобы попасть в рейтинг.\n\n"
+                f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>",
+                parse_mode="HTML"
+            )
+            return
+        
+        text = "🏆 <b>ТОП-10 участников:</b>\n\n"
+        medals = ["🥇", "🥈", "🥉"]
+        
+        for i, user in enumerate(leaderboard[:10], 1):
+            if i <= 3:
+                medal = medals[i-1]
+            else:
+                medal = f"{i}."
+            
+            name = user.get('name') or user.get('full_name', 'Unknown')
+            points = user.get('points', 0)
+            level = user.get('level', 1)
+            completed = user.get('completed_tasks', 0)
+            
+            text += (
+                f"{medal} <b>{name}</b>\n"
+                f"   ⭐ {points} баллов | "
+                f"Уровень {level} | "
+                f"✅ {completed} задач\n\n"
+            )
+        
         text += (
-            f"{medal} {user.get('name', user.get('full_name', 'Unknown'))}\n"
-            f"   ⭐ {user.get('points', 0)} баллов | "
-            f"Уровень {user.get('level', 1)}\n\n"
+            "💡 <b>Хочешь попасть в рейтинг?</b>\n"
+            "Зарегистрируйся и начни выполнять задачи!\n\n"
+            f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>"
         )
-    
-    await callback.message.answer(text, parse_mode="HTML")
-    await callback.answer()
+        
+        await callback.message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error in callback_view_leaderboard: {e}")
+        await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
 @router.callback_query(F.data == "view_stats")
@@ -775,16 +842,20 @@ async def callback_view_stats(callback: CallbackQuery, state: FSMContext):
         response = await call_api("GET", "/public/stats")
         
         if "error" in response:
-            await callback.message.answer("❌ Ошибка при загрузке статистики. Попробуйте позже.")
+            await callback.answer("❌ Ошибка при загрузке статистики. Попробуйте позже.", show_alert=True)
             return
         
         stats = response
         text = (
-            f"📊 Статистика системы:\n\n"
-            f"👥 Пользователей: {stats.get('total_users', 0)}\n"
+            f"📊 <b>Статистика системы:</b>\n\n"
+            f"👥 Участников: {stats.get('participants_count', stats.get('total_users', 0))}\n"
             f"📋 Всего задач: {stats.get('total_tasks', 0)}\n"
             f"✅ Выполнено: {stats.get('completed_tasks', 0)}\n"
+            f"⚙️ В работе: {stats.get('active_tasks', 0)}\n"
             f"⭐ Всего баллов: {stats.get('total_points', 0)}\n"
+            f"📈 Средний рейтинг: {stats.get('average_points', 0)} баллов\n\n"
+            f"💡 <b>Присоединяйся к команде!</b>\n"
+            f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>"
         )
         
         await callback.message.answer(text, parse_mode="HTML")
@@ -1380,18 +1451,34 @@ async def callback_register_accept(callback: CallbackQuery, state: FSMContext):
             return
         
         # Регистрируем пользователя через API
-        from datetime import datetime
+        from datetime import datetime, timezone
+        
+        # Обновляем auth_data с полным именем пользователя
+        # Разбиваем full_name на first_name и last_name для совместимости
+        name_parts = full_name.split(maxsplit=1)
+        if len(name_parts) >= 2:
+            auth_data["first_name"] = name_parts[0]
+            auth_data["last_name"] = name_parts[1]
+        else:
+            auth_data["first_name"] = full_name
+            auth_data["last_name"] = ""
+        
+        # Перегенерируем hash с обновлёнными данными
+        auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+        
+        # Получаем версию соглашения
+        agreement_response = await call_api("GET", "/registration/agreement")
+        agreement_version = agreement_response.get("version", "1.0")
         
         register_response = await call_api("POST", "/registration/register", data={
             "telegram_auth": auth_data,
-            "full_name": full_name,
             "personal_data_consent": {
                 "consent": True,
-                "date": datetime.utcnow().isoformat()
+                "consent_date": datetime.now(timezone.utc).isoformat()
             },
             "user_agreement": {
                 "accepted": True,
-                "version": data.get("agreement_version", "1.0")
+                "version": agreement_version
             }
         })
         
@@ -1767,35 +1854,39 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
         is_registration = response.get("is_registration", False)
         
         if is_registration:
-            # Это регистрация - предлагаем перейти на страницу регистрации
-            registration_url = (
-                f"{settings.FRONTEND_URL}/register?"
-                f"from=bot&"
-                f"telegram_id={user.id}&"
-                f"username={user.username or ''}&"
-                f"first_name={user.first_name or ''}&"
-                f"qr_token={token}"
-            )
+            # Это регистрация - НЕ говорим что сессия запущена, предлагаем зарегистрироваться
+            # Сохраняем qr_token для последующей регистрации
+            await state.update_data(qr_token=token)
             
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="📝 Перейти к регистрации", 
-                        url=registration_url
+                        text="📝 Зарегистрироваться в боте", 
+                        callback_data=f"qr_register_{token}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Зарегистрироваться на сайте", 
+                        url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&qr_token={token}"
                     ),
                 ],
             ])
             
             await callback.message.edit_text(
                 "✅ <b>QR-код подтверждён!</b>\n\n"
-                "Вы ещё не зарегистрированы. Нажмите кнопку ниже, чтобы перейти к регистрации.\n\n"
-                "💡 <b>Преимущества регистрации через QR-код:</b>\n"
-                "• ✅ Не нужно подтверждать Telegram ID\n"
-                "• ✅ Данные уже заполнены\n"
-                "• ✅ Просто согласитесь с условиями",
+                "🔐 <b>Вы ещё не зарегистрированы в системе.</b>\n\n"
+                "💡 <b>Для продолжения необходимо зарегистрироваться:</b>\n"
+                "• 📝 Нажмите «Зарегистрироваться в боте» для быстрой регистрации\n"
+                "• 🌐 Или перейдите на сайт для регистрации через веб-интерфейс\n\n"
+                "🎯 <b>После регистрации</b> вы сможете:\n"
+                "• Брать задачи по SMM, дизайну и видеопроизводству\n"
+                "• Бронировать оборудование BEST Channel\n"
+                "• Участвовать в рейтинге и зарабатывать баллы",
                 reply_markup=keyboard,
                 parse_mode="HTML"
             )
+            return  # ВАЖНО: не продолжаем дальше, не отправляем сообщение о "сессии запущена"
         else:
             # Это вход - пользователь уже зарегистрирован
             # Получаем access_token из ответа подтверждения
@@ -2266,20 +2357,38 @@ async def callback_qr_register_accept(callback: CallbackQuery, state: FSMContext
             return
         
         # Успешная регистрация
+        access_token = register_response.get("access_token")
+        if access_token:
+            # Сохраняем токен для последующих запросов
+            await state.update_data(access_token=access_token)
+        
         await callback.message.edit_text(
             "✅ <b>Регистрация успешна!</b>\n\n"
             "Ваша заявка отправлена на рассмотрение модераторам.\n\n"
             "🔔 Мы уведомим вас, когда заявка будет одобрена.\n\n"
-            "Пока вы можете просматривать задачи и рейтинг.",
+            "💡 <b>Пока ваша заявка на рассмотрении:</b>\n"
+            "• Вы можете просматривать задачи и рейтинг\n"
+            "• Изучать сайт и доступные функции\n\n"
+            "🎯 <b>После одобрения заявки</b> вам станут доступны:\n"
+            "• Взятие задач\n"
+            "• Бронирование оборудования\n"
+            "• Участие в рейтинге",
             parse_mode="HTML"
         )
         
         # Показываем кнопки для просмотра задач и рейтинга + автоматическое перенаправление на сайт
+        # Если есть access_token, пользователь может войти на сайт автоматически
+        site_url = f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&registered=true"
+        if access_token:
+            # Добавляем токен в URL для автоматического входа (временное решение)
+            # В идеале фронтенд должен получить токен через polling статуса QR-сессии
+            site_url += f"&token={access_token}"
+        
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="🌐 Перейти на сайт", 
-                    url=f"{settings.FRONTEND_URL}?from=bot&telegram_id={user.id}&registered=true"
+                    url=site_url
                 ),
             ],
             [
@@ -2293,15 +2402,7 @@ async def callback_qr_register_accept(callback: CallbackQuery, state: FSMContext
         
         await callback.message.answer(
             "💡 <b>Что дальше?</b>\n\n"
-            "Пока ваша заявка на рассмотрении, вы можете:\n"
-            "• 🌐 Изучить сайт и посмотреть доступные функции\n"
-            "• 👀 Просматривать доступные задачи\n"
-            "• 🏆 Смотреть рейтинг участников\n"
-            "• 📊 Изучать статистику системы\n\n"
-            "🎯 <b>После одобрения заявки</b> вам станут доступны:\n"
-            "• Взятие задач\n"
-            "• Бронирование оборудования\n"
-            "• Участие в рейтинге",
+            "Нажмите «Перейти на сайт» для автоматического входа и изучения системы.",
             reply_markup=keyboard,
             parse_mode="HTML"
         )

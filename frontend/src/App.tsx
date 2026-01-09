@@ -45,6 +45,28 @@ function AppContent() {
   const location = useLocation()
 
   useEffect(() => {
+    // Проверяем, есть ли токен в URL (после регистрации через QR)
+    const urlParams = new URLSearchParams(window.location.search)
+    const tokenFromUrl = urlParams.get('token')
+    const registered = urlParams.get('registered') === 'true'
+    
+    if (tokenFromUrl && registered && !user) {
+      // Сохраняем токен и авторизуем пользователя
+      localStorage.setItem('access_token', tokenFromUrl)
+      login(tokenFromUrl)
+      
+      // Удаляем token из URL для безопасности
+      urlParams.delete('token')
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '')
+      window.history.replaceState({}, '', newUrl)
+      
+      // Редирект на главную
+      if (location.pathname === '/login') {
+        navigate('/')
+      }
+      return
+    }
+    
     // Проверяем, открыт ли сайт через Telegram WebApp
     const isTelegramWebApp = window.Telegram?.WebApp
     

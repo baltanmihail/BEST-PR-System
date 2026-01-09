@@ -6,11 +6,14 @@ from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
+import logging
 
 from app.models.task import Task, TaskType, TaskStatus, TaskPriority, TaskAssignment, TaskStage, StageStatus
 from app.models.user import User
 from app.schemas.task import TaskCreate, TaskUpdate
 from datetime import timedelta, datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 class TaskService:

@@ -530,6 +530,10 @@ async def register_from_bot(
     await db.commit()
     await db.refresh(user)
     
+    # Обновляем QR-сессию с user_id для автоматического входа после регистрации
+    qr_session.user_id = user.id
+    await db.commit()
+    
     # Создаём заявку на модерацию
     from app.services.moderation_service import ModerationService
     application = await ModerationService.create_user_application(
@@ -569,13 +573,18 @@ async def register_from_bot(
     except Exception as e:
         logger.error(f"Failed to send moderation request notification: {e}")
     
+    # Создаём JWT токен для автоматического входа (пользователь может пользоваться системой, но не может брать задачи до модерации)
+    from app.utils.auth import create_access_token
+    access_token = create_access_token(data={"sub": str(user.id), "telegram_id": telegram_id})
+    
     logger.info(f"User registered from bot via QR: telegram_id={telegram_id}")
     
     return {
         "success": True,
         "message": "Регистрация успешна! Ваша заявка отправлена на модерацию.",
         "user_id": str(user.id),
-        "telegram_id": telegram_id
+        "telegram_id": telegram_id,
+        "access_token": access_token  # Возвращаем токен для автоматического входа
     }
 
 

@@ -91,7 +91,7 @@ export default function Register() {
         telegram_auth: telegramAuth,
         personal_data_consent: {
           consent: consentAccepted,
-          date: new Date().toISOString(),
+          consent_date: new Date().toISOString(),
         },
         user_agreement: {
           accepted: agreementAccepted,
@@ -172,7 +172,7 @@ export default function Register() {
           telegram_auth: telegramAuth,
           personal_data_consent: {
             consent: consentAccepted,
-            date: new Date().toISOString(),
+            consent_date: new Date().toISOString(),
           },
           user_agreement: {
             accepted: agreementAccepted,

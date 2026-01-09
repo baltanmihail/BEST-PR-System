@@ -152,21 +152,28 @@ export default function Login() {
 
   // Обработка подтверждения
   useEffect(() => {
-    if (statusData?.status === 'confirmed' && statusData.access_token && statusData.user) {
-      // Сохраняем токен
-      localStorage.setItem('access_token', statusData.access_token)
-      // Обновляем состояние авторизации
-      login(statusData.access_token)
-      
-      // Если пользователь перешёл через бота с auto_register, редиректим на регистрацию
-      if (autoRegister && fromBot && telegramId && !user) {
-        navigate('/register?from=bot&auto=true')
-      } else {
-        // Иначе редирект на главную
+    if (statusData?.status === 'confirmed') {
+      // Если есть access_token и user - это вход зарегистрированного пользователя
+      if (statusData.access_token && statusData.user) {
+        // Сохраняем токен
+        localStorage.setItem('access_token', statusData.access_token)
+        // Обновляем состояние авторизации
+        login(statusData.access_token)
+        
+        // Редирект на главную
         navigate('/')
+      } else {
+        // Если нет access_token и user - это незарегистрированный пользователь
+        // Редиректим на страницу регистрации с qr_token
+        const qrToken = sessionToken
+        if (qrToken) {
+          navigate(`/register?from=bot&telegram_id=${telegramId || ''}&qr_token=${qrToken}`)
+        } else {
+          navigate('/register?from=bot')
+        }
       }
     }
-  }, [statusData, login, navigate, autoRegister, fromBot, telegramId, user])
+  }, [statusData, login, navigate, sessionToken, telegramId])
 
   const handleRefreshQR = () => {
     setSessionToken(null)

@@ -12,7 +12,7 @@ export interface RegistrationRequest {
   }
   personal_data_consent: {
     consent: boolean
-    date: string
+    consent_date: string
   }
   user_agreement: {
     accepted: boolean
@@ -42,7 +42,7 @@ export interface RegistrationWithCodeRequest {
   code: string
   personal_data_consent: {
     consent: boolean
-    date: string
+    consent_date: string
   }
   user_agreement: {
     accepted: boolean

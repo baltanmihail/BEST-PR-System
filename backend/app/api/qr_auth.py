@@ -187,7 +187,8 @@ async def get_qr_status(
         session_token=session_token
     )
     
-    # Если сессия подтверждена, возвращаем токен и данные пользователя
+    # Если сессия подтверждена, возвращаем токен и данные пользователя ТОЛЬКО если пользователь зарегистрирован
+    # Если user_id не установлен - это незарегистрированный пользователь, не возвращаем токен
     if qr_session.status == "confirmed" and qr_session.user_id:
         # Получаем пользователя
         user_result = await db.execute(
@@ -210,6 +211,8 @@ async def get_qr_status(
                 "is_active": user.is_active,
                 "role": user.role.value if hasattr(user.role, 'value') else str(user.role)
             }
+    # Если сессия confirmed, но user_id нет - это незарегистрированный пользователь
+    # Фронтенд должен перенаправить на регистрацию
     
     return response
 
@@ -290,8 +293,8 @@ async def confirm_qr(
     else:
         # Пользователь не существует - это регистрация
         # НЕ создаём пользователя здесь - он будет создан при регистрации через /registration/register-from-bot
-        # Сохраняем данные пользователя в сессии для последующей регистрации
-        # Сохраняем данные в JSON поле или в отдельной таблице (пока используем логирование)
+        # НЕ устанавливаем user_id в сессии - он будет установлен после регистрации
+        # Это важно, чтобы фронтенд понимал, что пользователь не зарегистрирован
         await db.commit()
         
         logger.info(f"QR session confirmed (registration): {qr_session.id} for new user {request.telegram_id}")
