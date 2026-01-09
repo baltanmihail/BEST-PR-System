@@ -74,17 +74,6 @@ export default function Login() {
   const firstName = urlParams.get('first_name')
   const autoRegister = urlParams.get('auto_register') === 'true'
   
-  // Автоматически показываем форму регистрации если пользователь перешёл с бота
-  useEffect(() => {
-    if (autoRegister && fromBot && telegramId && !user && statusData?.status === 'confirmed' && statusData.access_token) {
-      // Небольшая задержка перед редиректом на регистрацию
-      const timer = setTimeout(() => {
-        navigate('/register?from=bot&auto=true')
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [autoRegister, fromBot, telegramId, user, statusData, navigate])
-
   // Генерация QR-кода с параметрами, если пользователь перешёл через бота
   const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
     queryKey: ['qr-generate', fromBot, telegramId],
@@ -169,10 +158,16 @@ export default function Login() {
       localStorage.setItem('access_token', statusData.access_token)
       // Обновляем состояние авторизации
       login(statusData.access_token)
-      // Редирект на главную
-      navigate('/')
+      
+      // Если пользователь перешёл через бота с auto_register, редиректим на регистрацию
+      if (autoRegister && fromBot && telegramId && !user) {
+        navigate('/register?from=bot&auto=true')
+      } else {
+        // Иначе редирект на главную
+        navigate('/')
+      }
     }
-  }, [statusData, login, navigate])
+  }, [statusData, login, navigate, autoRegister, fromBot, telegramId, user])
 
   const handleRefreshQR = () => {
     setSessionToken(null)

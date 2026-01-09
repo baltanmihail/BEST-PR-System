@@ -260,6 +260,26 @@ export function useTour() {
     ]
   }, [])
 
+  // Создаём шаги гайда для страницы поддержки
+  const createSupportTourSteps = useCallback((): TourStep[] => {
+    return [
+      {
+        id: 'support-header',
+        target: '[data-tour="support-header"]',
+        title: 'Поддержка',
+        content: 'Здесь вы можете задать вопрос или отправить предложение. Выберите тип обращения и заполните форму.',
+        position: 'bottom',
+      },
+      {
+        id: 'support-link',
+        target: '[data-tour="support-link"]',
+        title: 'Ссылка в меню',
+        content: 'Ссылка на страницу поддержки всегда доступна в боковом меню для быстрого доступа.',
+        position: 'top',
+      },
+    ]
+  }, [])
+
   const startTour = useCallback((tourType?: string) => {
     // Если тип не указан, определяем автоматически по текущему пути
     const type = tourType || getTourTypeFromPath(location.pathname)
@@ -306,15 +326,12 @@ export function useTour() {
     // 2. Гайд ещё не был пройден
     // 3. Гайд не активен сейчас
     // 4. Мы на главной странице (для первого знакомства)
-    // 5. Не на страницах логина/регистрации
     if (
       user && 
       user.is_active && 
       !tourStatus?.tour_completed && 
       !isActive && 
-      location.pathname === '/' &&
-      location.pathname !== '/login' && 
-      location.pathname !== '/register'
+      location.pathname === '/'
     ) {
       // Небольшая задержка для загрузки элементов на странице
       const timer = setTimeout(() => {

@@ -5,14 +5,13 @@ import { supportApi } from '../services/support'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { useTour } from '../hooks/useTour'
-import TourGuide from '../components/TourGuide'
 
 type SupportType = 'question' | 'suggestion' | null
 
 export default function Support() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
-  const { steps, isActive, completeTour, stopTour, startTour } = useTour()
+  const { startTour } = useTour()
   const [supportType, setSupportType] = useState<SupportType>(null)
   const [message, setMessage] = useState('')
   const [link, setLink] = useState('')
