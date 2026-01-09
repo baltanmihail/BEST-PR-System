@@ -1,12 +1,25 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Sun, Moon, Bell, User } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
+import { useQuery } from '@tanstack/react-query'
+import { notificationsApi } from '../../services/notifications'
 
 export default function Header() {
   const { theme, toggleTheme } = useThemeStore()
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const isRegistered = user && user.is_active
+
+  // Загружаем количество непрочитанных уведомлений
+  const { data: unreadData } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: notificationsApi.getUnreadCount,
+    enabled: isRegistered,
+    refetchInterval: 30000, // Обновляем каждые 30 секунд
+  })
+
+  const unreadCount = unreadData?.unread_count || 0
 
   return (
     <header className={`glass-enhanced ${theme} border-b border-white/30 sticky top-0 z-50 rounded-none rounded-r-2xl`}>
@@ -39,14 +52,18 @@ export default function Header() {
             {/* Уведомления (только для зарегистрированных) */}
             {isRegistered && (
               <>
-                <Link
-                  to="/notifications"
+                <button
+                  onClick={() => navigate('/notifications')}
                   className="text-white/90 hover:text-white transition-colors p-1.5 md:p-2 rounded-lg hover:bg-white/10 flex items-center justify-center relative"
                   title="Уведомления"
                 >
                   <Bell className="h-4 w-4 md:h-5 md:w-5" />
-                  {/* Можно добавить индикатор непрочитанных */}
-                </Link>
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
                 <div className="h-4 md:h-6 w-px bg-white/30" />
               </>
             )}

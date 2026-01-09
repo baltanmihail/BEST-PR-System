@@ -175,7 +175,7 @@ export default function Login() {
 
   return (
     <div className={`min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900`}>
-      <div className={`max-w-md w-full glass-enhanced ${theme} rounded-xl shadow-2xl p-8 border border-white/20`}>
+      <div className={`max-w-md w-full glass-enhanced ${theme} rounded-xl shadow-2xl p-8 border border-white/20 backdrop-blur-xl`}>
         <div className="flex items-center justify-between mb-6">
           <h1 className={`text-2xl font-bold text-white text-readable ${theme}`}>
             Вход в систему

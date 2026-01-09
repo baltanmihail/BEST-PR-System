@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router-dom'
 import { MessageSquare, Send, CheckCircle2, AlertCircle, HelpCircle, Lightbulb, Paperclip, Link as LinkIcon, X, MapPin } from 'lucide-react'
 import { supportApi } from '../services/support'
 import { useThemeStore } from '../store/themeStore'
@@ -12,6 +13,21 @@ export default function Support() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const { startTour } = useTour()
+  const location = useLocation()
+  
+  // Определяем тип тура на основе текущей страницы
+  const getTourType = () => {
+    const path = location.pathname
+    if (path === '/') return 'home'
+    if (path === '/tasks') return 'tasks'
+    if (path === '/calendar') return 'calendar'
+    if (path === '/gallery') return 'gallery'
+    if (path === '/equipment') return 'equipment'
+    if (path === '/settings') return 'settings'
+    if (path === '/users') return 'users'
+    if (path === '/support') return 'support'
+    return 'home'
+  }
   const [supportType, setSupportType] = useState<SupportType>(null)
   const [message, setMessage] = useState('')
   const [link, setLink] = useState('')
@@ -71,7 +87,7 @@ export default function Support() {
               <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
             </div>
             <button
-              onClick={() => startTour('home')}
+              onClick={() => startTour(getTourType())}
               className="flex items-center space-x-2 px-4 py-2 bg-best-primary/20 hover:bg-best-primary/30 text-white rounded-lg transition-all border border-best-primary/50"
               title="Запустить интерактивный гайд по сайту"
             >

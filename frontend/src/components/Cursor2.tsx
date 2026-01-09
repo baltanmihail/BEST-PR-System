@@ -108,11 +108,9 @@ export default function Cursor2() {
             // Центрируем модель точно (важно для правильного позиционирования)
             const box = new THREE.Box3().setFromObject(model)
             const center = box.getCenter(new THREE.Vector3())
-            const size = box.getSize(new THREE.Vector3())
             
-            // Смещаем модель так, чтобы её верхняя точка (остриё) была в центре
-            // Для курсора важно, чтобы остриё было точно на позиции мыши
-            model.position.set(-center.x, -center.y + size.y / 2, -center.z) // Смещаем вверх на половину высоты
+            // Центрируем модель по её геометрическому центру
+            model.position.sub(center)
 
             model.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -192,15 +190,15 @@ export default function Cursor2() {
       currentPos.current.x += (mousePos.current.x - currentPos.current.x) * lerpFactor
       currentPos.current.y += (mousePos.current.y - currentPos.current.y) * lerpFactor
 
-      // Обновляем позицию 3D-курсора с точным центрированием по острию
+      // Обновляем позицию 3D-курсора с точным центрированием
       if (containerRef.current) {
-        // Позиционируем так, чтобы остриё курсора было точно на позиции мыши
+        // Центрируем курсор точно на позиции мыши
         containerRef.current.style.left = `${currentPos.current.x}px`
         containerRef.current.style.top = `${currentPos.current.y}px`
-        containerRef.current.style.transform = 'translate(-50%, 0%)' // Центрируем по горизонтали, но не по вертикали (остриё сверху)
+        containerRef.current.style.transform = 'translate(-50%, -50%)' // Центрируем по центру модели
         containerRef.current.style.marginLeft = '0'
         containerRef.current.style.marginTop = '0'
-        containerRef.current.style.transformOrigin = 'center top' // Точка привязки - центр сверху (остриё)
+        containerRef.current.style.transformOrigin = 'center center' // Точка привязки - центр модели
         containerRef.current.style.willChange = 'transform'
       }
 
@@ -248,8 +246,8 @@ export default function Cursor2() {
         style={{
           width: '32px',
           height: '32px',
-          transform: 'translate(-50%, 0%)', // Центрируем по горизонтали, остриё сверху
-          transformOrigin: 'center top', // Точка привязки - центр сверху (остриё)
+          transform: 'translate(-50%, -50%)', // Центрируем по центру модели
+          transformOrigin: 'center center', // Точка привязки - центр модели
           willChange: 'transform',
         }}
       />

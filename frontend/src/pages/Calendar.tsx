@@ -4,14 +4,16 @@ import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRigh
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
-import { calendarApi, type CalendarView, type CalendarRole, type DetailLevel } from '../services/calendar'
+import { calendarApi, type CalendarRole, type DetailLevel } from '../services/calendar'
 import { UserRole } from '../types/user'
 
 export default function Calendar() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
-  const [view, setView] = useState<CalendarView>('month')
-  const [semesterView, setSemesterView] = useState<'timeline' | 'tasks'>('timeline') // Для представления "Семестр"
+  // Период: Семестр, Месяц, Неделя
+  const [period, setPeriod] = useState<'semester' | 'month' | 'week'>('month')
+  // Представление: Таймлайн, Список
+  const [presentation, setPresentation] = useState<'timeline' | 'list'>('timeline')
   const [selectedRole, setSelectedRole] = useState<CalendarRole | 'all'>('all')
   const [detailLevel, setDetailLevel] = useState<DetailLevel>('normal')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -24,28 +26,23 @@ export default function Calendar() {
     user.role === UserRole.VP4PR
   )
 
-  // Вычисляем диапазон дат в зависимости от представления
+  // Вычисляем диапазон дат в зависимости от периода
   const getDateRange = () => {
     const start = new Date(currentDate)
     const end = new Date(currentDate)
 
-    if (view === 'month') {
+    if (period === 'month') {
       start.setDate(1)
       end.setMonth(end.getMonth() + 1)
       end.setDate(0)
-    } else if (view === 'week') {
+    } else if (period === 'week') {
       const day = start.getDay()
       start.setDate(start.getDate() - day)
       end.setDate(start.getDate() + 6)
-    } else if (view === 'timeline' || view === 'semester') {
-      // Таймлайн/Семестр - показываем 6 месяцев (семестр)
+    } else if (period === 'semester') {
+      // Семестр - показываем 6 месяцев
       start.setDate(1)
       end.setMonth(end.getMonth() + 6)
-      end.setDate(0)
-    } else {
-      // fallback - месяц
-      start.setDate(1)
-      end.setMonth(end.getMonth() + 1)
       end.setDate(0)
     }
 
@@ -58,10 +55,10 @@ export default function Calendar() {
   const dateRange = getDateRange()
 
   const { data: calendarData, isLoading } = useQuery({
-    queryKey: ['calendar', view, selectedRole, dateRange.start, dateRange.end, detailLevel, semesterView],
+    queryKey: ['calendar', period, presentation, selectedRole, dateRange.start, dateRange.end, detailLevel],
     queryFn: () => {
-      // Для представления "Семестр" используем 'timeline' для API
-      const apiView = view === 'semester' ? 'timeline' : view
+      // Для API используем 'timeline' если представление 'timeline', иначе 'month' для списка
+      const apiView = presentation === 'timeline' ? 'timeline' : 'month'
       if (selectedRole === 'all') {
         return calendarApi.getCalendar({
           view: apiView,
@@ -93,31 +90,33 @@ export default function Calendar() {
 
   const navigateDate = (direction: 'prev' | 'next') => {
     const newDate = new Date(currentDate)
-    if (view === 'month') {
+    if (period === 'month') {
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-    } else if (view === 'week') {
+    } else if (period === 'week') {
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-    } else if (view === 'timeline' || view === 'semester') {
-      // Для таймлайна и семестра - перемещаемся на месяц
+    } else if (period === 'semester') {
+      // Для семестра - перемещаемся на месяц
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     }
     setCurrentDate(newDate)
   }
 
   const getViewTitle = () => {
-    if (view === 'month') {
+    if (period === 'month') {
       return currentDate.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
-    } else if (view === 'week') {
+    } else if (period === 'week') {
       const weekStart = new Date(currentDate)
       const day = weekStart.getDay()
       weekStart.setDate(weekStart.getDate() - day)
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 6)
       return `${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}`
-    } else if (view === 'timeline') {
-      return 'Таймлайн'
-    } else if (view === 'semester') {
-      return semesterView === 'timeline' ? 'Семестр (Таймлайн)' : 'Семестр (Задачи)'
+    } else if (period === 'semester') {
+      const start = new Date(currentDate)
+      start.setDate(1)
+      const end = new Date(start)
+      end.setMonth(end.getMonth() + 6)
+      return `Семестр: ${start.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' })} - ${end.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' })}`
     }
     return ''
   }
@@ -171,35 +170,14 @@ export default function Calendar() {
               <ArrowLeft className="h-5 w-5 text-white" />
             </button>
             <button
-              onClick={() => setCurrentDate(new Date())}
+              onClick={() => {
+                const today = new Date()
+                setCurrentDate(today)
+              }}
               className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm"
             >
               Сегодня
             </button>
-            {view === 'semester' && (
-              <div className="flex items-center space-x-2 bg-white/10 rounded-lg p-1">
-                <button
-                  onClick={() => setSemesterView('timeline')}
-                  className={`px-3 py-1 rounded text-sm transition-all ${
-                    semesterView === 'timeline'
-                      ? 'bg-best-primary text-white'
-                      : 'text-white/70 hover:text-white'
-                  }`}
-                >
-                  Таймлайн
-                </button>
-                <button
-                  onClick={() => setSemesterView('tasks')}
-                  className={`px-3 py-1 rounded text-sm transition-all ${
-                    semesterView === 'tasks'
-                      ? 'bg-best-primary text-white'
-                      : 'text-white/70 hover:text-white'
-                  }`}
-                >
-                  Задачи
-                </button>
-              </div>
-            )}
             <button
               onClick={() => navigateDate('next')}
               className="p-2 rounded-lg hover:bg-white/10 transition-all"
@@ -208,17 +186,30 @@ export default function Calendar() {
             </button>
           </div>
 
-          {/* Выбор представления */}
-          <div className="flex items-center space-x-2" data-tour="calendar-views">
-            <span className="text-white/60 text-sm">Представление:</span>
+          {/* Выбор периода */}
+          <div className="flex items-center space-x-2">
+            <span className="text-white/60 text-sm">Период:</span>
             <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
               <button
                 onClick={() => {
-                  setView('month')
+                  setPeriod('semester')
                   setCurrentDate(new Date()) // Сбрасываем на текущую дату
                 }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'month'
+                  period === 'semester'
+                    ? 'bg-best-primary text-white'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                Семестр
+              </button>
+              <button
+                onClick={() => {
+                  setPeriod('month')
+                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                }}
+                className={`px-3 py-1 rounded text-sm transition-all ${
+                  period === 'month'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
                 }`}
@@ -228,11 +219,11 @@ export default function Calendar() {
               </button>
               <button
                 onClick={() => {
-                  setView('week')
+                  setPeriod('week')
                   setCurrentDate(new Date()) // Сбрасываем на текущую дату
                 }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'week'
+                  period === 'week'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
                 }`}
@@ -240,13 +231,17 @@ export default function Calendar() {
                 <CalendarIcon className="h-4 w-4 inline mr-1" />
                 Неделя
               </button>
+            </div>
+          </div>
+
+          {/* Выбор представления */}
+          <div className="flex items-center space-x-2" data-tour="calendar-views">
+            <span className="text-white/60 text-sm">Представление:</span>
+            <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
               <button
-                onClick={() => {
-                  setView('timeline')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
-                }}
+                onClick={() => setPresentation('timeline')}
                 className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'timeline'
+                  presentation === 'timeline'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
                 }`}
@@ -255,18 +250,14 @@ export default function Calendar() {
                 Таймлайн
               </button>
               <button
-                onClick={() => {
-                  setView('semester')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
-                }}
+                onClick={() => setPresentation('list')}
                 className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'semester'
+                  presentation === 'list'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
                 }`}
               >
-                <BarChart3 className="h-4 w-4 inline mr-1" />
-                Семестр
+                Список
               </button>
             </div>
           </div>
@@ -278,7 +269,6 @@ export default function Calendar() {
               value={selectedRole}
               onChange={(e) => {
                 setSelectedRole(e.target.value as CalendarRole | 'all')
-                setCurrentDate(new Date()) // Сбрасываем на текущую дату
               }}
               className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
             >
@@ -313,59 +303,15 @@ export default function Calendar() {
         </div>
       ) : calendarData ? (
         <div className={`glass-enhanced ${theme} rounded-xl p-6`}>
-          {view === 'semester' ? (
-            semesterView === 'timeline' ? (
-              <TimelineView 
-                calendarData={calendarData} 
-                currentDate={currentDate}
-                theme={theme} 
-              />
-            ) : (
-              <div className="space-y-4">
-                <h3 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
-                  Задачи на семестр
-                </h3>
-                {/* Здесь будет список задач - можно использовать компонент из Tasks.tsx */}
-                <div className="space-y-2">
-                  {(calendarData.tasks || calendarData.all_items || []).map((task: any) => (
-                    <div
-                      key={task.id}
-                      className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
-                    >
-                      <div className="flex-1">
-                        <h4 className={`text-white font-medium text-readable ${theme}`}>
-                          {task.title}
-                        </h4>
-                        <p className="text-white/60 text-sm">
-                          {task.due_date
-                            ? `Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}`
-                            : 'Без дедлайна'}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-xs font-medium border ${
-                          task.status === 'completed'
-                            ? 'bg-green-500/20 text-green-400 border-green-500/50'
-                            : task.status === 'in_progress'
-                            ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
-                            : 'bg-blue-500/20 text-blue-400 border-blue-500/50'
-                        }`}
-                      >
-                        {task.status || 'open'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          ) : view === 'timeline' ? (
+          {presentation === 'timeline' ? (
             <TimelineView 
               calendarData={calendarData} 
               currentDate={currentDate}
               theme={theme} 
+              period={period}
             />
           ) : (
-            <MonthWeekView
+            <ListView
               calendarData={calendarData}
               theme={theme}
             />
@@ -398,10 +344,12 @@ function TimelineView({
   calendarData,
   currentDate,
   theme,
+  period,
 }: {
   calendarData: any
   currentDate: Date
   theme: string
+  period: 'semester' | 'month' | 'week'
 }) {
   // Собираем все задачи
   const allTasks: any[] = []
@@ -412,32 +360,68 @@ function TimelineView({
     allEvents.push(...calendarData.items.filter((i: any) => i.type === 'event'))
   }
 
-  // Создаём временную шкалу на 6 месяцев
-  const months: Date[] = []
-  const startMonth = new Date(currentDate)
-  startMonth.setDate(1)
-  for (let i = 0; i < 6; i++) {
-    const month = new Date(startMonth)
-    month.setMonth(startMonth.getMonth() + i)
-    months.push(month)
+  // Определяем количество месяцев/недель в зависимости от периода
+  let months: Date[] = []
+  let weeks: Date[] = []
+  
+  if (period === 'semester') {
+    // Семестр - 6 месяцев
+    const startMonth = new Date(currentDate)
+    startMonth.setDate(1)
+    for (let i = 0; i < 6; i++) {
+      const month = new Date(startMonth)
+      month.setMonth(startMonth.getMonth() + i)
+      months.push(month)
+    }
+  } else if (period === 'month') {
+    // Месяц - 1 месяц
+    const startMonth = new Date(currentDate)
+    startMonth.setDate(1)
+    months.push(startMonth)
+  } else if (period === 'week') {
+    // Неделя - 1 неделя
+    const weekStart = new Date(currentDate)
+    const day = weekStart.getDay()
+    weekStart.setDate(weekStart.getDate() - day)
+    weeks.push(weekStart)
   }
 
   return (
     <div className="space-y-4 overflow-x-auto">
       <h3 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
-        Таймлайн на семестр
+        Таймлайн {period === 'semester' ? 'на семестр' : period === 'month' ? 'на месяц' : 'на неделю'}
       </h3>
       <div className="min-w-[1200px]">
-        {/* Шкала месяцев */}
-        <div className="flex border-b-2 border-white/20 pb-2 mb-4">
-          {months.map((month, idx) => (
-            <div key={idx} className="flex-1 text-center">
-              <div className={`text-white font-semibold text-readable ${theme}`}>
-                {month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+        {/* Шкала времени */}
+        {period === 'week' ? (
+          <div className="flex border-b-2 border-white/20 pb-2 mb-4">
+            {weeks.map((weekStart, idx) => {
+              const days = []
+              for (let i = 0; i < 7; i++) {
+                const day = new Date(weekStart)
+                day.setDate(weekStart.getDate() + i)
+                days.push(day)
+              }
+              return days.map((day, dayIdx) => (
+                <div key={`${idx}-${dayIdx}`} className="flex-1 text-center">
+                  <div className={`text-white font-semibold text-readable ${theme}`}>
+                    {day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })}
+                  </div>
+                </div>
+              ))
+            })}
+          </div>
+        ) : (
+          <div className="flex border-b-2 border-white/20 pb-2 mb-4">
+            {months.map((month, idx) => (
+              <div key={idx} className="flex-1 text-center">
+                <div className={`text-white font-semibold text-readable ${theme}`}>
+                  {month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* Задачи и события */}
         <div className="space-y-2">
@@ -506,8 +490,8 @@ function TimelineView({
   )
 }
 
-// Компонент для представления Месяц/Неделя
-function MonthWeekView({
+// Компонент для представления Список
+function ListView({
   calendarData,
   theme,
 }: {
