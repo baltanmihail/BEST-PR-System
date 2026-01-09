@@ -79,14 +79,16 @@ export default function Background3DModels() {
     camera.position.z = 500
     cameraRef.current = camera
 
-    // Рендерер с тенями
+    // Рендерер с тенями - оптимизирован для производительности
     const renderer = new THREE.WebGLRenderer({
       alpha: true,
-      antialias: true,
+      antialias: !isMobile, // Отключаем антиалиасинг на мобильных для производительности
+      powerPreference: 'high-performance', // Предпочитаем производительность
     })
     renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.shadowMap.enabled = true // Включаем тени
+    // Ограничиваем pixel ratio для лучшей производительности
+    renderer.setPixelRatio(isMobile ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2))
+    renderer.shadowMap.enabled = !isMobile // Отключаем тени на мобильных для производительности
     renderer.shadowMap.type = THREE.PCFSoftShadowMap // Мягкие тени
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
@@ -99,9 +101,11 @@ export default function Background3DModels() {
     // Основной свет СПЕРЕДИ-сверху (белый) - главный источник
     const frontLight = new THREE.DirectionalLight(0xffffff, 2.0) // Яркий белый спереди
     frontLight.position.set(0, 200, 800) // Спереди-сверху (z=800)
-    frontLight.castShadow = true
-    frontLight.shadow.mapSize.width = 2048
-    frontLight.shadow.mapSize.height = 2048
+    frontLight.castShadow = !isMobile // Тени только на десктопе
+    if (!isMobile) {
+      frontLight.shadow.mapSize.width = 2048
+      frontLight.shadow.mapSize.height = 2048
+    }
     scene.add(frontLight)
 
     // Голубой свет спереди-слева
@@ -215,31 +219,45 @@ export default function Background3DModels() {
                       const originalMaterial = child.material
                       
                       // Используем MeshPhysicalMaterial для лучшего 3D-эффекта
+                      // На мобильных используем более простой материал для производительности
                       if (originalMaterial instanceof THREE.MeshStandardMaterial || originalMaterial instanceof THREE.MeshBasicMaterial) {
                         const originalColor = originalMaterial.color?.clone() || new THREE.Color(0x1e88e5)
                         
-                        // Создаём физически корректный материал с УСИЛЕННЫМИ эффектами
-                        const physicalMaterial = new THREE.MeshPhysicalMaterial({
-                          color: originalColor,
-                          metalness: 0.7, // Увеличено для блеска
-                          roughness: 0.15, // Уменьшено для гладкости
-                          clearcoat: 0.5, // Увеличено для глянца
-                          clearcoatRoughness: 0.1,
-                          reflectivity: 1.0, // Максимальная отражаемость
-                          envMapIntensity: 4.0, // Увеличено для яркости
-                          emissive: originalColor.clone().multiplyScalar(0.4), // Усилено свечение
-                          emissiveIntensity: 0.5,
-                          side: THREE.DoubleSide,
-                          // Добавляем толщину для объёма
-                          thickness: 1.0,
-                          transmission: 0.1, // Лёгкая прозрачность для стеклянного эффекта
-                        })
-                        
-                        child.material = physicalMaterial
+                        if (isMobile) {
+                          // Упрощённый материал для мобильных
+                          const simpleMaterial = new THREE.MeshStandardMaterial({
+                            color: originalColor,
+                            metalness: 0.5,
+                            roughness: 0.3,
+                            emissive: originalColor.clone().multiplyScalar(0.2),
+                            emissiveIntensity: 0.3,
+                            side: THREE.DoubleSide,
+                          })
+                          child.material = simpleMaterial
+                        } else {
+                          // Полный физический материал для десктопа
+                          const physicalMaterial = new THREE.MeshPhysicalMaterial({
+                            color: originalColor,
+                            metalness: 0.7, // Увеличено для блеска
+                            roughness: 0.15, // Уменьшено для гладкости
+                            clearcoat: 0.5, // Увеличено для глянца
+                            clearcoatRoughness: 0.1,
+                            reflectivity: 1.0, // Максимальная отражаемость
+                            envMapIntensity: 4.0, // Увеличено для яркости
+                            emissive: originalColor.clone().multiplyScalar(0.4), // Усилено свечение
+                            emissiveIntensity: 0.5,
+                            side: THREE.DoubleSide,
+                            // Добавляем толщину для объёма
+                            thickness: 1.0,
+                            transmission: 0.1, // Лёгкая прозрачность для стеклянного эффекта
+                          })
+                          child.material = physicalMaterial
+                        }
                       }
                       
-                      child.castShadow = true
-                      child.receiveShadow = true
+                      // Тени только на десктопе
+                      child.castShadow = !isMobile
+                      child.receiveShadow = !isMobile
                     }
                   })
 
@@ -293,11 +311,25 @@ export default function Background3DModels() {
         console.error('❌ Failed to load GLTFLoader:', err)
       })
 
-    // Анимация парения
+    // Анимация парения - оптимизирована для производительности
     let time = 0
+    let lastFrameTime = performance.now()
+    const targetFPS = isMobile ? 30 : 60 // Снижаем FPS на мобильных
+    const frameInterval = 1000 / targetFPS
+    
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate)
-      time += 0.016 // ~60fps
+      
+      const currentTime = performance.now()
+      const elapsed = currentTime - lastFrameTime
+      
+      // Пропускаем кадры для достижения целевого FPS
+      if (elapsed < frameInterval) {
+        return
+      }
+      
+      lastFrameTime = currentTime - (elapsed % frameInterval)
+      time += elapsed / 1000 // Используем реальное время вместо фиксированного шага
 
       modelsRef.current.forEach((model, index) => {
         if (!model) return

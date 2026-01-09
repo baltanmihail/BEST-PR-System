@@ -33,12 +33,26 @@ export default function Layout({ children }: LayoutProps) {
     }
   }, [])
 
+  // Определяем, мобильное ли устройство для оптимизации
+  const [isMobile, setIsMobile] = useState(false)
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   return (
     <div className={`min-h-screen bg-gradient-best ${theme} relative overflow-hidden`}>
-      {/* 3D модели логотипов BEST - парят и плавно двигаются */}
-      <div className="fixed inset-0 pointer-events-none z-[1]" style={{ backdropFilter: 'blur(0px)' }}>
-        <Background3DModels />
-      </div>
+      {/* 3D модели логотипов BEST - парят и плавно двигаются (отключены на мобильных для производительности) */}
+      {!isMobile && (
+        <div className="fixed inset-0 pointer-events-none z-[1]" style={{ backdropFilter: 'blur(0px)' }}>
+          <Background3DModels />
+        </div>
+      )}
       
       {/* Декоративные градиентные круги - как в примере */}
       <div className="absolute top-0 left-0 w-[600px] h-[600px] bg-best-secondary/10 rounded-full blur-3xl -translate-x-1/3 -translate-y-1/3 animate-pulse"></div>
@@ -46,10 +60,10 @@ export default function Layout({ children }: LayoutProps) {
       <div className="absolute top-1/2 left-1/2 w-[700px] h-[700px] bg-best-primary/12 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 animate-pulse" style={{ animationDelay: '2s' }}></div>
       <div className="absolute bottom-1/4 left-1/4 w-[400px] h-[400px] bg-best-accent/6 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
       
-      {/* Статичная 3D модель курсора */}
-      <StaticCursor3D />
-      {/* Cursor-2: кастомный курсор пользователя (пока только Home) */}
-      <Cursor2 />
+      {/* Статичная 3D модель курсора (отключена на мобильных) */}
+      {!isMobile && <StaticCursor3D />}
+      {/* Cursor-2: кастомный курсор пользователя (отключен на мобильных) */}
+      {!isMobile && <Cursor2 />}
       
       <Header onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       <div className="flex flex-col md:flex-row relative z-10">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, HelpCircle, Image as ImageIcon, Camera } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { Task } from '../types/task'
@@ -98,8 +98,7 @@ export default function TaskCard({ task }: TaskCardProps) {
     <div
       ref={parallax.ref}
       style={{ transform: parallax.transform }}
-      className="touch-manipulation"
-      className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover`}
+      className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover touch-manipulation`}
     >
       {/* Превью изображения */}
       {task.thumbnail_image_url && (

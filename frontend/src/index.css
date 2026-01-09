@@ -90,8 +90,22 @@
     transition: background-color 0.3s ease, color 0.3s ease;
   }
   
-  * {
-    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+  /* Оптимизация переходов - только для интерактивных элементов */
+  button, a, input, select, textarea, .card-3d, .glass-enhanced {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+  }
+  
+  /* Отключаем transitions на мобильных для лучшей производительности */
+  @media (max-width: 768px) {
+    * {
+      transition-duration: 0.15s !important;
+    }
+    
+    /* Отключаем сложные эффекты на мобильных */
+    .parallax-hover,
+    .parallax-hover-strong {
+      transform: none !important;
+    }
   }
 }
 

@@ -6,7 +6,7 @@ import TaskCard from '../components/TaskCard'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { Task } from '../types/task'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 export default function Tasks() {
   const { theme } = useThemeStore()
@@ -61,13 +61,15 @@ export default function Tasks() {
 
   const tasks = data?.items || []
 
-  // Фильтруем задачи по выбранным фильтрам
-  const filteredTasks = tasks.filter(task => {
-    if (filters.type && task.type !== filters.type) return false
-    if (filters.status && task.status !== filters.status) return false
-    if (filters.priority && task.priority !== filters.priority) return false
-    return true
-  })
+  // Мемоизируем фильтрацию задач для оптимизации
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(task => {
+      if (filters.type && task.type !== filters.type) return false
+      if (filters.status && task.status !== filters.status) return false
+      if (filters.priority && task.priority !== filters.priority) return false
+      return true
+    })
+  }, [tasks, filters.type, filters.status, filters.priority])
 
   const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '')
 

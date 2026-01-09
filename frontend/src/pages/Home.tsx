@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../services/tasks'
 import { publicApi } from '../services/public'
 import { useAuthStore } from '../store/authStore'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
 import { useTour } from '../hooks/useTour'
@@ -127,10 +127,14 @@ export default function Home() {
     enabled: isUnregistered,
   })
 
-  const activeTasksCount = tasksData?.items?.filter(
-    (task) => task.status !== 'completed' && task.status !== 'cancelled'
-  ).length || publicStats?.active_tasks || 0
+  // Мемоизируем вычисление активных задач для оптимизации
+  const activeTasksCount = useMemo(() => {
+    return tasksData?.items?.filter(
+      (task) => task.status !== 'completed' && task.status !== 'cancelled'
+    ).length || publicStats?.active_tasks || 0
+  }, [tasksData?.items, publicStats?.active_tasks])
 
+  // Параллакс эффекты - только на десктопе
   const heroParallax = useParallaxHover(10) // Главное окно - оставляем как есть
   const card1Parallax = useParallaxHover(15) // Усилил параллакс
   const card2Parallax = useParallaxHover(15) // Усилил параллакс
