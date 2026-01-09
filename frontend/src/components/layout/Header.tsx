@@ -9,17 +9,17 @@ export default function Header() {
   const { theme, toggleTheme } = useThemeStore()
   const { user } = useAuthStore()
   const navigate = useNavigate()
-  const isRegistered = user && user.is_active
+  const isRegistered = !!(user && user.is_active)
 
   // Загружаем количество непрочитанных уведомлений
-  const { data: unreadData } = useQuery({
+  const { data: unreadData } = useQuery<{ unread_count: number; important_unread_count: number }>({
     queryKey: ['notifications', 'unread-count'],
     queryFn: notificationsApi.getUnreadCount,
     enabled: isRegistered,
     refetchInterval: 30000, // Обновляем каждые 30 секунд
   })
 
-  const unreadCount = unreadData?.unread_count || 0
+  const unreadCount = unreadData?.unread_count ?? 0
 
   return (
     <header className={`glass-enhanced ${theme} border-b border-white/30 sticky top-0 z-50 rounded-none rounded-r-2xl`}>
