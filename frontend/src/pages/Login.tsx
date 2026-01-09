@@ -123,9 +123,12 @@ export default function Login() {
       if (data?.status === 'confirmed' || data?.status === 'expired' || data?.status === 'cancelled') {
         return false
       }
-      // Polling каждые 2 секунды
+      // Polling каждые 2 секунды для быстрой реакции на изменения
       return 2000
     },
+    // Повторные попытки при ошибках
+    retry: 2,
+    retryDelay: 1000,
   })
 
   // Вычисляем статусы после получения данных
@@ -133,18 +136,29 @@ export default function Login() {
   const isConfirmed = statusData?.status === 'confirmed'
   const isPending = (statusData?.status === 'pending' || !statusData) && !isExpired && !isConfirmed
 
-  // Автообновление QR-кода каждые 60 секунд, если он в статусе pending
+  // Автообновление QR-кода каждые 60 секунд или при истечении
   useEffect(() => {
-    if (!sessionToken || isConfirmed || isExpired) return
+    if (!sessionToken || isConfirmed) return
     
+    // Если QR-код истёк, сразу обновляем
+    if (isExpired) {
+      console.log('QR code expired, auto-refreshing...')
+      // Небольшая задержка для показа сообщения об истечении
+      const timeoutId = setTimeout(() => {
+        setSessionToken(null)
+        refetchQR()
+      }, 2000) // 2 секунды задержки
+      return () => clearTimeout(timeoutId)
+    }
+    
+    // Обновляем QR-код каждые 60 секунд для предотвращения истечения
     const intervalId = setInterval(() => {
-      // Обновляем QR-код каждые 60 секунд, если он ещё не подтверждён
       if (statusData?.status === 'pending') {
-        console.log('Auto-refreshing QR code...')
+        console.log('Auto-refreshing QR code (60s interval to prevent expiration)...')
         setSessionToken(null)
         refetchQR()
       }
-    }, 60000) // 60 секунд
+    }, 60000) // 60 секунд (QR-код действителен 5 минут, обновляем каждую минуту)
 
     return () => clearInterval(intervalId)
   }, [sessionToken, isConfirmed, isExpired, statusData?.status, refetchQR])

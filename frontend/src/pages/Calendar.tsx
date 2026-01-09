@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
+import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2, Filter, ChevronDown, ChevronUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
@@ -17,6 +17,7 @@ export default function Calendar() {
   const [selectedRole, setSelectedRole] = useState<CalendarRole | 'all'>('all')
   const [detailLevel, setDetailLevel] = useState<DetailLevel>('normal')
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false) // Для мобильных: сворачиваемая панель фильтров
 
   const isCoordinator = user && (
     user.role === UserRole.COORDINATOR_SMM ||
@@ -124,19 +125,20 @@ export default function Calendar() {
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center justify-between mb-8" data-tour="calendar-header">
-        <div className="flex items-center space-x-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 md:mb-8 gap-4" data-tour="calendar-header">
+        <div className="flex items-center space-x-3 md:space-x-4">
           <Link
             to="/"
-            className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+            aria-label="На главную"
           >
-            <CalendarIcon className="h-6 w-6 text-white" />
+            <CalendarIcon className="h-5 w-5 md:h-6 md:w-6 text-white" />
           </Link>
           <div>
-            <h1 className={`text-3xl md:text-4xl font-bold text-readable ${theme}`}>
+            <h1 className={`text-2xl md:text-3xl lg:text-4xl font-bold text-readable ${theme}`}>
               Календарь
             </h1>
-            <p className={`text-white/60 text-sm text-readable ${theme}`}>
+            <p className={`text-white/60 text-xs md:text-sm text-readable ${theme}`}>
               {getViewTitle()}
             </p>
           </div>
@@ -145,7 +147,7 @@ export default function Calendar() {
           <button
             onClick={() => syncToSheetsMutation.mutate()}
             disabled={syncToSheetsMutation.isPending}
-            className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50"
+            className="hidden md:flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 touch-manipulation"
             data-tour="calendar-sync"
           >
             {syncToSheetsMutation.isPending ? (
@@ -159,43 +161,80 @@ export default function Calendar() {
       </div>
 
       {/* Панель управления */}
-      <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6`}>
-        <div className="flex flex-wrap items-center gap-4">
+      <div className={`glass-enhanced ${theme} rounded-xl p-4 md:p-6 mb-6`}>
+        {/* Мобильная версия: кнопка для открытия фильтров */}
+        <div className="md:hidden mb-4">
+          <button
+            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+            className="w-full flex items-center justify-between p-3 bg-white/10 rounded-lg hover:bg-white/20 transition-all"
+          >
+            <div className="flex items-center space-x-2">
+              <Filter className="h-5 w-5 text-white" />
+              <span className="text-white font-medium">Фильтры и настройки</span>
+            </div>
+            {isFiltersOpen ? (
+              <ChevronUp className="h-5 w-5 text-white" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-white" />
+            )}
+          </button>
+        </div>
+        
+        {/* Контент панели управления */}
+        <div className={`flex flex-wrap items-center gap-3 md:gap-4 ${isFiltersOpen ? 'block' : 'hidden md:flex'}`}>
           {/* Навигация по датам */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => navigateDate('prev')}
-              className="p-2 rounded-lg hover:bg-white/10 transition-all"
-            >
-              <ArrowLeft className="h-5 w-5 text-white" />
-            </button>
-            <button
-              onClick={() => {
-                const today = new Date()
-                setCurrentDate(today)
-              }}
-              className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm"
-            >
-              Сегодня
-            </button>
-            <button
-              onClick={() => navigateDate('next')}
-              className="p-2 rounded-lg hover:bg-white/10 transition-all"
-            >
-              <ArrowRight className="h-5 w-5 text-white" />
-            </button>
+          <div className="flex items-center space-x-2 w-full md:w-auto justify-between md:justify-start">
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => navigateDate('prev')}
+                className="p-2 rounded-lg hover:bg-white/10 transition-all touch-manipulation"
+                aria-label="Предыдущий период"
+              >
+                <ArrowLeft className="h-5 w-5 text-white" />
+              </button>
+              <button
+                onClick={() => {
+                  const today = new Date()
+                  setCurrentDate(today)
+                }}
+                className="px-3 md:px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm touch-manipulation"
+              >
+                Сегодня
+              </button>
+              <button
+                onClick={() => navigateDate('next')}
+                className="p-2 rounded-lg hover:bg-white/10 transition-all touch-manipulation"
+                aria-label="Следующий период"
+              >
+                <ArrowRight className="h-5 w-5 text-white" />
+              </button>
+            </div>
+            {/* Кнопка синхронизации для координаторов (мобильная версия) */}
+            {isCoordinator && (
+              <button
+                onClick={() => syncToSheetsMutation.mutate()}
+                disabled={syncToSheetsMutation.isPending}
+                className="md:hidden flex items-center space-x-2 px-3 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 touch-manipulation"
+              >
+                {syncToSheetsMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </button>
+            )}
           </div>
 
           {/* Выбор периода */}
-          <div className="flex items-center space-x-2">
-            <span className="text-white/60 text-sm">Период:</span>
-            <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
+          <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-2 w-full md:w-auto">
+            <span className="text-white/60 text-sm font-medium md:font-normal">Период:</span>
+            <div className="flex space-x-1 bg-white/10 rounded-lg p-1 w-full md:w-auto">
               <button
                 onClick={() => {
                   setPeriod('semester')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                  setCurrentDate(new Date())
                 }}
-                className={`px-3 py-1 rounded text-sm transition-all ${
+                className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded text-sm transition-all touch-manipulation ${
                   period === 'semester'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
@@ -206,9 +245,9 @@ export default function Calendar() {
               <button
                 onClick={() => {
                   setPeriod('month')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                  setCurrentDate(new Date())
                 }}
-                className={`px-3 py-1 rounded text-sm transition-all ${
+                className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded text-sm transition-all touch-manipulation ${
                   period === 'month'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
@@ -220,9 +259,9 @@ export default function Calendar() {
               <button
                 onClick={() => {
                   setPeriod('week')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
+                  setCurrentDate(new Date())
                 }}
-                className={`px-3 py-1 rounded text-sm transition-all ${
+                className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded text-sm transition-all touch-manipulation ${
                   period === 'week'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
@@ -235,12 +274,12 @@ export default function Calendar() {
           </div>
 
           {/* Выбор представления */}
-          <div className="flex items-center space-x-2" data-tour="calendar-views">
-            <span className="text-white/60 text-sm">Представление:</span>
-            <div className="flex space-x-1 bg-white/10 rounded-lg p-1">
+          <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-2 w-full md:w-auto" data-tour="calendar-views">
+            <span className="text-white/60 text-sm font-medium md:font-normal">Представление:</span>
+            <div className="flex space-x-1 bg-white/10 rounded-lg p-1 w-full md:w-auto">
               <button
                 onClick={() => setPresentation('timeline')}
-                className={`px-3 py-1 rounded text-sm transition-all ${
+                className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded text-sm transition-all touch-manipulation ${
                   presentation === 'timeline'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
@@ -251,7 +290,7 @@ export default function Calendar() {
               </button>
               <button
                 onClick={() => setPresentation('list')}
-                className={`px-3 py-1 rounded text-sm transition-all ${
+                className={`flex-1 md:flex-none px-3 py-2 md:py-1 rounded text-sm transition-all touch-manipulation ${
                   presentation === 'list'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
@@ -263,14 +302,14 @@ export default function Calendar() {
           </div>
 
           {/* Фильтр по типам задач */}
-          <div className="flex items-center space-x-2" data-tour="calendar-filters">
-            <span className="text-white/60 text-sm">Тип задач:</span>
+          <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-2 w-full md:w-auto" data-tour="calendar-filters">
+            <span className="text-white/60 text-sm font-medium md:font-normal">Тип задач:</span>
             <select
               value={selectedRole}
               onChange={(e) => {
                 setSelectedRole(e.target.value as CalendarRole | 'all')
               }}
-              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
+              className={`w-full md:w-auto bg-white/10 text-white rounded-lg px-4 py-2.5 md:py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white touch-manipulation`}
             >
               <option value="all">Все</option>
               <option value="smm">SMM</option>
@@ -281,12 +320,12 @@ export default function Calendar() {
           </div>
 
           {/* Уровень детализации */}
-          <div className="flex items-center space-x-2">
-            <span className="text-white/60 text-sm">Детализация:</span>
+          <div className="flex flex-col md:flex-row md:items-center space-y-2 md:space-y-0 md:space-x-2 w-full md:w-auto">
+            <span className="text-white/60 text-sm font-medium md:font-normal">Детализация:</span>
             <select
               value={detailLevel}
               onChange={(e) => setDetailLevel(e.target.value as DetailLevel)}
-              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
+              className={`w-full md:w-auto bg-white/10 text-white rounded-lg px-4 py-2.5 md:py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white touch-manipulation`}
             >
               <option value="compact">Компактно</option>
               <option value="normal">Обычно</option>
@@ -387,14 +426,16 @@ function TimelineView({
   }
 
   return (
-    <div className="space-y-4 overflow-x-auto">
-      <h3 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+    <div className="space-y-4">
+      <h3 className={`text-lg md:text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
         Таймлайн {period === 'semester' ? 'на семестр' : period === 'month' ? 'на месяц' : 'на неделю'}
       </h3>
-      <div className="min-w-[1200px]">
-        {/* Шкала времени */}
+      {/* На мобильных показываем вертикальный список, на десктопе - горизонтальный таймлайн */}
+      <div className="md:overflow-x-auto">
+        <div className="min-w-full md:min-w-[1200px]">
+        {/* Шкала времени - на мобильных скрыта, на десктопе видна */}
         {period === 'week' ? (
-          <div className="flex border-b-2 border-white/20 pb-2 mb-4">
+          <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4">
             {weeks.map((weekStart, idx) => {
               const days = []
               for (let i = 0; i < 7; i++) {
@@ -404,7 +445,7 @@ function TimelineView({
               }
               return days.map((day, dayIdx) => (
                 <div key={`${idx}-${dayIdx}`} className="flex-1 text-center">
-                  <div className={`text-white font-semibold text-readable ${theme}`}>
+                  <div className={`text-white font-semibold text-sm md:text-base text-readable ${theme}`}>
                     {day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })}
                   </div>
                 </div>
@@ -412,10 +453,10 @@ function TimelineView({
             })}
           </div>
         ) : (
-          <div className="flex border-b-2 border-white/20 pb-2 mb-4">
+          <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4">
             {months.map((month, idx) => (
               <div key={idx} className="flex-1 text-center">
-                <div className={`text-white font-semibold text-readable ${theme}`}>
+                <div className={`text-white font-semibold text-sm md:text-base text-readable ${theme}`}>
                   {month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
                 </div>
               </div>
@@ -423,22 +464,22 @@ function TimelineView({
           </div>
         )}
 
-        {/* Задачи и события */}
-        <div className="space-y-2">
+        {/* Задачи и события - на мобильных вертикальный список, на десктопе горизонтальный */}
+        <div className="space-y-2 md:space-y-2">
           {allTasks.map((task, index) => (
             <div
               key={task.id || index}
-              className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
+              className={`glass-enhanced ${theme} rounded-lg p-3 md:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0`}
             >
-              <div className="flex-1">
-                <div className="flex items-center space-x-2 mb-1">
+              <div className="flex-1 w-full md:w-auto">
+                <div className="flex items-center space-x-2 mb-1 md:mb-1">
                   {task.color && (
                     <div
-                      className="w-3 h-3 rounded"
+                      className="w-3 h-3 rounded flex-shrink-0"
                       style={{ backgroundColor: task.color }}
                     />
                   )}
-                  <h4 className={`text-white font-medium text-readable ${theme}`}>
+                  <h4 className={`text-white font-medium text-sm md:text-base text-readable ${theme} break-words`}>
                     {task.title}
                   </h4>
                 </div>
@@ -530,17 +571,17 @@ function ListView({
         {allTasks.map((task, index) => (
           <div
             key={task.id || index}
-            className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
+            className={`glass-enhanced ${theme} rounded-lg p-3 md:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0`}
           >
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
+            <div className="flex-1 w-full md:w-auto">
+              <div className="flex items-center space-x-2 mb-1 md:mb-1">
                 {task.color && (
                   <div
-                    className="w-3 h-3 rounded"
+                    className="w-3 h-3 rounded flex-shrink-0"
                     style={{ backgroundColor: task.color }}
                   />
                 )}
-                <h4 className={`text-white font-medium text-readable ${theme}`}>
+                <h4 className={`text-white font-medium text-sm md:text-base text-readable ${theme} break-words`}>
                   {task.title}
                 </h4>
               </div>
@@ -555,7 +596,7 @@ function ListView({
               </p>
             </div>
             <span
-              className={`px-3 py-1 rounded-full text-xs font-medium border ${
+              className={`px-3 py-1 rounded-full text-xs font-medium border flex-shrink-0 self-start md:self-auto ${
                 task.status === 'completed'
                   ? 'bg-green-500/20 text-green-400 border-green-500/50'
                   : task.status === 'in_progress'

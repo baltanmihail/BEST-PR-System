@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Оптимизация для мобильных устройств и Telegram WebApp */
+@layer base {
+  /* Touch-friendly элементы */
+  button, a, input, select, textarea {
+    @apply touch-manipulation;
+  }
+  
+  /* Улучшенная прокрутка на мобильных */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Минимальные размеры для touch элементов */
+  button, a[role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  @media (max-width: 768px) {
+    /* Увеличенные размеры на мобильных */
+    button, a[role="button"] {
+      min-height: 48px;
+      padding: 0.75rem 1rem;
+    }
+    
+    /* Улучшенная читаемость на мобильных */
+    body {
+      font-size: 16px; /* Предотвращает zoom на iOS при фокусе на input */
+    }
+  }
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

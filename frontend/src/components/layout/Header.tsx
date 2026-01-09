@@ -1,11 +1,15 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Sun, Moon, Bell, User } from 'lucide-react'
+import { Sun, Moon, Bell, User, Menu } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { notificationsApi } from '../../services/notifications'
 
-export default function Header() {
+interface HeaderProps {
+  onMenuToggle?: () => void
+}
+
+export default function Header({ onMenuToggle }: HeaderProps) {
   const { theme, toggleTheme } = useThemeStore()
   const { user } = useAuthStore()
   const navigate = useNavigate()
@@ -25,6 +29,17 @@ export default function Header() {
     <header className={`glass-enhanced ${theme} border-b border-white/30 sticky top-0 z-50 rounded-none rounded-r-2xl`}>
       <div className="max-w-7xl mx-auto px-2 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between items-center h-14 md:h-16">
+          {/* Кнопка меню для мобильных */}
+          {onMenuToggle && (
+            <button
+              onClick={onMenuToggle}
+              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors mr-2"
+              aria-label="Открыть меню"
+            >
+              <Menu className="h-6 w-6 text-white" />
+            </button>
+          )}
+          
           <Link to="/" className="flex items-center space-x-2 md:space-x-3 group -ml-1 md:-ml-2">
             <div className="relative">
               <img 

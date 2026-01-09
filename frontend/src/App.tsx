@@ -65,6 +65,11 @@ function AppContent() {
         tg.setBackgroundColor('#f5f5f5') // Светлый цвет для фона
       }
       
+      // Используем viewportHeight для адаптации на мобильных
+      if (tg.viewportHeight) {
+        document.documentElement.style.setProperty('--tg-viewport-height', `${tg.viewportHeight}px`)
+      }
+      
       console.log('Telegram WebApp initialized', {
         version: tg.version,
         platform: tg.platform,

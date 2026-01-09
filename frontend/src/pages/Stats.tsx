@@ -40,18 +40,21 @@ export default function Stats() {
   const pointsToNext = nextLevelPoints - currentLevelPoints
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center space-x-4 mb-8">
-        <Link
-          to="/"
-          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-        >
-          <ArrowLeft className="h-6 w-6 text-white" />
-        </Link>
-        <div className="flex items-center space-x-3">
-          <Star className="h-8 w-8 text-best-secondary" />
-          <h1 className={`text-4xl font-bold text-readable ${theme}`}>Ваша статистика</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:space-x-4 mb-6 md:mb-8 gap-4">
+        <div className="flex items-center space-x-3 md:space-x-4">
+          <Link
+            to="/"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+            aria-label="На главную"
+          >
+            <ArrowLeft className="h-5 w-5 md:h-6 md:w-6 text-white" />
+          </Link>
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <Star className="h-6 w-6 md:h-8 md:w-8 text-best-secondary" />
+            <h1 className={`text-2xl md:text-3xl lg:text-4xl font-bold text-readable ${theme}`}>Ваша статистика</h1>
+          </div>
         </div>
       </div>
 
@@ -122,7 +125,7 @@ export default function Stats() {
           </div>
 
           {/* Баллы */}
-          <div className={`glass-enhanced ${theme} rounded-xl p-8`}>
+          <div className={`glass-enhanced ${theme} rounded-xl p-4 md:p-6 lg:p-8`}>
             <div className="flex items-center space-x-3 mb-6">
               <Trophy className="h-8 w-8 text-best-accent" />
               <h2 className={`text-2xl font-semibold text-readable ${theme}`}>Баллы</h2>

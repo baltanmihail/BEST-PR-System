@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
@@ -19,6 +19,7 @@ export default function Layout({ children }: LayoutProps) {
   const { theme } = useThemeStore()
   const location = useLocation()
   const { steps, isActive, completeTour, stopTour } = useTour()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const handleWheel = (_e: WheelEvent) => {
@@ -50,9 +51,9 @@ export default function Layout({ children }: LayoutProps) {
       {/* Cursor-2: кастомный курсор пользователя (пока только Home) */}
       <Cursor2 />
       
-      <Header />
+      <Header onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       <div className="flex flex-col md:flex-row relative z-10">
-        <Sidebar />
+        <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
         <main 
           ref={mainRef}
           className="flex-1 p-4 md:p-6 relative z-10 glass-trail"

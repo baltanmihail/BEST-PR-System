@@ -36,23 +36,25 @@ export default function Notifications() {
   const importantNotifications = data?.important || []
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className={`glass-enhanced ${theme} rounded-2xl p-8 mb-8 text-white`}>
-        <div className="flex items-center justify-between mb-6">
+    <div className="max-w-4xl mx-auto p-4 md:p-6">
+      <div className={`glass-enhanced ${theme} rounded-xl md:rounded-2xl p-4 md:p-8 mb-6 md:mb-8 text-white`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 md:mb-6 gap-4">
           <div className="flex items-center space-x-3">
-            <Bell className="h-8 w-8 text-best-primary" />
-            <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Уведомления</h1>
-            {data && (
-              <span className={`px-3 py-1 bg-best-primary/20 rounded-full text-sm text-readable ${theme}`}>
-                {data.unread_count} непрочитанных
-              </span>
-            )}
+            <Bell className="h-6 w-6 md:h-8 md:w-8 text-best-primary" />
+            <div>
+              <h1 className={`text-2xl md:text-3xl font-bold text-white text-readable ${theme}`}>Уведомления</h1>
+              {data && (
+                <span className={`inline-block md:ml-3 mt-1 md:mt-0 px-2 md:px-3 py-1 bg-best-primary/20 rounded-full text-xs md:text-sm text-readable ${theme}`}>
+                  {data.unread_count} непрочитанных
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center space-x-2">
             <button
               onClick={() => markAllAsReadMutation.mutate()}
               disabled={markAllAsReadMutation.isPending || !data?.unread_count}
-              className="px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all disabled:opacity-50 text-sm"
+              className="px-3 md:px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-all disabled:opacity-50 text-xs md:text-sm touch-manipulation"
             >
               Отметить все как прочитанные
             </button>
@@ -60,11 +62,11 @@ export default function Notifications() {
         </div>
 
         {/* Фильтры */}
-        <div className="flex items-center space-x-2 mb-6">
-          <Filter className="h-5 w-5 text-white/60" />
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <Filter className="h-5 w-5 text-white/60 hidden md:block" />
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`px-3 md:px-4 py-2 rounded-lg transition-all text-sm md:text-base touch-manipulation ${
               filter === 'all' ? 'bg-best-primary text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
             }`}
           >
@@ -72,7 +74,7 @@ export default function Notifications() {
           </button>
           <button
             onClick={() => setFilter('unread')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`px-3 md:px-4 py-2 rounded-lg transition-all text-sm md:text-base touch-manipulation ${
               filter === 'unread' ? 'bg-best-primary text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
             }`}
           >
@@ -80,7 +82,7 @@ export default function Notifications() {
           </button>
           <button
             onClick={() => setFilter('important')}
-            className={`px-4 py-2 rounded-lg transition-all ${
+            className={`px-3 md:px-4 py-2 rounded-lg transition-all text-sm md:text-base touch-manipulation ${
               filter === 'important' ? 'bg-best-primary text-white' : 'bg-white/10 text-white/80 hover:bg-white/20'
             }`}
           >

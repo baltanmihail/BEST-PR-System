@@ -116,8 +116,15 @@ export default function ChatWidget() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 transition-all flex items-center justify-center z-50`}
+        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 active:bg-best-primary/70 transition-all flex items-center justify-center z-50 touch-manipulation`}
         aria-label="Открыть чат"
+        style={{
+          // Увеличиваем размер на мобильных для удобства
+          ...(window.innerWidth < 768 ? {
+            width: '56px',
+            height: '56px',
+          } : {})
+        }}
       >
         <MessageSquare className="h-6 w-6 text-white" />
         {unreadCount > 0 && (
@@ -132,6 +139,7 @@ export default function ChatWidget() {
   return (
     <>
       {/* Чат виджет - справа снизу, поверх интерфейса, не влияет на layout */}
+      {/* На мобильных занимает почти весь экран, на десктопе - компактный виджет */}
       <div
         className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
         style={{ 
@@ -139,6 +147,15 @@ export default function ChatWidget() {
           opacity: isOpen ? 1 : 0,
           transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.95)',
           visibility: isOpen ? 'visible' : 'hidden',
+          // На мобильных делаем почти на весь экран
+          ...(window.innerWidth < 768 ? {
+            bottom: '1rem',
+            right: '1rem',
+            left: '1rem',
+            width: 'auto',
+            height: 'calc(100vh - 2rem)',
+            maxHeight: 'calc(100vh - 2rem)',
+          } : {})
         }}
         onClick={(e) => e.stopPropagation()}
       >

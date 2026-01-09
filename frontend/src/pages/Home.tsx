@@ -137,7 +137,7 @@ export default function Home() {
   const card3Parallax = useParallaxHover(15) // Усилил параллакс
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Hero Section - разный контент для разных ролей */}
       <div 
         ref={heroParallax.ref}

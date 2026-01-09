@@ -98,6 +98,7 @@ export default function TaskCard({ task }: TaskCardProps) {
     <div
       ref={parallax.ref}
       style={{ transform: parallax.transform }}
+      className="touch-manipulation"
       className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover`}
     >
       {/* Превью изображения */}

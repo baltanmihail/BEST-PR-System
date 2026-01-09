@@ -55,18 +55,21 @@ export default function Leaderboard() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
-      <div className="flex items-center space-x-4 mb-8">
-        <Link
-          to="/"
-          className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-        >
-          <ArrowLeft className="h-6 w-6 text-white" />
-        </Link>
-        <div className="flex items-center space-x-3">
-          <Trophy className="h-8 w-8 text-best-accent" />
-          <h1 className={`text-4xl font-bold text-readable ${theme}`}>Топ пользователей</h1>
+      <div className="flex flex-col md:flex-row md:items-center md:space-x-4 mb-6 md:mb-8 gap-4">
+        <div className="flex items-center space-x-3 md:space-x-4">
+          <Link
+            to="/"
+            className="p-2 rounded-lg hover:bg-white/10 transition-colors touch-manipulation"
+            aria-label="На главную"
+          >
+            <ArrowLeft className="h-5 w-5 md:h-6 md:w-6 text-white" />
+          </Link>
+          <div className="flex items-center space-x-2 md:space-x-3">
+            <Trophy className="h-6 w-6 md:h-8 md:w-8 text-best-accent" />
+            <h1 className={`text-2xl md:text-3xl lg:text-4xl font-bold text-readable ${theme}`}>Топ пользователей</h1>
+          </div>
         </div>
       </div>
 
@@ -99,31 +102,31 @@ export default function Leaderboard() {
       )}
 
       {!isLoading && !error && topUsers.length > 0 && (
-        <div className="space-y-4">
+        <div className="space-y-3 md:space-y-4">
         {topUsers.map((user) => (
           <div
             key={user.id}
-            className={`glass-enhanced ${theme} rounded-xl p-6 flex items-center justify-between transition-all hover:scale-[1.02]`}
+            className={`glass-enhanced ${theme} rounded-xl p-4 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 md:gap-0 transition-all hover:scale-[1.02] touch-manipulation`}
           >
-            <div className="flex items-center space-x-4 flex-1">
+            <div className="flex items-center space-x-3 md:space-x-4 flex-1">
               {/* Позиция */}
-              <div className={`flex items-center justify-center w-16 h-16 rounded-full border-2 ${getPositionBg(user.position)}`}>
+              <div className={`flex items-center justify-center w-12 h-12 md:w-16 md:h-16 rounded-full border-2 flex-shrink-0 ${getPositionBg(user.position)}`}>
                 {getMedalIcon(user.position)}
               </div>
 
               {/* Информация о пользователе */}
-              <div className="flex-1">
-                <div className="flex items-center space-x-3 mb-2">
-                  <h3 className={`text-xl font-semibold text-readable ${theme}`}>{user.name}</h3>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-2">
+                  <h3 className={`text-lg md:text-xl font-semibold text-readable ${theme} break-words`}>{user.name}</h3>
                   {user.position <= 3 && (
                     <span className="px-2 py-1 text-xs font-bold bg-best-primary/30 text-white rounded">
                       #{user.position}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center space-x-4 text-white/70">
+                <div className="flex flex-wrap items-center gap-2 md:gap-4 text-white/70 text-sm md:text-base">
                   <span>Уровень {user.level}</span>
-                  <span>•</span>
+                  <span className="hidden md:inline">•</span>
                   <span>{user.points.toLocaleString('ru-RU')} баллов</span>
                 </div>
               </div>
