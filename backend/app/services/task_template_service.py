@@ -203,7 +203,8 @@ class TaskTemplateService:
         def save_sync():
             try:
                 drive_structure = DriveStructureService()
-                templates_folder_id = drive_structure.get_templates_folder_id()
+                # Получаем подпапку для категории шаблона
+                templates_folder_id = drive_structure.get_task_template_subfolder_id(template.category.value)
                 
                 # Формируем содержимое файла шаблона (JSON)
                 template_data = {
@@ -258,6 +259,10 @@ class TaskTemplateService:
                 )
                 
                 logger.info(f"✅ Сохранён шаблон {template.id} на Drive: {file_id}")
+                
+                # Обновляем drive_file_id в объекте шаблона
+                template.drive_file_id = file_id
+                
                 return file_id
                 
             except Exception as e:

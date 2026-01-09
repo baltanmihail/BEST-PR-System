@@ -63,7 +63,8 @@ class SheetsSyncService:
         year: int,
         roles: List[str],
         db: AsyncSession,
-        statuses: Optional[List[str]] = None  # Фильтр по статусам задач
+        statuses: Optional[List[str]] = None,  # Фильтр по статусам задач
+        scale: str = "days"  # Масштаб: "days", "weeks", "months"
     ) -> dict:
         """
         Асинхронная версия синхронизации календаря с Google Sheets
@@ -158,7 +159,8 @@ class SheetsSyncService:
         tasks: List[Task],
         first_day: date,
         last_day: date,
-        statuses: Optional[List[str]] = None
+        statuses: Optional[List[str]] = None,
+        scale: str = "days"
     ) -> dict:
         """
         Синхронная часть синхронизации с Google Sheets
@@ -172,7 +174,7 @@ class SheetsSyncService:
             
             # Синхронизируем общий календарь
             self._sync_general_calendar(
-                spreadsheet_id, first_day, last_day, month, year, tasks
+                spreadsheet_id, first_day, last_day, month, year, tasks, scale
             )
             
             # Синхронизируем календари по ролям
@@ -195,7 +197,8 @@ class SheetsSyncService:
                         year,
                         role,
                         task_type,
-                        role_tasks
+                        role_tasks,
+                        scale
                     )
             
             logger.info(f"✅ Календарь синхронизирован с Google Sheets для {month}/{year}")
@@ -283,25 +286,31 @@ class SheetsSyncService:
         last_day: date,
         month: int,
         year: int,
-        tasks: List[Task]
+        tasks: List[Task],
+        scale: str = "days"
     ):
-        """Синхронизировать общий календарь"""
-        logger.info(f"Синхронизация общего календаря для {month}/{year}: {len(tasks)} задач")
+        """Синхронизировать общий календарь
+        
+        Args:
+            scale: Масштаб отображения - "days" (дни), "weeks" (недели), "months" (месяцы)
+        """
+        logger.info(f"Синхронизация общего календаря для {month}/{year} (масштаб: {scale}): {len(tasks)} задач")
         
         sheet_name = "Общий"
         
-        # Получаем количество дней в месяце
-        days_in_month = (last_day - first_day).days + 1
+        # Генерируем периоды в зависимости от масштаба
+        periods = self._generate_periods(first_day, last_day, scale)
         
         # Формируем данные для таблицы
-        # Структура: Дата | Задача 1 | Этапы задачи 1 | Задача 2 | Этапы задачи 2 | ...
+        # Структура: Период | Задача 1 | Этапы задачи 1 | Задача 2 | Этапы задачи 2 | ...
         # Для простоты: каждая задача занимает одну колонку, этапы под ней
         
         # Сортируем задачи по дате создания
         sorted_tasks = sorted(tasks, key=lambda t: t.created_at or datetime.min)
         
         # Формируем заголовки
-        headers = ["Дата"]
+        period_label = {"days": "Дата", "weeks": "Неделя", "months": "Месяц"}.get(scale, "Период")
+        headers = [period_label]
         task_columns = {}  # {task_id: column_index}
         col_idx = 1
         
@@ -310,32 +319,34 @@ class SheetsSyncService:
             task_columns[str(task.id)] = col_idx
             col_idx += 1
         
-        # Формируем данные по дням
+        # Формируем данные по периодам
         rows = []
-        for day_offset in range(days_in_month):
-            current_date = first_day + timedelta(days=day_offset)
-            row = [current_date.strftime("%d.%m")]
+        for period_start, period_end, period_label_str in periods:
+            row = [period_label_str]
             
-            # Для каждой задачи проверяем, попадает ли она на этот день
+            # Для каждой задачи проверяем, попадает ли она в этот период
             for task in sorted_tasks:
                 cell_parts = []
+                task_date = task.due_date.date() if task.due_date else None
+                created_date = task.created_at.date() if task.created_at else None
                 
-                # Проверяем дедлайн задачи
-                if task.due_date and task.due_date.date() == current_date:
-                    cell_parts.append(f"📅 Дедлайн")
+                # Проверяем дедлайн задачи (попадает в период)
+                if task_date and period_start <= task_date <= period_end:
+                    cell_parts.append(f"📅 Дедлайн {task_date.strftime('%d.%m')}")
                 
-                # Проверяем этапы задачи (показываем все этапы на этот день)
+                # Проверяем этапы задачи (показываем все этапы в этом периоде)
                 if hasattr(task, '_stages_cache') and task._stages_cache:
                     for stage in task._stages_cache:
-                        if stage.due_date and stage.due_date.date() == current_date:
-                            status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
-                            # Добавляем цвет этапа в текст для последующего форматирования
-                            color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
-                            cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name}")
+                        if stage.due_date:
+                            stage_date = stage.due_date.date()
+                            if period_start <= stage_date <= period_end:
+                                status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
+                                color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
+                                cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name} ({stage_date.strftime('%d.%m')})")
                 
-                # Если задача создана в этот день
-                if task.created_at and task.created_at.date() == current_date:
-                    cell_parts.append("🆕 Создана")
+                # Если задача создана в этот период
+                if created_date and period_start <= created_date <= period_end:
+                    cell_parts.append(f"🆕 Создана {created_date.strftime('%d.%m')}")
                 
                 # Объединяем все части через перенос строки для читаемости
                 cell_value = "\n".join(cell_parts) if cell_parts else ""
@@ -382,19 +393,23 @@ class SheetsSyncService:
         year: int,
         role: str,
         task_type: TaskType,
-        tasks: List[Task]
+        tasks: List[Task],
+        scale: str = "days"
     ):
         """Синхронизировать календарь конкретной роли"""
-        logger.info(f"Синхронизация календаря {role} для {month}/{year}: {len(tasks)} задач")
+        logger.info(f"Синхронизация календаря {role} для {month}/{year} (масштаб: {scale}): {len(tasks)} задач")
         
         sheet_name = role.capitalize() if role != "prfr" else "PR-FR"
-        days_in_month = (last_day - first_day).days + 1
+        
+        # Генерируем периоды в зависимости от масштаба
+        periods = self._generate_periods(first_day, last_day, scale)
         
         # Сортируем задачи
         sorted_tasks = sorted(tasks, key=lambda t: t.created_at or datetime.min)
         
         # Формируем заголовки
-        headers = ["Дата"]
+        period_label = {"days": "Дата", "weeks": "Неделя", "months": "Месяц"}.get(scale, "Период")
+        headers = [period_label]
         task_columns = {}
         col_idx = 1
         
@@ -403,27 +418,30 @@ class SheetsSyncService:
             task_columns[str(task.id)] = col_idx
             col_idx += 1
         
-        # Формируем данные
+        # Формируем данные по периодам
         rows = []
-        for day_offset in range(days_in_month):
-            current_date = first_day + timedelta(days=day_offset)
-            row = [current_date.strftime("%d.%m")]
+        for period_start, period_end, period_label_str in periods:
+            row = [period_label_str]
             
             for task in sorted_tasks:
                 cell_parts = []
+                task_date = task.due_date.date() if task.due_date else None
+                created_date = task.created_at.date() if task.created_at else None
                 
-                if task.due_date and task.due_date.date() == current_date:
-                    cell_parts.append(f"📅 Дедлайн")
+                if task_date and period_start <= task_date <= period_end:
+                    cell_parts.append(f"📅 Дедлайн {task_date.strftime('%d.%m')}")
                 
                 if hasattr(task, '_stages_cache') and task._stages_cache:
                     for stage in task._stages_cache:
-                        if stage.due_date and stage.due_date.date() == current_date:
-                            status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
-                            color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
-                            cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name}")
+                        if stage.due_date:
+                            stage_date = stage.due_date.date()
+                            if period_start <= stage_date <= period_end:
+                                status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
+                                color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
+                                cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name} ({stage_date.strftime('%d.%m')})")
                 
-                if task.created_at and task.created_at.date() == current_date:
-                    cell_parts.append("🆕 Создана")
+                if created_date and period_start <= created_date <= period_end:
+                    cell_parts.append(f"🆕 Создана {created_date.strftime('%d.%m')}")
                 
                 cell_value = "\n".join(cell_parts) if cell_parts else ""
                 row.append(cell_value)
@@ -447,15 +465,84 @@ class SheetsSyncService:
             )
         
         # Форматирование
+        periods_count = len(periods)
         self._format_sheet(
             spreadsheet_id,
             sheet_name,
             sorted_tasks,
             task_columns,
-            days_in_month,
+            periods_count,
             first_day,
-            task_type=task_type
+            task_type=task_type,
+            periods=periods,
+            scale=scale
         )
+    
+    def _generate_periods(self, first_day: date, last_day: date, scale: str) -> List[tuple]:
+        """
+        Генерирует список периодов в зависимости от масштаба
+        
+        Returns:
+            Список кортежей (start_date, end_date, label)
+        """
+        periods = []
+        
+        if scale == "days":
+            # По дням
+            current = first_day
+            while current <= last_day:
+                periods.append((current, current, current.strftime("%d.%m")))
+                current += timedelta(days=1)
+        
+        elif scale == "weeks":
+            # По неделям (понедельник - воскресенье)
+            current = first_day
+            # Находим понедельник недели, в которую попадает first_day
+            days_since_monday = current.weekday()
+            week_start = current - timedelta(days=days_since_monday)
+            
+            while week_start <= last_day:
+                week_end = week_start + timedelta(days=6)
+                if week_end > last_day:
+                    week_end = last_day
+                
+                # Формат: "01.01 - 07.01"
+                label = f"{week_start.strftime('%d.%m')} - {week_end.strftime('%d.%m')}"
+                periods.append((week_start, week_end, label))
+                week_start += timedelta(days=7)
+        
+        elif scale == "months":
+            # По месяцам
+            current = first_day
+            while current <= last_day:
+                # Первый день месяца
+                month_start = date(current.year, current.month, 1)
+                # Последний день месяца
+                if current.month == 12:
+                    month_end = date(current.year + 1, 1, 1) - timedelta(days=1)
+                else:
+                    month_end = date(current.year, current.month + 1, 1) - timedelta(days=1)
+                
+                # Ограничиваем последний месяц
+                if month_end > last_day:
+                    month_end = last_day
+                
+                # Формат: "Январь 2025"
+                month_names_ru = {
+                    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+                    5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+                    9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+                }
+                label = f"{month_names_ru.get(month_start.month, month_start.strftime('%B'))} {month_start.year}"
+                periods.append((month_start, month_end, label))
+                
+                # Переходим к следующему месяцу
+                if month_start.month == 12:
+                    current = date(month_start.year + 1, 1, 1)
+                else:
+                    current = date(month_start.year, month_start.month + 1, 1)
+        
+        return periods
     
     def _format_sheet(
         self,
@@ -463,9 +550,11 @@ class SheetsSyncService:
         sheet_name: str,
         tasks: List[Task],
         task_columns: Dict[str, int],
-        days_in_month: int,
+        periods_count: int,
         first_day: date,
-        task_type: Optional[TaskType] = None
+        task_type: Optional[TaskType] = None,
+        periods: Optional[List[tuple]] = None,
+        scale: str = "days"
     ):
         """Форматировать лист: цвета, гиперссылки, дедлайны, этапы"""
         from app.config import settings
@@ -528,14 +617,16 @@ class SheetsSyncService:
             })
             
             # Форматируем ячейки с дедлайнами и этапами
-            for day_offset in range(days_in_month):
-                cell_date = first_day + timedelta(days=day_offset)
-                row_idx = day_offset + 1  # +1 потому что первая строка - заголовок
+            for period_idx, period_info in enumerate(periods if periods else [(first_day + timedelta(days=i), first_day + timedelta(days=i), "") for i in range(periods_count)]):
+                period_start, period_end, _ = period_info
+                row_idx = period_idx + 1  # +1 потому что первая строка - заголовок
                 
-                # Проверяем дедлайн задачи
-                if task.due_date and task.due_date.date() == cell_date:
+                # Проверяем дедлайн задачи (попадает в период)
+                if task.due_date:
+                    task_date = task.due_date.date()
+                    if period_start <= task_date <= period_end:
                     # Красный цвет для просроченных дедлайнов
-                    deadline_color = OVERDUE_COLOR if cell_date < current_date else task_color
+                    deadline_color = OVERDUE_COLOR if task_date < current_date else task_color
                     requests.append({
                         "updateCells": {
                             "range": {
@@ -563,12 +654,14 @@ class SheetsSyncService:
                 # Форматируем ячейки с этапами
                 if hasattr(task, '_stages_cache') and task._stages_cache:
                     for stage in task._stages_cache:
-                        if stage.due_date and stage.due_date.date() == cell_date:
+                        if stage.due_date:
+                            stage_date = stage.due_date.date()
+                            if period_start <= stage_date <= period_end:
                             # Цвет этапа из status_color
                             stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
                             
                             # Если этап просрочен и не завершён - красный
-                            if cell_date < current_date and stage.status.value != "completed":
+                            if stage_date < current_date and stage.status.value != "completed":
                                 stage_color = OVERDUE_COLOR
                             
                             requests.append({

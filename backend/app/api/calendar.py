@@ -69,6 +69,7 @@ async def sync_calendar_to_sheets(
     year: Optional[int] = Query(None, description="Год для синхронизации"),
     role: Optional[Literal["smm", "design", "channel", "prfr", "all"]] = Query("all", description="Роль для синхронизации"),
     statuses: Optional[List[str]] = Query(None, description="Фильтр по статусам задач (draft, open, assigned, in_progress, review, completed, cancelled)"),
+    scale: Literal["days", "weeks", "months"] = Query("days", description="Масштаб отображения: days (дни), weeks (недели), months (месяцы)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -122,7 +123,7 @@ async def sync_calendar_to_sheets(
             try:
                 # Используем асинхронную версию синхронизации
                 result = await sheets_sync.sync_calendar_to_sheets_async(
-                    month, year, roles_to_sync, db, statuses
+                    month, year, roles_to_sync, db, statuses, scale
                 )
                 logger.info(f"✅ Синхронизация завершена: {result}")
                 return result

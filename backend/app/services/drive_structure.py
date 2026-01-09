@@ -54,6 +54,13 @@ class DriveStructureService:
             - Equipment/  (для BEST Channel Bot - выдача оборудования)
             - Support/  (файлы от пользователей в поддержке)
             - Users/  (профили пользователей, фото)
+            - Admin/  (админская папка)
+              - Coordinators/  (папка для координаторов)
+                - SMM/  (шаблоны и информация для координатора SMM)
+                - Design/  (шаблоны и информация для координатора Design)
+                - Channel/  (шаблоны и информация для координатора Channel)
+                - PR-FR/  (шаблоны и информация для координатора PR-FR)
+              - VP4PR/  (шаблоны и информация для VP4PR)
         
         Returns:
             Словарь с ID папок
@@ -107,6 +114,57 @@ class DriveStructureService:
             )
             logger.info(f"✅ Папка 'Users': {users_folder_id}")
             
+            # Создаём админскую папку
+            admin_folder_id = google_service.get_or_create_folder(
+                "Admin",
+                parent_folder_id=bot_folder_id,
+                background=False
+            )
+            logger.info(f"✅ Админская папка 'Admin': {admin_folder_id}")
+            
+            # Создаём подпапку для координаторов внутри админской папки
+            coordinators_folder_id = google_service.get_or_create_folder(
+                "Coordinators",
+                parent_folder_id=admin_folder_id,
+                background=False
+            )
+            logger.info(f"✅ Папка координаторов 'Coordinators': {coordinators_folder_id}")
+            
+            # Создаём подпапки для каждого координатора
+            coordinators_subfolders = {
+                "SMM": google_service.get_or_create_folder(
+                    "SMM",
+                    parent_folder_id=coordinators_folder_id,
+                    background=False
+                ),
+                "Design": google_service.get_or_create_folder(
+                    "Design",
+                    parent_folder_id=coordinators_folder_id,
+                    background=False
+                ),
+                "Channel": google_service.get_or_create_folder(
+                    "Channel",
+                    parent_folder_id=coordinators_folder_id,
+                    background=False
+                ),
+                "PR-FR": google_service.get_or_create_folder(
+                    "PR-FR",
+                    parent_folder_id=coordinators_folder_id,
+                    background=False
+                ),
+            }
+            
+            for name, folder_id in coordinators_subfolders.items():
+                logger.info(f"✅ Папка координатора '{name}': {folder_id}")
+            
+            # Создаём подпапку для VP4PR внутри админской папки
+            vp4pr_folder_id = google_service.get_or_create_folder(
+                "VP4PR",
+                parent_folder_id=admin_folder_id,
+                background=False
+            )
+            logger.info(f"✅ Папка VP4PR: {vp4pr_folder_id}")
+            
             structure = {
                 "bot_folder_id": bot_folder_id,
                 "tasks_folder_id": tasks_folder_id,
@@ -114,6 +172,10 @@ class DriveStructureService:
                 "equipment_folder_id": equipment_folder_id,
                 "support_folder_id": support_folder_id,
                 "users_folder_id": users_folder_id,
+                "admin_folder_id": admin_folder_id,
+                "coordinators_folder_id": coordinators_folder_id,
+                "vp4pr_folder_id": vp4pr_folder_id,
+                "coordinators_subfolders": coordinators_subfolders,
             }
             
             # Сохраняем ID главной папки в настройки (если не задан)
@@ -247,6 +309,71 @@ class DriveStructureService:
             background=False
         )
     
+    def get_admin_folder_id(self) -> str:
+        """Получить ID админской папки"""
+        google_service = self._get_google_service()
+        bot_folder_id = self.get_bot_folder_id()
+        return google_service.get_or_create_folder(
+            "Admin",
+            parent_folder_id=bot_folder_id,
+            background=False
+        )
+    
+    def get_coordinators_folder_id(self) -> str:
+        """Получить ID папки координаторов"""
+        google_service = self._get_google_service()
+        admin_folder_id = self.get_admin_folder_id()
+        return google_service.get_or_create_folder(
+            "Coordinators",
+            parent_folder_id=admin_folder_id,
+            background=False
+        )
+    
+    def get_vp4pr_folder_id(self) -> str:
+        """Получить ID папки VP4PR"""
+        google_service = self._get_google_service()
+        admin_folder_id = self.get_admin_folder_id()
+        return google_service.get_or_create_folder(
+            "VP4PR",
+            parent_folder_id=admin_folder_id,
+            background=False
+        )
+    
+    def get_task_template_subfolder_id(self, category: str) -> str:
+        """
+        Получить ID подпапки для шаблонов задач по категории
+        
+        Args:
+            category: Категория шаблона (coordinator_smm, coordinator_design, coordinator_channel, coordinator_prfr, vp4pr)
+        
+        Returns:
+            ID папки для данной категории
+        """
+        google_service = self._get_google_service()
+        
+        # Маппинг категорий на названия папок
+        category_to_folder = {
+            "coordinator_smm": "SMM",
+            "coordinator_design": "Design",
+            "coordinator_channel": "Channel",
+            "coordinator_prfr": "PR-FR",
+            "vp4pr": "VP4PR",
+        }
+        
+        folder_name = category_to_folder.get(category, "Custom")
+        
+        # Для VP4PR используем папку VP4PR напрямую из Admin
+        if category == "vp4pr":
+            return self.get_vp4pr_folder_id()
+        
+        # Для координаторов используем папку Coordinators -> конкретный координатор
+        coordinators_folder_id = self.get_coordinators_folder_id()
+        return google_service.get_or_create_folder(
+            folder_name,
+            parent_folder_id=coordinators_folder_id,
+            background=False
+        )
+    
     def get_users_folder_id(self) -> str:
         """Получить ID папки для пользователей"""
         google_service = self._get_google_service()
@@ -257,32 +384,6 @@ class DriveStructureService:
             background=False
         )
     
-    def get_templates_folder_id(self) -> str:
-        """Получить ID папки для шаблонов задач"""
-        google_service = self._get_google_service()
-        bot_folder_id = self.get_bot_folder_id()
-        
-        # Создаём структуру: Templates/ -> Coordinators/, VP4PR/
-        templates_folder_id = google_service.get_or_create_folder(
-            "Templates",
-            parent_folder_id=bot_folder_id,
-            background=False
-        )
-        
-        # Создаём подпапки
-        google_service.get_or_create_folder(
-            "Coordinators",
-            parent_folder_id=templates_folder_id,
-            background=False
-        )
-        
-        google_service.get_or_create_folder(
-            "VP4PR",
-            parent_folder_id=templates_folder_id,
-            background=False
-        )
-        
-        return templates_folder_id
     
     def create_task_folder(self, task_id: str, task_name: str) -> Dict[str, str]:
         """

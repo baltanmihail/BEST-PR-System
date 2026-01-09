@@ -132,6 +132,21 @@ async def startup_event():
                     # Сохраняем ID главной папки, если не задан
                     if not settings.GOOGLE_DRIVE_FOLDER_ID:
                         logger.info(f"💡 Установите GOOGLE_DRIVE_FOLDER_ID={structure.get('bot_folder_id')} для использования этой папки")
+                    
+                    # Инициализируем Google таблицу таймлайна задач
+                    try:
+                        from app.services.sheets_sync import SheetsSyncService
+                        from app.services.google_service import GoogleService
+                        google_service = GoogleService()
+                        sheets_sync = SheetsSyncService(google_service)
+                        # Создаём таблицу таймлайна при первом запуске
+                        timeline_sheets = sheets_sync._get_or_create_timeline_sheets()
+                        if timeline_sheets:
+                            logger.info(f"✅ Google таблица таймлайна задач готова: {timeline_sheets.get('id')}")
+                            logger.info(f"🔗 URL таблицы: {timeline_sheets.get('url', 'N/A')}")
+                            logger.info(f"💡 Для заполнения данными вызовите: POST /api/v1/calendar/sync/sheets")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка инициализации таблицы таймлайна: {e}", exc_info=True)
                 else:
                     logger.warning("⚠️ Google Drive структура не была создана (credentials не найдены или ошибка)")
             else:

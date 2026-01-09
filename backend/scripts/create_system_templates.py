@@ -276,8 +276,26 @@ async def create_system_templates(db: AsyncSession):
         )
         
         db.add(template)
+        await db.flush()  # Получаем ID шаблона
+        
         created_count += 1
         logger.info(f"✅ Создан системный шаблон: {template_data['name']}")
+        
+        # Сохраняем шаблон на Google Drive
+        try:
+            from app.services.google_service import GoogleService
+            from app.services.task_template_service import TaskTemplateService
+            
+            google_service = GoogleService()
+            # Сохраняем с db сессией для обновления drive_file_id
+            file_id = await TaskTemplateService._save_template_to_drive(
+                template, google_service, db=db
+            )
+            if file_id:
+                logger.info(f"✅ Сохранён шаблон '{template_data['name']}' на Google Drive: {file_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось сохранить шаблон '{template_data['name']}' на Drive: {e}")
+            # Продолжаем создание шаблонов даже если Drive недоступен
     
     await db.commit()
     
