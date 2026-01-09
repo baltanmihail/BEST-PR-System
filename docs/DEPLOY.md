@@ -71,7 +71,7 @@ VITE_API_URL=https://best-pr-api.up.railway.app/api/v1
 ```bash
 cd "BEST PR System"
 git add .
-git commit -m "Тотальная обнова"
+git commit -m "Черт"
 git push origin main
 ```
 

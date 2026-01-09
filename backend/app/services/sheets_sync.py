@@ -625,9 +625,9 @@ class SheetsSyncService:
                 if task.due_date:
                     task_date = task.due_date.date()
                     if period_start <= task_date <= period_end:
-                    # Красный цвет для просроченных дедлайнов
-                    deadline_color = OVERDUE_COLOR if task_date < current_date else task_color
-                    requests.append({
+                        # Красный цвет для просроченных дедлайнов
+                        deadline_color = OVERDUE_COLOR if task_date < current_date else task_color
+                        requests.append({
                         "updateCells": {
                             "range": {
                                 "sheetId": sheet_id,
@@ -657,15 +657,15 @@ class SheetsSyncService:
                         if stage.due_date:
                             stage_date = stage.due_date.date()
                             if period_start <= stage_date <= period_end:
-                            # Цвет этапа из status_color
-                            stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
-                            
-                            # Если этап просрочен и не завершён - красный
-                            if stage_date < current_date and stage.status.value != "completed":
-                                stage_color = OVERDUE_COLOR
-                            
-                            requests.append({
-                                "updateCells": {
+                                # Цвет этапа из status_color
+                                stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
+                                
+                                # Если этап просрочен и не завершён - красный
+                                if stage_date < current_date and stage.status.value != "completed":
+                                    stage_color = OVERDUE_COLOR
+                                
+                                requests.append({
+                                    "updateCells": {
                                     "range": {
                                         "sheetId": sheet_id,
                                         "startRowIndex": row_idx,

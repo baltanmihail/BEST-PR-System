@@ -33,8 +33,8 @@ class TaskTemplate(Base):
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     
     # Данные задачи из шаблона
-    task_type = Column(Enum(TaskType), nullable=False)
-    priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.MEDIUM)
+    task_type = Column(Enum(TaskType, name='task_type', create_type=False), nullable=False)
+    priority = Column(Enum(TaskPriority, name='task_priority', create_type=False), nullable=False, default=TaskPriority.MEDIUM)
     default_description = Column(Text, nullable=True)
     equipment_available = Column(Boolean, nullable=False, default=False)
     
