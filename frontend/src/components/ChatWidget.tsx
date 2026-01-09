@@ -19,7 +19,7 @@ export default function ChatWidget() {
   const { user } = useAuthStore()
   const { theme } = useThemeStore()
   const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabType>('chat')
+  const [activeTab, setActiveTab] = useState<TabType>('notifications') // Начинаем с уведомлений
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -36,7 +36,7 @@ export default function ChatWidget() {
   const { data: notificationsData } = useQuery({
     queryKey: ['notifications', 'widget'],
     queryFn: () => notificationsApi.getNotifications({ limit: 20 }),
-    enabled: isOpen && activeTab === 'notifications' && !!user,
+    enabled: isOpen && activeTab === 'notifications' && !!user && !!(user && user.is_active),
   })
 
   const scrollToBottom = () => {
@@ -116,7 +116,7 @@ export default function ChatWidget() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 transition-all flex items-center justify-center z-50`}
+        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 transition-all flex items-center justify-center z-50`}
         aria-label="Открыть чат"
       >
         <MessageSquare className="h-6 w-6 text-white" />
@@ -131,33 +131,23 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Чат виджет - слева снизу, без затемнения фона */}
+      {/* Чат виджет - справа снизу, поверх интерфейса, не влияет на layout */}
       <div
-        className={`fixed bottom-4 left-4 md:bottom-6 md:left-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
+        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
         style={{ 
           pointerEvents: isOpen ? 'auto' : 'none', 
           opacity: isOpen ? 1 : 0,
-          transform: isOpen ? 'translateY(0)' : 'translateY(20px)',
-          visibility: isOpen ? 'visible' : 'hidden'
+          transform: isOpen ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.95)',
+          visibility: isOpen ? 'visible' : 'hidden',
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Заголовок с переключателем */}
         <div className="flex items-center justify-between p-4 border-b border-white/20">
           <div className="flex items-center space-x-2 flex-1">
-            {/* Переключатель Чат/Уведомления */}
+            {/* Переключатель Уведомления/Чат (сначала уведомления) */}
             <div className="flex items-center space-x-1 bg-white/10 rounded-lg p-1">
-              <button
-                onClick={() => setActiveTab('chat')}
-                className={`px-3 py-1.5 rounded text-sm transition-all flex items-center space-x-1 ${
-                  activeTab === 'chat'
-                    ? 'bg-best-primary text-white'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-                <span>Чат</span>
-              </button>
-              {user && (
+              {user?.is_active && (
                 <button
                   onClick={() => setActiveTab('notifications')}
                   className={`px-3 py-1.5 rounded text-sm transition-all flex items-center space-x-1 relative ${
@@ -175,6 +165,17 @@ export default function ChatWidget() {
                   )}
                 </button>
               )}
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`px-3 py-1.5 rounded text-sm transition-all flex items-center space-x-1 ${
+                  activeTab === 'chat'
+                    ? 'bg-best-primary text-white'
+                    : 'text-white/70 hover:text-white'
+                }`}
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span>Чат</span>
+              </button>
             </div>
           </div>
           <button

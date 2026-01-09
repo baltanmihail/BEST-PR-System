@@ -87,7 +87,13 @@ export default function Support() {
               <h1 className={`text-3xl font-bold text-white text-readable ${theme}`}>Поддержка</h1>
             </div>
             <button
-              onClick={() => startTour(getTourType())}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const tourType = getTourType()
+                console.log('Starting tour with type:', tourType)
+                startTour(tourType)
+              }}
               className="flex items-center space-x-2 px-4 py-2 bg-best-primary/20 hover:bg-best-primary/30 text-white rounded-lg transition-all border border-best-primary/50"
               title="Запустить интерактивный гайд по сайту"
             >

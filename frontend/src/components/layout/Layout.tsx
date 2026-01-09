@@ -6,6 +6,7 @@ import Background3DModels from '../Background3DModels'
 import StaticCursor3D from '../StaticCursor3D'
 import Cursor2 from '../Cursor2'
 import TourGuide from '../TourGuide'
+import ChatWidget from '../ChatWidget'
 import { useThemeStore } from '../../store/themeStore'
 import { useTour } from '../../hooks/useTour'
 
@@ -76,6 +77,9 @@ export default function Layout({ children }: LayoutProps) {
           showSkip={true}
         />
       )}
+      
+      {/* Чат виджет - доступен на всех страницах */}
+      <ChatWidget />
     </div>
   )
 }

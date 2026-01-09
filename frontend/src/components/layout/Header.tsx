@@ -50,14 +50,15 @@ export default function Header() {
             <div className="h-4 md:h-6 w-px bg-white/30" />
             
             {/* Уведомления (только для зарегистрированных) */}
-            {isRegistered && (
+            {isRegistered ? (
               <>
                 <button
                   onClick={() => navigate('/notifications')}
                   className="text-white/90 hover:text-white transition-colors p-1.5 md:p-2 rounded-lg hover:bg-white/10 flex items-center justify-center relative"
                   title="Уведомления"
+                  aria-label="Уведомления"
                 >
-                  <Bell className="h-4 w-4 md:h-5 md:w-5" />
+                  <Bell className="h-4 w-4 md:h-5 md:w-5 text-white" />
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
                       {unreadCount > 9 ? '9+' : unreadCount}
@@ -66,7 +67,7 @@ export default function Header() {
                 </button>
                 <div className="h-4 md:h-6 w-px bg-white/30" />
               </>
-            )}
+            ) : null}
             
             {/* Профиль / Регистрация / Вход */}
             {isRegistered ? (

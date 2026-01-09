@@ -7,7 +7,6 @@ import { useAuthStore } from '../store/authStore'
 import { useEffect } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { useThemeStore } from '../store/themeStore'
-import ChatWidget from '../components/ChatWidget'
 import { useTour } from '../hooks/useTour'
 import { telegramChatsApi, GeneralChatResponse } from '../services/telegramChats'
 import { onboardingApi } from '../services/onboarding'
@@ -139,8 +138,6 @@ export default function Home() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <ChatWidget />
-      
       {/* Hero Section - разный контент для разных ролей */}
       <div 
         ref={heroParallax.ref}
