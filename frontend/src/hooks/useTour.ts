@@ -323,23 +323,23 @@ export function useTour() {
   useEffect(() => {
     // Запускаем гайд только если:
     // 1. Пользователь зарегистрирован
-    // 2. Гайд ещё не был пройден
+    // 2. Гайд ещё не был пройден (или статус ещё не загружен)
     // 3. Гайд не активен сейчас
     // 4. Мы на главной странице (для первого знакомства)
     if (
       user && 
       user.is_active && 
-      !tourStatus?.tour_completed && 
+      (tourStatus === undefined || !tourStatus.tour_completed) && 
       !isActive && 
       location.pathname === '/'
     ) {
       // Небольшая задержка для загрузки элементов на странице
       const timer = setTimeout(() => {
         startTour('home')
-      }, 1500) // Увеличена задержка для гарантированной загрузки всех элементов
+      }, 2000) // Увеличена задержка для гарантированной загрузки всех элементов
       return () => clearTimeout(timer)
     }
-  }, [location.pathname, user, tourStatus?.tour_completed, isActive, startTour])
+  }, [location.pathname, user, tourStatus, isActive, startTour])
 
   const stopTour = () => {
     setIsActive(false)

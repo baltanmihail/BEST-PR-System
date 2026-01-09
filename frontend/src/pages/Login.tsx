@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
@@ -181,17 +181,17 @@ export default function Login() {
           <h1 className={`text-2xl font-bold text-white text-readable ${theme}`}>
             Вход в систему
           </h1>
-          <Link
-            to="/"
+          <button
+            onClick={() => navigate('/')}
             className="p-2 rounded-lg hover:bg-white/10 transition-colors"
           >
-            <ArrowLeft className="w-5 h-5 text-white" />
-          </Link>
+            <X className="w-5 h-5 text-white" />
+          </button>
         </div>
 
         <div className="text-center mb-6">
-          <p className="text-white/80 text-readable ${theme} mb-4">
-            Отсканируйте QR-код через Telegram бота для входа
+          <p className={`text-white/80 text-readable ${theme} mb-4`}>
+            Отсканируйте QR-код или перейдите по ссылке ниже в Telegram бота для входа
           </p>
         </div>
 
@@ -338,23 +338,25 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Кнопка обновления */}
-        <div className="flex justify-center">
-          <button
-            onClick={handleRefreshQR}
-            disabled={qrLoading}
-            className="w-full py-2 px-4 rounded-lg font-medium transition-colors bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 border border-white/20"
-          >
-            {qrLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 inline mr-2 animate-spin" />
-                Генерация...
-              </>
-            ) : (
-              'Обновить QR-код'
-            )}
-          </button>
-        </div>
+        {/* Кнопка обновления - показываем только если QR истёк и нет автообновления */}
+        {isExpired && (
+          <div className="flex justify-center">
+            <button
+              onClick={handleRefreshQR}
+              disabled={qrLoading}
+              className="w-full py-2 px-4 rounded-lg font-medium transition-colors bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 border border-white/20"
+            >
+              {qrLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 inline mr-2 animate-spin" />
+                  Генерация...
+                </>
+              ) : (
+                'Обновить QR-код'
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Модальное окно для пользовательского соглашения */}

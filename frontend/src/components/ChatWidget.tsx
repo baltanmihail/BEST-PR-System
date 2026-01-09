@@ -112,14 +112,23 @@ export default function ChatWidget() {
     <>
       {/* Backdrop overlay - как на hyper3d.ai */}
       <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998] transition-opacity duration-300"
+        className="fixed inset-0 bg-black/70 backdrop-blur-md z-[9998] transition-opacity duration-300"
         onClick={() => setIsOpen(false)}
-        style={{ pointerEvents: isOpen ? 'auto' : 'none', opacity: isOpen ? 1 : 0 }}
+        style={{ 
+          pointerEvents: isOpen ? 'auto' : 'none', 
+          opacity: isOpen ? 1 : 0,
+          visibility: isOpen ? 'visible' : 'hidden'
+        }}
       />
-      {/* Чат виджет - поверх всего */}
+      {/* Чат виджет - поверх всего, правильно центрирован */}
       <div
-        className={`fixed bottom-1/2 right-1/2 translate-x-1/2 translate-y-1/2 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
-        style={{ pointerEvents: isOpen ? 'auto' : 'none', opacity: isOpen ? 1 : 0, transform: isOpen ? 'translate(50%, 50%) scale(1)' : 'translate(50%, 50%) scale(0.95)' }}
+        className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
+        style={{ 
+          pointerEvents: isOpen ? 'auto' : 'none', 
+          opacity: isOpen ? 1 : 0, 
+          transform: isOpen ? 'translate(-50%, -50%) scale(1)' : 'translate(-50%, -50%) scale(0.95)',
+          visibility: isOpen ? 'visible' : 'hidden'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
       {/* Заголовок */}

@@ -1,6 +1,6 @@
 import api from './api'
 
-export type CalendarView = 'month' | 'week' | 'timeline' | 'gantt' | 'kanban'
+export type CalendarView = 'month' | 'week' | 'timeline' | 'semester'
 export type CalendarRole = 'smm' | 'design' | 'channel' | 'prfr'
 export type DetailLevel = 'compact' | 'normal' | 'detailed'
 
@@ -31,7 +31,7 @@ export interface CalendarTask {
 }
 
 export interface CalendarResponse {
-  view: 'month' | 'week' | 'timeline' | 'gantt' | 'kanban'
+  view: 'month' | 'week' | 'timeline' | 'semester'
   // Для month/week
   days?: Array<{
     date: string

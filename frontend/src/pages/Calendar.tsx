@@ -11,6 +11,7 @@ export default function Calendar() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const [view, setView] = useState<CalendarView>('month')
+  const [semesterView, setSemesterView] = useState<'timeline' | 'tasks'>('timeline') // Для представления "Семестр"
   const [selectedRole, setSelectedRole] = useState<CalendarRole | 'all'>('all')
   const [detailLevel, setDetailLevel] = useState<DetailLevel>('normal')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -36,15 +37,10 @@ export default function Calendar() {
       const day = start.getDay()
       start.setDate(start.getDate() - day)
       end.setDate(start.getDate() + 6)
-    } else if (view === 'timeline') {
-      // Таймлайн - показываем 6 месяцев (семестр)
+    } else if (view === 'timeline' || view === 'semester') {
+      // Таймлайн/Семестр - показываем 6 месяцев (семестр)
       start.setDate(1)
       end.setMonth(end.getMonth() + 6)
-      end.setDate(0)
-    } else if (view === 'gantt') {
-      // Gantt - показываем 3 месяца
-      start.setDate(1)
-      end.setMonth(end.getMonth() + 3)
       end.setDate(0)
     } else {
       // fallback - месяц
@@ -62,11 +58,13 @@ export default function Calendar() {
   const dateRange = getDateRange()
 
   const { data: calendarData, isLoading } = useQuery({
-    queryKey: ['calendar', view, selectedRole, dateRange.start, dateRange.end, detailLevel],
+    queryKey: ['calendar', view, selectedRole, dateRange.start, dateRange.end, detailLevel, semesterView],
     queryFn: () => {
+      // Для представления "Семестр" используем 'timeline' для API
+      const apiView = view === 'semester' ? 'timeline' : view
       if (selectedRole === 'all') {
         return calendarApi.getCalendar({
-          view,
+          view: apiView,
           start_date: dateRange.start,
           end_date: dateRange.end,
           detail_level: detailLevel,
@@ -74,7 +72,7 @@ export default function Calendar() {
         })
       } else {
         return calendarApi.getCalendarByRole(selectedRole, {
-          view,
+          view: apiView,
           start_date: dateRange.start,
           end_date: dateRange.end,
           detail_level: detailLevel,
@@ -99,8 +97,8 @@ export default function Calendar() {
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     } else if (view === 'week') {
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-    } else if (view === 'timeline' || view === 'gantt') {
-      // Для таймлайна и gantt - перемещаемся на месяц
+    } else if (view === 'timeline' || view === 'semester') {
+      // Для таймлайна и семестра - перемещаемся на месяц
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
     }
     setCurrentDate(newDate)
@@ -125,10 +123,8 @@ export default function Calendar() {
       return `${weekStart.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} - ${weekEnd.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })}`
     } else if (view === 'timeline') {
       return 'Таймлайн'
-    } else if (view === 'gantt') {
-      return 'График работ (Gantt)'
-    } else if (view === 'kanban') {
-      return 'Доски (Kanban)'
+    } else if (view === 'semester') {
+      return semesterView === 'timeline' ? 'Семестр (Таймлайн)' : 'Семестр (Задачи)'
     }
     return ''
   }
@@ -187,13 +183,29 @@ export default function Calendar() {
             >
               Сегодня
             </button>
-            {(view === 'timeline' || view === 'gantt') && (
-              <button
-                onClick={navigateToSemester}
-                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm"
-              >
-                Семестр
-              </button>
+            {view === 'semester' && (
+              <div className="flex items-center space-x-2 bg-white/10 rounded-lg p-1">
+                <button
+                  onClick={() => setSemesterView('timeline')}
+                  className={`px-3 py-1 rounded text-sm transition-all ${
+                    semesterView === 'timeline'
+                      ? 'bg-best-primary text-white'
+                      : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Таймлайн
+                </button>
+                <button
+                  onClick={() => setSemesterView('tasks')}
+                  className={`px-3 py-1 rounded text-sm transition-all ${
+                    semesterView === 'tasks'
+                      ? 'bg-best-primary text-white'
+                      : 'text-white/70 hover:text-white'
+                  }`}
+                >
+                  Задачи
+                </button>
+              </div>
             )}
             <button
               onClick={() => navigateDate('next')}
@@ -251,31 +263,17 @@ export default function Calendar() {
               </button>
               <button
                 onClick={() => {
-                  setView('gantt')
+                  setView('semester')
                   setCurrentDate(new Date()) // Сбрасываем на текущую дату
                 }}
                 className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'gantt'
+                  view === 'semester'
                     ? 'bg-best-primary text-white'
                     : 'text-white/70 hover:text-white'
                 }`}
               >
                 <BarChart3 className="h-4 w-4 inline mr-1" />
-                График работ
-              </button>
-              <button
-                onClick={() => {
-                  setView('kanban')
-                  setCurrentDate(new Date()) // Сбрасываем на текущую дату
-                }}
-                className={`px-3 py-1 rounded text-sm transition-all ${
-                  view === 'kanban'
-                    ? 'bg-best-primary text-white'
-                    : 'text-white/70 hover:text-white'
-                }`}
-              >
-                <Grid3x3 className="h-4 w-4 inline mr-1" />
-                Доски
+                Семестр
               </button>
             </div>
           </div>
@@ -289,7 +287,7 @@ export default function Calendar() {
                 setSelectedRole(e.target.value as CalendarRole | 'all')
                 setCurrentDate(new Date()) // Сбрасываем на текущую дату
               }}
-              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
             >
               <option value="all">Все</option>
               <option value="smm">SMM</option>
@@ -305,7 +303,7 @@ export default function Calendar() {
             <select
               value={detailLevel}
               onChange={(e) => setDetailLevel(e.target.value as DetailLevel)}
-              className={`bg-gray-800 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
+              className={`bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white`}
             >
               <option value="compact">Компактно</option>
               <option value="normal">Обычно</option>
@@ -322,10 +320,51 @@ export default function Calendar() {
         </div>
       ) : calendarData ? (
         <div className={`glass-enhanced ${theme} rounded-xl p-6`}>
-          {view === 'kanban' ? (
-            <KanbanView columns={calendarData.columns || []} theme={theme} />
-          ) : view === 'gantt' ? (
-            <GanttView tasks={calendarData.tasks || calendarData.all_items || []} theme={theme} />
+          {view === 'semester' ? (
+            semesterView === 'timeline' ? (
+              <TimelineView 
+                calendarData={calendarData} 
+                currentDate={currentDate}
+                theme={theme} 
+              />
+            ) : (
+              <div className="space-y-4">
+                <h3 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+                  Задачи на семестр
+                </h3>
+                {/* Здесь будет список задач - можно использовать компонент из Tasks.tsx */}
+                <div className="space-y-2">
+                  {(calendarData.tasks || calendarData.all_items || []).map((task: any) => (
+                    <div
+                      key={task.id}
+                      className={`glass-enhanced ${theme} rounded-lg p-4 flex items-center justify-between`}
+                    >
+                      <div className="flex-1">
+                        <h4 className={`text-white font-medium text-readable ${theme}`}>
+                          {task.title}
+                        </h4>
+                        <p className="text-white/60 text-sm">
+                          {task.due_date
+                            ? `Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}`
+                            : 'Без дедлайна'}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                          task.status === 'completed'
+                            ? 'bg-green-500/20 text-green-400 border-green-500/50'
+                            : task.status === 'in_progress'
+                            ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
+                            : 'bg-blue-500/20 text-blue-400 border-blue-500/50'
+                        }`}
+                      >
+                        {task.status || 'open'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
           ) : view === 'timeline' ? (
             <TimelineView 
               calendarData={calendarData} 

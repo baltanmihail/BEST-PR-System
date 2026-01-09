@@ -109,7 +109,7 @@ class EquipmentRequest(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
-    status = Column(Enum(EquipmentRequestStatus), nullable=False, default=EquipmentRequestStatus.PENDING, index=True)
+    status = Column(PG_ENUM(EquipmentRequestStatus, name='equipment_request_status', create_type=False), nullable=False, default=EquipmentRequestStatus.PENDING, index=True)
     rejection_reason = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

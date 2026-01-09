@@ -102,16 +102,17 @@ export default function Cursor2() {
           '/3d_mouse_cursor.glb',
           (gltf) => {
             const model = gltf.scene
-            model.scale.set(0.3, 0.3, 0.3) // Нормальный размер
+            model.scale.set(0.5, 0.5, 0.5) // Нормальный размер
             model.rotation.set(0, 5.4, 0)
             
             // Центрируем модель точно (важно для правильного позиционирования)
             const box = new THREE.Box3().setFromObject(model)
             const center = box.getCenter(new THREE.Vector3())
-            model.position.sub(center) // Перемещаем модель так, чтобы её центр был в (0,0,0)
+            const size = box.getSize(new THREE.Vector3())
             
-            // Убеждаемся, что модель точно по центру
-            model.position.set(0, 0, 0)
+            // Смещаем модель так, чтобы её верхняя точка (остриё) была в центре
+            // Для курсора важно, чтобы остриё было точно на позиции мыши
+            model.position.set(-center.x, -center.y + size.y / 2, -center.z) // Смещаем вверх на половину высоты
 
             model.traverse((child) => {
               if (child instanceof THREE.Mesh) {
@@ -191,15 +192,15 @@ export default function Cursor2() {
       currentPos.current.x += (mousePos.current.x - currentPos.current.x) * lerpFactor
       currentPos.current.y += (mousePos.current.y - currentPos.current.y) * lerpFactor
 
-      // Обновляем позицию 3D-курсора с точным центрированием
+      // Обновляем позицию 3D-курсора с точным центрированием по острию
       if (containerRef.current) {
+        // Позиционируем так, чтобы остриё курсора было точно на позиции мыши
         containerRef.current.style.left = `${currentPos.current.x}px`
         containerRef.current.style.top = `${currentPos.current.y}px`
-        containerRef.current.style.transform = 'translate(-50%, -50%)'
+        containerRef.current.style.transform = 'translate(-50%, 0%)' // Центрируем по горизонтали, но не по вертикали (остриё сверху)
         containerRef.current.style.marginLeft = '0'
         containerRef.current.style.marginTop = '0'
-        containerRef.current.style.transformOrigin = 'center center'
-        // Улучшаем точность позиционирования
+        containerRef.current.style.transformOrigin = 'center top' // Точка привязки - центр сверху (остриё)
         containerRef.current.style.willChange = 'transform'
       }
 
@@ -247,7 +248,8 @@ export default function Cursor2() {
         style={{
           width: '32px',
           height: '32px',
-          transform: 'translate(-50%, -50%)', // Центрируем точно на позиции мыши
+          transform: 'translate(-50%, 0%)', // Центрируем по горизонтали, остриё сверху
+          transformOrigin: 'center top', // Точка привязки - центр сверху (остриё)
           willChange: 'transform',
         }}
       />
