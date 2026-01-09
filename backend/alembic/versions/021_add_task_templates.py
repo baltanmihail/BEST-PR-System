@@ -42,8 +42,8 @@ def upgrade():
             create_type=False
         ), nullable=False),
         sa.Column('created_by', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='RESTRICT'), nullable=False),
-        sa.Column('task_type', postgresql.ENUM('smm', 'design', 'channel', 'prfr', name='tasktype', create_type=False), nullable=False),
-        sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'critical', name='taskpriority', create_type=False), nullable=False),
+        sa.Column('task_type', postgresql.ENUM('smm', 'design', 'channel', 'prfr', name='task_type', create_type=False), nullable=False),
+        sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'critical', name='task_priority', create_type=False), nullable=False),
         sa.Column('default_description', sa.Text(), nullable=True),
         sa.Column('equipment_available', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('role_specific_requirements', postgresql.JSON(), nullable=True),
