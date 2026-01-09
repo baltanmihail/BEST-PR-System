@@ -345,7 +345,7 @@ export default function Register() {
             <button
               onClick={handleTelegramAuth}
               disabled={!agreementAccepted || !consentAccepted || registrationMutation.isPending}
-              className={`w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2`}
+              className={`w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 card-3d touch-manipulation`}
             >
               {registrationMutation.isPending ? (
                 <>

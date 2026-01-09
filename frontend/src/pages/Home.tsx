@@ -175,7 +175,7 @@ export default function Home() {
             </Link>
             <Link
               to="/register"
-              className="inline-flex items-center justify-center space-x-2 bg-best-primary text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all text-sm md:text-base"
+              className="inline-flex items-center justify-center space-x-2 bg-best-primary text-white px-4 md:px-6 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-best-primary/80 transition-all text-sm md:text-base card-3d touch-manipulation"
             >
               <span>Зарегистрироваться</span>
               <ArrowRight className="h-4 w-4 md:h-5 md:w-5" />

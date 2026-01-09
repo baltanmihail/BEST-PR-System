@@ -526,6 +526,7 @@ function TimelineView({
             <p className="text-white/60 text-center py-8">Нет данных на выбранный период</p>
           )}
         </div>
+        </div>
       </div>
     </div>
   )
