@@ -71,7 +71,6 @@ export default function Login() {
   const telegramId = urlParams.get('telegram_id')
   const username = urlParams.get('username')
   const firstName = urlParams.get('first_name')
-  const autoRegister = urlParams.get('auto_register') === 'true'
   
   // Генерация QR-кода с параметрами, если пользователь перешёл через бота
   const { data: qrData, isLoading: qrLoading, error: qrError, refetch: refetchQR } = useQuery<QRGenerateResponse>({
