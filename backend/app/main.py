@@ -137,6 +137,8 @@ async def startup_event():
                     try:
                         from app.services.sheets_sync import SheetsSyncService
                         from app.services.google_service import GoogleService
+                        from googleapiclient.errors import HttpError
+                        
                         google_service = GoogleService()
                         sheets_sync = SheetsSyncService(google_service)
                         # Создаём таблицу таймлайна при первом запуске
@@ -145,6 +147,13 @@ async def startup_event():
                             logger.info(f"✅ Google таблица таймлайна задач готова: {timeline_sheets.get('id')}")
                             logger.info(f"🔗 URL таблицы: {timeline_sheets.get('url', 'N/A')}")
                             logger.info(f"💡 Для заполнения данными вызовите: POST /api/v1/calendar/sync/sheets")
+                    except HttpError as e:
+                        if 'storageQuotaExceeded' in str(e):
+                            logger.warning(f"⚠️ Квота Google Drive превышена. Таблица таймлайна не будет создана.")
+                            logger.warning(f"💡 Освободите место в Google Drive или используйте другой аккаунт.")
+                            logger.warning(f"💡 Таблицу можно создать вручную через API: POST /api/v1/calendar/sync/sheets")
+                        else:
+                            logger.warning(f"⚠️ Ошибка инициализации таблицы таймлайна: {e}")
                     except Exception as e:
                         logger.warning(f"⚠️ Ошибка инициализации таблицы таймлайна: {e}", exc_info=True)
                 else:

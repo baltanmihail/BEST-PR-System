@@ -45,6 +45,11 @@ GOOGLE_DRIVE_FOLDER_ID=11A1lVlBkHKLjGtrEmndS__5MOqNDqEJn
 
 # ID таблицы таймлайна (создаётся автоматически, но можно указать вручную)
 GOOGLE_TIMELINE_SHEETS_ID=опционально
+
+# Email пользователя для передачи ownership файлов (чтобы файлы использовали квоту пользователя, а не сервисного аккаунта)
+# Рекомендуется указать корпоративный email с достаточной квотой
+# Пример: GOOGLE_DRIVE_OWNER_EMAIL=mikhail.baltyan@bmstu-best.ru
+GOOGLE_DRIVE_OWNER_EMAIL=your-email@domain.com
 ```
 
 **Опциональные:**

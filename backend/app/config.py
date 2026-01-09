@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     GOOGLE_CREDENTIALS_4_JSON: str = os.getenv("GOOGLE_CREDENTIALS_4_JSON", "")
     GOOGLE_CREDENTIALS_5_JSON: str = os.getenv("GOOGLE_CREDENTIALS_5_JSON", "")
     
+    # Email пользователя для передачи ownership файлов (чтобы файлы использовали квоту пользователя, а не сервисного аккаунта)
+    GOOGLE_DRIVE_OWNER_EMAIL: str = os.getenv("GOOGLE_DRIVE_OWNER_EMAIL", "")
+    
     # Frontend URL (для ссылок в боте и уведомлениях)
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
     

@@ -259,13 +259,14 @@ async def create_system_templates(db: AsyncSession):
             continue
         
         # Создаём шаблон
+        # SQLAlchemy автоматически конвертирует enum объекты в значения при сохранении
         template = TaskTemplate(
             name=template_data["name"],
             description=template_data["description"],
-            category=template_data["category"],
+            category=template_data["category"],  # Enum объект, SQLAlchemy конвертирует в значение
             created_by=system_user_id,
-            task_type=template_data["task_type"],
-            priority=template_data["priority"],
+            task_type=template_data["task_type"],  # Enum объект
+            priority=template_data["priority"],  # Enum объект
             default_description=template_data["default_description"],
             equipment_available=template_data["equipment_available"],
             role_specific_requirements=template_data["role_specific_requirements"],

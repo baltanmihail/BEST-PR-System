@@ -384,6 +384,14 @@ class GoogleService:
             
             folder_id = folder.get('id')
             
+            # Передаём ownership владельцу папки (если указан), чтобы папка использовала квоту пользователя
+            if settings.GOOGLE_DRIVE_OWNER_EMAIL:
+                try:
+                    self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
+                    logger.debug(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                except Exception as e:
+                    logger.debug(f"⚠️ Не удалось передать ownership папки '{name}': {e}")
+            
             # Инвалидируем кэш для родительской папки
             if parent_folder_id:
                 self.invalidate_cache(pattern=f"folder_list:{parent_folder_id}")
@@ -499,6 +507,14 @@ class GoogleService:
             ).execute()
             
             file_id = file.get('id')
+            
+            # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя
+            if settings.GOOGLE_DRIVE_OWNER_EMAIL:
+                try:
+                    self._transfer_file_ownership(file_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
+                    logger.debug(f"✅ Ownership файла '{filename}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                except Exception as e:
+                    logger.debug(f"⚠️ Не удалось передать ownership файла '{filename}': {e}")
             
             # Инвалидируем кэш для папки
             if folder_id:
@@ -746,6 +762,15 @@ class GoogleService:
             spreadsheet_id = spreadsheet.get('id')
             spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
             
+            # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя, а не сервисного аккаунта
+            if settings.GOOGLE_DRIVE_OWNER_EMAIL:
+                try:
+                    self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
+                    logger.info(f"✅ Ownership таблицы '{title}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось передать ownership таблицы '{title}': {e}")
+                    # Продолжаем работу, даже если передача ownership не удалась
+            
             # Инвалидируем кэш для папки
             if folder_id:
                 self.invalidate_cache(pattern=f"file_list:{folder_id}")
@@ -761,6 +786,57 @@ class GoogleService:
         except HttpError as e:
             logger.error(f"❌ Ошибка создания Google Sheets таблицы '{title}': {e}")
             raise
+    
+    def _transfer_file_ownership(self, file_id: str, owner_email: str, drive_service) -> bool:
+        """
+        Передать ownership файла/папки указанному пользователю
+        
+        Это позволяет файлам использовать квоту пользователя, а не сервисного аккаунта
+        
+        Args:
+            file_id: ID файла или папки
+            owner_email: Email пользователя, которому передаётся ownership
+            drive_service: Экземпляр Drive API service
+        
+        Returns:
+            True если успешно передано
+        """
+        try:
+            # Сначала даём пользователю доступ как редактору
+            drive_service.permissions().create(
+                fileId=file_id,
+                body={
+                    'type': 'user',
+                    'role': 'writer',
+                    'emailAddress': owner_email
+                },
+                fields='id'
+            ).execute()
+            
+            # Затем передаём ownership
+            drive_service.permissions().create(
+                fileId=file_id,
+                body={
+                    'type': 'user',
+                    'role': 'owner',
+                    'emailAddress': owner_email
+                },
+                transferOwnership=True,
+                fields='id'
+            ).execute()
+            
+            return True
+            
+        except HttpError as e:
+            # Если файл уже принадлежит пользователю или нет прав - игнорируем
+            if 'permissionDenied' in str(e) or 'notFound' in str(e):
+                logger.debug(f"Не удалось передать ownership файла {file_id}: {e}")
+            else:
+                logger.warning(f"Ошибка передачи ownership файла {file_id}: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"Неожиданная ошибка при передаче ownership файла {file_id}: {e}")
+            return False
     
     def create_sheet_tab(
         self,

@@ -29,7 +29,7 @@ class TaskTemplate(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)  # Название шаблона
     description = Column(Text, nullable=True)  # Описание шаблона
-    category = Column(Enum(TemplateCategory), nullable=False, index=True)
+    category = Column(TemplateCategoryType(), nullable=False, index=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     
     # Данные задачи из шаблона
