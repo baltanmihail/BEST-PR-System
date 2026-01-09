@@ -17,6 +17,7 @@ import Settings from './pages/Settings'
 import UserMonitoring from './pages/UserMonitoring'
 import Calendar from './pages/Calendar'
 import { useAuthStore } from './store/authStore'
+import { useThemeStore } from './store/themeStore'
 import { authApi } from './services/auth'
 
 const queryClient = new QueryClient({
@@ -41,8 +42,39 @@ function App() {
 // Компонент для проверки Telegram WebApp и автоматического входа
 function AppContent() {
   const { user, login, fetchUser } = useAuthStore()
+  const { theme } = useThemeStore()
   const navigate = useNavigate()
   const location = useLocation()
+
+  // Инициализация Telegram WebApp
+  useEffect(() => {
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp
+      
+      // Инициализируем WebApp
+      tg.ready()
+      
+      // Расширяем на весь экран
+      tg.expand()
+      
+      // Настраиваем тему в зависимости от темы приложения
+      if (theme === 'dark') {
+        tg.setHeaderColor('#1a1a2e') // Тёмный цвет для хедера
+        tg.setBackgroundColor('#0f0f1e') // Тёмный цвет для фона
+      } else {
+        tg.setHeaderColor('#ffffff') // Светлый цвет для хедера
+        tg.setBackgroundColor('#f5f5f5') // Светлый цвет для фона
+      }
+      
+      console.log('Telegram WebApp initialized', {
+        version: tg.version,
+        platform: tg.platform,
+        colorScheme: tg.colorScheme,
+        viewportHeight: tg.viewportHeight,
+        theme,
+      })
+    }
+  }, [theme])
 
   useEffect(() => {
     // Проверяем, есть ли токен в URL (после регистрации через QR)

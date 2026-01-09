@@ -255,9 +255,13 @@ async def confirm_qr(
             detail="QR session expired"
         )
     
-    # Находим пользователя
+    # Находим пользователя (только активных!)
     user_result = await db.execute(
-        select(User).where(User.telegram_id == request.telegram_id)
+        select(User).where(
+            User.telegram_id == request.telegram_id,
+            User.is_active == True,  # ВАЖНО: только активные пользователи считаются зарегистрированными
+            User.deleted_at.is_(None)  # Исключаем удалённых пользователей
+        )
     )
     user = user_result.scalar_one_or_none()
     
@@ -267,7 +271,7 @@ async def confirm_qr(
     qr_session.confirmed_at = datetime.now(timezone.utc)
     
     if user:
-        # Пользователь уже существует - это вход
+        # Пользователь уже существует И активен - это вход
         qr_session.user_id = user.id
         
         # Обновляем данные существующего пользователя
@@ -281,7 +285,7 @@ async def confirm_qr(
             data={"sub": str(user.id), "telegram_id": user.telegram_id}
         )
         
-        logger.info(f"QR session confirmed (login): {qr_session.id} for existing user {user.telegram_id}")
+        logger.info(f"QR session confirmed (login): {qr_session.id} for existing active user {user.telegram_id}")
         
         return {
             "success": True,
@@ -291,13 +295,13 @@ async def confirm_qr(
             "access_token": access_token  # Возвращаем токен для автоматического входа
         }
     else:
-        # Пользователь не существует - это регистрация
+        # Пользователь не существует ИЛИ не активен - это регистрация
         # НЕ создаём пользователя здесь - он будет создан при регистрации через /registration/register-from-bot
         # НЕ устанавливаем user_id в сессии - он будет установлен после регистрации
         # Это важно, чтобы фронтенд понимал, что пользователь не зарегистрирован
         await db.commit()
         
-        logger.info(f"QR session confirmed (registration): {qr_session.id} for new user {request.telegram_id}")
+        logger.info(f"QR session confirmed (registration): {qr_session.id} for new/inactive user {request.telegram_id}")
         
         return {
             "success": True,

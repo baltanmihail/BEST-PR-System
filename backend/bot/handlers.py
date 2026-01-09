@@ -3,7 +3,7 @@
 """
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile, WebAppInfo
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from typing import Optional
@@ -421,18 +421,16 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 f"• 🎬 Бронировать оборудование для съёмок\n"
                 f"• 💼 Развиваться вместе с командой энтузиастов\n\n"
                 f"📝 <b>Как зарегистрироваться?</b>\n"
-                f"1. Перейди на сайт по ссылке ниже\n"
-                f"2. Отсканируй QR-код для входа\n"
-                f"3. Заполни форму регистрации\n"
-                f"4. Дождись одобрения заявки координатором\n\n"
-                f"💡 После регистрации ты сможешь брать задачи, бронировать оборудование и участвовать в рейтинге!"
+                f"Нажми кнопку ниже - откроется удобная форма регистрации прямо в Telegram!\n"
+                f"После заполнения заявка будет отправлена на рассмотрение координатору.\n\n"
+                f"💡 После одобрения ты сможешь брать задачи, бронировать оборудование и участвовать в рейтинге!"
             )
             
             keyboard.inline_keyboard = [
                 [
                     InlineKeyboardButton(
-                        text="🌐 Перейти на сайт для регистрации", 
-                        url=f"{settings.FRONTEND_URL}/login?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}&auto_register=true"
+                        text="🌐 Зарегистрироваться (WebApp)", 
+                        web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}")
                     ),
                 ],
                 [
@@ -470,7 +468,13 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                     InlineKeyboardButton(text="📝 Подать заявку в боте", callback_data="register_in_bot"),
                 ],
                 [
-                    InlineKeyboardButton(text="🌐 Подать заявку на сайте", url=settings.FRONTEND_URL + "/register"),
+                    InlineKeyboardButton(
+                        text="🌐 Подать заявку на сайте (WebApp)", 
+                        web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register")
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(text="🔗 Открыть в браузере", url=settings.FRONTEND_URL + "/register"),
                 ],
             ]
         else:
@@ -484,10 +488,16 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 f"• 🏆 Смотреть рейтинг участников\n"
                 f"• 📊 Изучать статистику системы\n\n"
                 f"💡 <b>Для взятия задач и бронирования оборудования</b> нужно зарегистрироваться.\n\n"
-                f"🌐 Перейди на сайт и отсканируй QR-код для регистрации:"
+                f"📝 Нажми кнопку ниже для быстрой регистрации через WebApp:"
             )
             
             keyboard.inline_keyboard = [
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Зарегистрироваться (WebApp)", 
+                        web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}")
+                    ),
+                ],
                 [
                     InlineKeyboardButton(text="📋 Задачи", callback_data="view_tasks"),
                     InlineKeyboardButton(text="🏆 Рейтинг", callback_data="view_leaderboard"),
@@ -842,6 +852,7 @@ async def callback_view_stats(callback: CallbackQuery, state: FSMContext):
         response = await call_api("GET", "/public/stats")
         
         if "error" in response:
+            logger.error(f"Error loading public stats: {response.get('error')}, status_code: {response.get('status_code')}")
             await callback.answer("❌ Ошибка при загрузке статистики. Попробуйте позже.", show_alert=True)
             return
         
@@ -1361,9 +1372,17 @@ async def start_registration_flow(message: Message, state: FSMContext, user, aut
         
     except Exception as e:
         logger.error(f"Error in start_registration_flow: {e}")
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Зарегистрироваться через WebApp", 
+                    web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register")
+                ),
+            ],
+        ])
         await message.answer(
-            "❌ Произошла ошибка при начале регистрации. Попробуйте позже или используй веб-интерфейс:\n"
-            f"🔗 {settings.FRONTEND_URL}/register"
+            "❌ Произошла ошибка при начале регистрации. Попробуйте позже или используй WebApp:",
+            reply_markup=keyboard
         )
 
 
@@ -1844,6 +1863,7 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
         response = await call_api("POST", "/auth/qr/confirm", data=confirm_data)
         
         if "error" in response:
+            logger.error(f"QR confirm error for user {user.id}: {response.get('error')}")
             await callback.message.answer(
                 f"❌ Ошибка подтверждения: {response.get('error', 'Неизвестная ошибка')}\n\n"
                 "Попробуйте отсканировать QR-код снова."
@@ -1852,6 +1872,7 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
         
         # Проверяем, это регистрация или вход
         is_registration = response.get("is_registration", False)
+        logger.info(f"QR confirm for user {user.id}: is_registration={is_registration}, response keys={list(response.keys())}")
         
         if is_registration:
             # Это регистрация - НЕ говорим что сессия запущена, предлагаем зарегистрироваться
@@ -1867,8 +1888,8 @@ async def callback_qr_confirm(callback: CallbackQuery, state: FSMContext):
                 ],
                 [
                     InlineKeyboardButton(
-                        text="🌐 Зарегистрироваться на сайте", 
-                        url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&qr_token={token}"
+                        text="🌐 Зарегистрироваться (WebApp)", 
+                        web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&qr_token={token}")
                     ),
                 ],
             ])
@@ -2301,11 +2322,25 @@ async def callback_reminder_register_cancel(callback: CallbackQuery, state: FSMC
     try:
         await callback.answer()
         
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🌐 Зарегистрироваться (WebApp)", 
+                    web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register")
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="🔗 Открыть в браузере", url=f"{settings.FRONTEND_URL}/register"),
+            ],
+        ])
+        
         await callback.message.edit_text(
             "❌ <b>Регистрация отменена</b>\n\n"
-            f"Ты можешь зарегистрироваться позже через команду /register или на сайте:\n"
-            f"🔗 {settings.FRONTEND_URL}/register\n\n"
+            f"Ты можешь зарегистрироваться позже:\n"
+            f"• Через команду /register в боте\n"
+            f"• Или через удобную форму WebApp (кнопка ниже)\n\n"
             "💡 Мы можем напомнить тебе о регистрации позже!",
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
         
