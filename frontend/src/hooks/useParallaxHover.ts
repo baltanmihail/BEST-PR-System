@@ -9,7 +9,6 @@ export function useParallaxHover(intensity: number = 15) {
   const ref = useRef<HTMLDivElement>(null)
   const [transform, setTransform] = useState('')
   const rafId = useRef<number | null>(null)
-  const lastUpdateTime = useRef<number>(0)
 
   useEffect(() => {
     const element = ref.current

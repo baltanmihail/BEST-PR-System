@@ -3,7 +3,7 @@ import { Home, CheckSquare, Trophy, MessageSquare, Bell, Activity, Image, Star, 
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
 import { UserRole } from '../../types/user'
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 
 const navigation = [
   { name: 'Главная', href: '/', icon: Home },

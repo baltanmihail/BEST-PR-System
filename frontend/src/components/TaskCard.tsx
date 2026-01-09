@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, HelpCircle, Image as ImageIcon, Camera } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { Task } from '../types/task'
