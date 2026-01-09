@@ -17,13 +17,17 @@ depends_on = None
 
 
 def upgrade():
-    # Создаём enum для категорий шаблонов
-    template_category_enum = postgresql.ENUM(
-        'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr', 'vp4pr', 'custom',
-        name='templatecategory',
-        create_type=True
-    )
-    template_category_enum.create(op.get_bind(), checkfirst=True)
+    # Создаём enum для категорий шаблонов (используем DO блок для обработки дубликатов)
+    op.execute("""
+        DO $$ BEGIN
+            CREATE TYPE templatecategory AS ENUM (
+                'coordinator_smm', 'coordinator_design', 'coordinator_channel', 
+                'coordinator_prfr', 'vp4pr', 'custom'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
+    """)
     
     # Создаём таблицу task_templates
     op.create_table(
@@ -31,7 +35,12 @@ def upgrade():
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column('name', sa.String(), nullable=False),
         sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('category', template_category_enum, nullable=False),
+        sa.Column('category', postgresql.ENUM(
+            'coordinator_smm', 'coordinator_design', 'coordinator_channel', 
+            'coordinator_prfr', 'vp4pr', 'custom',
+            name='templatecategory',
+            create_type=False
+        ), nullable=False),
         sa.Column('created_by', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='RESTRICT'), nullable=False),
         sa.Column('task_type', postgresql.ENUM('smm', 'design', 'channel', 'prfr', name='tasktype', create_type=False), nullable=False),
         sa.Column('priority', postgresql.ENUM('low', 'medium', 'high', 'critical', name='taskpriority', create_type=False), nullable=False),

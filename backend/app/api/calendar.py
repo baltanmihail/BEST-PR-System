@@ -3,7 +3,7 @@ API endpoints для календаря/таймлайна
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 from datetime import datetime, date
 from uuid import UUID
 
