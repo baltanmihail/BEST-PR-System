@@ -236,9 +236,18 @@ async def create_system_templates(db: AsyncSession):
     for template_data in SYSTEM_TEMPLATES:
         # Проверяем, существует ли уже такой шаблон
         from sqlalchemy import select
+        
+        # Получаем значение enum (строку) для сравнения в запросе
+        # Проблема: SQLAlchemy при сравнении enum в WHERE может передавать имя enum (COORDINATOR_SMM)
+        # вместо значения (coordinator_smm), поэтому используем прямое сравнение со строковым значением
+        category_enum = template_data["category"]
+        category_value = category_enum.value if hasattr(category_enum, 'value') else str(category_enum)
+        
+        # Используем прямое сравнение со строковым значением через cast
+        from sqlalchemy import cast, String
         existing_query = select(TaskTemplate).where(
             TaskTemplate.name == template_data["name"],
-            TaskTemplate.category == template_data["category"],
+            cast(TaskTemplate.category, String) == category_value,
             TaskTemplate.is_system == True
         )
         existing_result = await db.execute(existing_query)
