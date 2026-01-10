@@ -18,6 +18,7 @@ export default function Register() {
   const [agreementContent, setAgreementContent] = useState<string>('')
   const [showAgreement, setShowAgreement] = useState(false)
   const [registrationMode, setRegistrationMode] = useState<RegistrationMode>('telegram')
+  const [fullName, setFullName] = useState<string>('')
   
   // Проверяем параметры из URL (если пользователь перешёл через бота или QR-код)
   const urlParams = new URLSearchParams(window.location.search)
@@ -28,6 +29,23 @@ export default function Register() {
   const firstName = urlParams.get('first_name')
   
   // Регистрация через Telegram WebApp или через QR-код (упрощённая)
+
+  // Инициализируем ФИО из Telegram данных, если доступны
+  useEffect(() => {
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+      const tgUser = window.Telegram.WebApp.initDataUnsafe.user
+      const tgFullName = tgUser.last_name 
+        ? `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim()
+        : (tgUser.first_name || '')
+      if (tgFullName && !fullName) {
+        setFullName(tgFullName)
+      }
+    } else if (firstName && !fullName) {
+      // Если есть firstName из URL параметров
+      const urlFullName = firstName
+      setFullName(urlFullName)
+    }
+  }, [firstName])
 
   // Проверяем, не зарегистрирован ли уже пользователь
   useEffect(() => {
@@ -78,6 +96,12 @@ export default function Register() {
       // Упрощённая регистрация через QR-код
       // Данные пользователя уже подтверждены через бота, hash не нужен
       // telegram_auth опционален для QR-регистрации - если есть данные, используем их
+      // ВАЖНО: ФИО должно быть указано пользователем вручную, не используем данные из Telegram!
+      if (!fullName.trim()) {
+        alert('Пожалуйста, укажите ваше ФИО')
+        return
+      }
+      
       const registrationData: RegistrationRequest = {
         personal_data_consent: {
           consent: consentAccepted,
@@ -88,6 +112,7 @@ export default function Register() {
           version: agreementData?.version || '1.0',
         },
         qr_token: qrToken,
+        full_name: fullName.trim(),  // ОБЯЗАТЕЛЬНО - введено пользователем вручную
       }
       
       // Если есть данные пользователя в URL (fromBot=true и telegramId есть) - добавляем их
@@ -179,6 +204,12 @@ export default function Register() {
           return
         }
 
+        // ВАЖНО: ФИО должно быть указано пользователем вручную, не используем данные из Telegram!
+        if (!fullName.trim()) {
+          alert('Пожалуйста, укажите ваше ФИО')
+          return
+        }
+        
         const registrationData: RegistrationRequest = {
           telegram_auth: telegramAuth,
           personal_data_consent: {
@@ -189,6 +220,7 @@ export default function Register() {
             accepted: agreementAccepted,
             version: agreementData?.version || '1.0',
           },
+          full_name: fullName.trim(),  // ОБЯЗАТЕЛЬНО - введено пользователем вручную
         }
 
         console.log('Sending registration request', { 
@@ -250,6 +282,26 @@ export default function Register() {
                 После регистрации твоя заявка будет рассмотрена модераторами. После одобрения ты сможешь брать задачи и зарабатывать баллы!
               </>
             )}
+          </p>
+        </div>
+
+        {/* Поле для ввода ФИО */}
+        <div>
+          <label className={`block text-white mb-2 text-readable ${theme}`}>
+            ФИО (обязательно) *
+          </label>
+          <input
+            type="text"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            placeholder="Введите ваше полное имя (Фамилия Имя Отчество)"
+            required
+            className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border ${
+              fullName.trim() ? 'border-best-primary' : 'border-white/20'
+            } focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40`}
+          />
+          <p className={`text-white/60 text-xs mt-1 text-readable ${theme}`}>
+            ⚠️ Укажите ваше <strong>правильное</strong> полное имя (Фамилия Имя Отчество). Данные из Telegram не используются.
           </p>
         </div>
 
@@ -358,7 +410,7 @@ export default function Register() {
           <>
             <button
               onClick={handleTelegramAuth}
-              disabled={!agreementAccepted || !consentAccepted || registrationMutation.isPending}
+              disabled={!agreementAccepted || !consentAccepted || !fullName.trim() || registrationMutation.isPending}
               className={`w-full bg-best-primary text-white py-3 px-6 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 card-3d touch-manipulation`}
             >
               {registrationMutation.isPending ? (

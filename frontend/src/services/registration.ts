@@ -19,6 +19,7 @@ export interface RegistrationRequest {
     version: string
   }
   qr_token?: string  // Опциональный токен QR-сессии для упрощённой регистрации
+  full_name: string  // ОБЯЗАТЕЛЬНОЕ ФИО пользователя (должно быть указано вручную, не из Telegram)
 }
 
 export interface AgreementResponse {

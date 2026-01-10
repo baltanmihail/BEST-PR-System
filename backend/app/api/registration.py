@@ -27,6 +27,7 @@ class RegistrationRequest(BaseModel):
     personal_data_consent: PersonalDataConsent
     user_agreement: UserAgreementAccept
     qr_token: Optional[str] = None  # Опциональный токен QR-сессии для упрощённой регистрации
+    full_name: str  # ОБЯЗАТЕЛЬНОЕ ФИО пользователя (должно быть указано вручную, не из Telegram)
 
 
 class RegistrationCodeRequest(BaseModel):
@@ -112,8 +113,8 @@ async def register(
         
         # Для QR-регистрации telegram_auth опционален
         # Если передан - используем данные из него (WebApp может передать)
-        # Если не передан - используем данные из QR-сессии или минимальные данные
         # ВАЖНО: Для QR-регистрации hash НЕ проверяется (пользователь уже подтверждён через бота)
+        username = None
         if registration.telegram_auth:
             auth_data = registration.telegram_auth.model_dump()
             logger.info(f"QR registration with telegram_auth: id={auth_data.get('id')}, hash present={bool(auth_data.get('hash'))}, hash value='{auth_data.get('hash', '')[:10]}...'")
@@ -125,22 +126,22 @@ async def register(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Telegram ID mismatch between QR session and auth data"
                 )
-            # Используем данные из auth_data, если доступны
-            # Игнорируем hash для QR-регистрации (не проверяем его)
-            first_name = auth_data.get("first_name", "")
-            last_name = auth_data.get("last_name", "")
+            # Используем только username из auth_data (не используем first_name/last_name для ФИО!)
             username = auth_data.get("username")
         else:
-            # Если telegram_auth не передан, используем минимальные данные
-            # Полное имя будет обновлено при первом входе через бота
-            first_name = "Пользователь"
-            last_name = ""
-            username = None
-            logger.info(f"QR registration without telegram_auth - using minimal data")
+            logger.info(f"QR registration without telegram_auth")
         
-        full_name = f"{first_name} {last_name}".strip() or first_name or "Пользователь"
+        # ВАЖНО: ФИО ДОЛЖНО быть указано пользователем вручную, не используем данные из Telegram!
+        # Данные из Telegram (first_name/last_name) могут быть неверными
+        if not registration.full_name or not registration.full_name.strip():
+            logger.error("full_name is required but not provided in registration request")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ФИО обязательно для регистрации. Пожалуйста, укажите ваше полное имя."
+            )
         
-        logger.info(f"Registration via QR token for telegram_id: {telegram_id} (simplified - no hash check)")
+        full_name = registration.full_name.strip()
+        logger.info(f"Registration via QR token for telegram_id: {telegram_id}, full_name: {full_name} (provided by user)")
     else:
         # Обычная регистрация через Telegram WebApp
         # Для обычной регистрации telegram_auth обязателен
@@ -176,11 +177,19 @@ async def register(
                 detail="telegram_auth.id is required"
             )
         
-        first_name = auth_data.get("first_name", "")
-        last_name = auth_data.get("last_name", "")
         username = auth_data.get("username")
         
-        full_name = f"{first_name} {last_name}".strip() or first_name
+        # ВАЖНО: ФИО ДОЛЖНО быть указано пользователем вручную, не используем данные из Telegram!
+        # Данные из Telegram (first_name/last_name) могут быть неверными
+        if not registration.full_name or not registration.full_name.strip():
+            logger.error("full_name is required but not provided in registration request")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="ФИО обязательно для регистрации. Пожалуйста, укажите ваше полное имя."
+            )
+        
+        full_name = registration.full_name.strip()
+        logger.info(f"Regular registration for telegram_id: {telegram_id}, full_name: {full_name} (provided by user)")
     
     # Общая логика для обоих случаев (QR и обычная регистрация)
     
