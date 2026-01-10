@@ -176,58 +176,112 @@ async def register(
     )
     existing_user = result.scalar_one_or_none()
     
-    if existing_user:
-        logger.warning(f"Registration failed: User with telegram_id {telegram_id} already exists (user_id: {existing_user.id})")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already registered"
-        )
-    
-    # Создаём нового пользователя
     now = datetime.now(timezone.utc)
-    user = User(
-        telegram_id=telegram_id,
-        username=username,
-        full_name=full_name,
-        is_active=False,  # Требует модерации
-        personal_data_consent=True,
-        consent_date=now,
-        user_agreement_accepted=True,
-        agreement_version=registration.user_agreement.version or "1.0",
-        agreement_accepted_at=now
-    )
+    existing_application = None  # Инициализируем переменную
+    user = None  # Инициализируем переменную
     
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    
-    # Создаём заявку на модерацию
-    from app.services.moderation_service import ModerationService
-    application = await ModerationService.create_user_application(
-        db=db,
-        user_id=user.id,
-        application_data={
-            "telegram_id": telegram_id,
-            "username": username,
-            "full_name": full_name,
-            "source": "qr_registration" if registration.qr_token else "registration",
-            "consent_date": now.isoformat(),
-            "agreement_version": registration.user_agreement.version or "1.0"
-        }
-    )
-    
-    # Уведомляем админов о новой заявке
-    from app.services.notification_service import NotificationService
-    try:
-        await NotificationService.notify_moderation_request(
+    if existing_user:
+        # Если пользователь уже существует, проверяем статус
+        if existing_user.is_active:
+            # Пользователь уже активен - не нужно регистрироваться заново
+            logger.info(f"User with telegram_id {telegram_id} already exists and is active (user_id: {existing_user.id})")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already registered and active. Please login instead."
+            )
+        
+        # Пользователь существует, но не активен - обновляем данные и создаём новую заявку на модерацию
+        logger.info(f"User with telegram_id {telegram_id} exists but is inactive - updating data and creating new moderation request (user_id: {existing_user.id})")
+        
+        # Обновляем данные пользователя
+        existing_user.username = username
+        existing_user.full_name = full_name
+        existing_user.personal_data_consent = True
+        existing_user.consent_date = now
+        existing_user.user_agreement_accepted = True
+        existing_user.agreement_version = registration.user_agreement.version or "1.0"
+        existing_user.agreement_accepted_at = now
+        
+        user = existing_user
+        await db.commit()
+        await db.refresh(user)
+        
+        # Проверяем, есть ли уже активная заявка на модерацию
+        from app.services.moderation_service import ModerationService
+        from app.models.moderation import ModerationQueue, ModerationStatus
+        
+        existing_application_result = await db.execute(
+            select(ModerationQueue).where(
+                ModerationQueue.user_id == user.id,
+                ModerationQueue.status == ModerationStatus.PENDING,
+                ModerationQueue.task_id.is_(None)  # Заявка на регистрацию (не на задачу)
+            )
+        )
+        existing_application = existing_application_result.scalar_one_or_none()
+        
+        if not existing_application:
+            # Создаём новую заявку на модерацию только если нет активной заявки
+            application = await ModerationService.create_user_application(
+                db=db,
+                user_id=user.id,
+                application_data={
+                    "telegram_id": telegram_id,
+                    "username": username,
+                    "full_name": full_name,
+                    "source": "qr_registration" if registration.qr_token else "registration",
+                    "consent_date": now.isoformat(),
+                    "agreement_version": registration.user_agreement.version or "1.0"
+                }
+            )
+        else:
+            logger.info(f"Active moderation application already exists for user {user.id}, skipping creation")
+    else:
+        # Создаём нового пользователя
+        user = User(
+            telegram_id=telegram_id,
+            username=username,
+            full_name=full_name,
+            is_active=False,  # Требует модерации
+            personal_data_consent=True,
+            consent_date=now,
+            user_agreement_accepted=True,
+            agreement_version=registration.user_agreement.version or "1.0",
+            agreement_accepted_at=now
+        )
+        
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        # Создаём заявку на модерацию
+        from app.services.moderation_service import ModerationService
+        application = await ModerationService.create_user_application(
             db=db,
             user_id=user.id,
-            user_name=full_name,
-            user_telegram_id=telegram_id
+            application_data={
+                "telegram_id": telegram_id,
+                "username": username,
+                "full_name": full_name,
+                "source": "qr_registration" if registration.qr_token else "registration",
+                "consent_date": now.isoformat(),
+                "agreement_version": registration.user_agreement.version or "1.0"
+            }
         )
-    except Exception as e:
-        import logging
-        logging.error(f"Failed to send moderation request notification: {e}")
+    
+    # Уведомляем админов о новой заявке (только если создали новую заявку на модерацию)
+    # Если заявка уже существует - не отправляем повторное уведомление
+    if not existing_user or (existing_user and not existing_application):
+        from app.services.notification_service import NotificationService
+        try:
+            await NotificationService.notify_moderation_request(
+                db=db,
+                user_id=user.id,
+                user_name=full_name,
+                user_telegram_id=telegram_id
+            )
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to send moderation request notification: {e}")
     
     # Создаём JWT токен (пользователь может пользоваться системой, но не может брать задачи до модерации)
     access_token = create_access_token(data={"sub": str(user.id), "telegram_id": telegram_id})
