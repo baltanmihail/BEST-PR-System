@@ -406,10 +406,14 @@ class GoogleService:
             file_metadata['parents'] = [parent_folder_id]
         
         try:
-            folder = service.files().create(
-                body=file_metadata,
-                fields='id, name, parents'
-            ).execute()
+            # Поддержка Shared Drive (Team Drive)
+            create_params = {
+                'body': file_metadata,
+                'fields': 'id, name, parents',
+                'supportsAllDrives': True,  # Обязательно для Shared Drive
+            }
+            
+            folder = service.files().create(**create_params).execute()
             
             folder_id = folder.get('id')
             
@@ -463,7 +467,9 @@ class GoogleService:
             results = service.files().list(
                 q=query,
                 fields="files(id, name)",
-                pageSize=1
+                pageSize=1,
+                supportsAllDrives=True,  # Поддержка Shared Drive
+                includeItemsFromAllDrives=True  # Включать файлы из Shared Drive
             ).execute()
             
             folders = results.get('files', [])
@@ -532,7 +538,8 @@ class GoogleService:
             file = service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id, name, parents'
+                fields='id, name, parents',
+                supportsAllDrives=True  # Поддержка Shared Drive
             ).execute()
             
             file_id = file.get('id')
@@ -702,7 +709,8 @@ class GoogleService:
         try:
             file_metadata = service.files().get(
                 fileId=file_id,
-                fields='id, name, mimeType, size, modifiedTime, createdTime, parents, webViewLink, webContentLink'
+                fields='id, name, mimeType, size, modifiedTime, createdTime, parents, webViewLink, webContentLink',
+                supportsAllDrives=True  # Поддержка Shared Drive
             ).execute()
             
             self._set_cache(cache_key, file_metadata)
@@ -785,7 +793,8 @@ class GoogleService:
             
             spreadsheet = drive_service.files().create(
                 body=file_metadata,
-                fields='id, name, webViewLink'
+                fields='id, name, webViewLink',
+                supportsAllDrives=True  # Поддержка Shared Drive
             ).execute()
             
             spreadsheet_id = spreadsheet.get('id')
@@ -819,15 +828,17 @@ class GoogleService:
         """
         Передать ownership файла/папки указанному пользователю
         
-        Это позволяет файлам использовать квоту пользователя, а не сервисного аккаунта
+        Это позволяет файлам использовать квоту пользователя/организации, а не сервисного аккаунта
         
-        Примечание: Google Drive не позволяет передавать ownership между разными доменами.
-        В этом случае мы просто даём пользователю полный доступ (writer), что позволяет
-        использовать файлы, но они остаются в квоте сервисного аккаунта.
+        ВАЖНО:
+        - В Shared Drive (Team Drive): ownership можно передать между аккаунтами одного домена организации
+        - В обычном Drive: ownership можно передать только внутри одного домена
+        - Если домены разные - пользователь получит только права "writer", файлы останутся в квоте сервисного аккаунта
+        - В Shared Drive файлы используют общую квоту организации, ownership работает внутри организации
         
         Args:
             file_id: ID файла или папки
-            owner_email: Email пользователя, которому передаётся ownership
+            owner_email: Email пользователя, которому передаётся ownership (должен быть в том же домене для Shared Drive)
             drive_service: Экземпляр Drive API service
         
         Returns:
@@ -842,10 +853,13 @@ class GoogleService:
                     'role': 'writer',
                     'emailAddress': owner_email
                 },
-                fields='id'
+                fields='id',
+                supportsAllDrives=True  # Поддержка Shared Drive
             ).execute()
             
             # Затем пытаемся передать ownership
+            # В Shared Drive: ownership можно передать между аккаунтами одного домена организации
+            # В обычном Drive: ownership можно передать только внутри одного домена
             try:
                 drive_service.permissions().create(
                     fileId=file_id,
@@ -855,14 +869,20 @@ class GoogleService:
                         'emailAddress': owner_email
                     },
                     transferOwnership=True,
-                    fields='id'
+                    fields='id',
+                    supportsAllDrives=True  # Поддержка Shared Drive
                 ).execute()
                 logger.info(f"✅ Ownership файла {file_id} передан пользователю {owner_email}")
                 return True
             except HttpError as e:
-                # Если передача ownership невозможна (разные домены), просто даём доступ
-                if 'ownershipChangeAcrossDomainNotPermitted' in str(e):
+                # Если передача ownership невозможна (разные домены или нет прав)
+                error_str = str(e)
+                if 'ownershipChangeAcrossDomainNotPermitted' in error_str:
                     logger.info(f"ℹ️ Ownership не может быть передан между доменами. Пользователю {owner_email} предоставлен полный доступ (writer)")
+                    return False
+                elif 'permissionDenied' in error_str or 'forbidden' in error_str.lower():
+                    logger.warning(f"⚠️ Нет прав для передачи ownership файла {file_id} пользователю {owner_email}: {e}")
+                    logger.info(f"💡 Убедитесь, что сервисный аккаунт имеет права 'Content Manager' или 'Manager' на Shared Drive")
                     return False
                 else:
                     raise

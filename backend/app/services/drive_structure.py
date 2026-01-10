@@ -201,7 +201,10 @@ class DriveStructureService:
     
     def _get_or_create_bot_folder(self, google_service: GoogleService) -> str:
         """
-        Получить или создать главную папку бота в новой корневой папке
+        Получить или создать главную папку бота
+        
+        Сначала проверяет GOOGLE_DRIVE_FOLDER_ID из настроек, затем пытается использовать ROOT_FOLDER_ID.
+        Если ROOT_FOLDER_ID недоступен (нет прав доступа к Shared Drive), создаёт папку в корне Google Drive сервисного аккаунта.
         
         Args:
             google_service: Экземпляр GoogleService
@@ -214,37 +217,76 @@ class DriveStructureService:
             try:
                 # Проверяем, существует ли папка
                 drive_service = google_service._get_drive_service(background=False)
-                drive_service.files().get(fileId=settings.GOOGLE_DRIVE_FOLDER_ID, fields='id').execute()
+                drive_service.files().get(
+                    fileId=settings.GOOGLE_DRIVE_FOLDER_ID, 
+                    fields='id',
+                    supportsAllDrives=True  # Поддержка Shared Drive
+                ).execute()
                 logger.info(f"✅ Используется папка из настроек: {settings.GOOGLE_DRIVE_FOLDER_ID}")
                 self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
                 return settings.GOOGLE_DRIVE_FOLDER_ID
             except Exception as e:
-                logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена (возможно, была удалена): {e}")
-                logger.info("📁 Создаём новую папку вместо удалённой...")
+                logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена или недоступна: {e}")
+                logger.info("📁 Создаём новую папку вместо недоступной...")
                 # Очищаем кэш и продолжаем создание новой папки
                 self._bot_folder_id = None
         
-        # Ищем существующую папку в новой корневой папке
+        # Пробуем найти/создать папку в ROOT_FOLDER_ID (может быть в Shared Drive)
+        # Если это не удаётся (нет доступа), создаём в корне Google Drive сервисного аккаунта
+        parent_folder_id = ROOT_FOLDER_ID
+        use_shared_drive = True
+        
         try:
-            folder_id = google_service.get_folder_by_name(
-                BOT_FOLDER_NAME,
-                parent_folder_id=ROOT_FOLDER_ID,
-                background=False
-            )
+            # Проверяем доступность ROOT_FOLDER_ID
+            drive_service = google_service._get_drive_service(background=False)
+            drive_service.files().get(
+                fileId=ROOT_FOLDER_ID,
+                fields='id, name',
+                supportsAllDrives=True
+            ).execute()
+            logger.info(f"✅ ROOT_FOLDER_ID {ROOT_FOLDER_ID} доступен, используем его как родительскую папку")
+        except Exception as e:
+            logger.warning(f"⚠️ ROOT_FOLDER_ID {ROOT_FOLDER_ID} недоступен (возможно, нет доступа к Shared Drive): {e}")
+            logger.info("📁 Создаём папку в корне Google Drive сервисного аккаунта вместо Shared Drive...")
+            parent_folder_id = None  # None = корень Google Drive сервисного аккаунта
+            use_shared_drive = False
+        
+        # Ищем существующую папку
+        try:
+            if parent_folder_id:
+                # Ищем в указанной родительской папке
+                folder_id = google_service.get_folder_by_name(
+                    BOT_FOLDER_NAME,
+                    parent_folder_id=parent_folder_id,
+                    background=False
+                )
+            else:
+                # Ищем в корне Google Drive (без указания родительской папки)
+                folder_id = google_service.get_folder_by_name(
+                    BOT_FOLDER_NAME,
+                    parent_folder_id=None,
+                    background=False
+                )
             
             if folder_id:
-                logger.info(f"✅ Найдена существующая папка '{BOT_FOLDER_NAME}': {folder_id}")
+                location = f"в папке {parent_folder_id}" if parent_folder_id else "в корне Google Drive"
+                logger.info(f"✅ Найдена существующая папка '{BOT_FOLDER_NAME}' {location}: {folder_id}")
                 self._bot_folder_id = folder_id
                 return folder_id
             
-            # Создаём новую папку в новой корневой папке
-            logger.info(f"📁 Создаём новую папку '{BOT_FOLDER_NAME}' в корневой папке {ROOT_FOLDER_ID}...")
+            # Создаём новую папку
+            if parent_folder_id:
+                logger.info(f"📁 Создаём новую папку '{BOT_FOLDER_NAME}' в папке {parent_folder_id}...")
+            else:
+                logger.info(f"📁 Создаём новую папку '{BOT_FOLDER_NAME}' в корне Google Drive сервисного аккаунта...")
+            
             folder_id = google_service.create_folder(
                 BOT_FOLDER_NAME,
-                parent_folder_id=ROOT_FOLDER_ID,
+                parent_folder_id=parent_folder_id,
                 background=False
             )
-            logger.info(f"✅ Папка создана: {folder_id}")
+            location = f"в папке {parent_folder_id}" if parent_folder_id else "в корне Google Drive"
+            logger.info(f"✅ Папка создана {location}: {folder_id}")
             self._bot_folder_id = folder_id
             return folder_id
             
@@ -271,35 +313,49 @@ class DriveStructureService:
         return self._support_folder_id
     
     def get_bot_folder_id(self) -> str:
-        """Получить ID главной папки бота"""
+        """
+        Получить ID главной папки бота
+        
+        Если папка ещё не создана, автоматически инициализирует структуру с fallback на корень Google Drive,
+        если ROOT_FOLDER_ID (Shared Drive) недоступен.
+        """
         google_service = self._get_google_service()
         
         # Если есть кэшированный ID, убеждаемся, что папка существует (могла быть удалена вручную)
         if self._bot_folder_id:
             try:
                 drive_service = google_service._get_drive_service(background=False)
-                drive_service.files().get(fileId=self._bot_folder_id, fields='id').execute()
+                drive_service.files().get(
+                    fileId=self._bot_folder_id, 
+                    fields='id',
+                    supportsAllDrives=True  # Поддержка Shared Drive
+                ).execute()
             except Exception as e:
-                logger.warning(f"⚠️ Кэшированная папка бота {self._bot_folder_id} не найдена: {e}")
+                logger.warning(f"⚠️ Кэшированная папка бота {self._bot_folder_id} не найдена или недоступна: {e}")
                 logger.info("📁 Создаём новую папку...")
                 self._bot_folder_id = None
         
         if not self._bot_folder_id:
             if settings.GOOGLE_DRIVE_FOLDER_ID:
-                # Проверяем, существует ли папка
+                # Проверяем, существует ли папка из настроек
                 try:
                     drive_service = google_service._get_drive_service(background=False)
-                    drive_service.files().get(fileId=settings.GOOGLE_DRIVE_FOLDER_ID, fields='id').execute()
+                    drive_service.files().get(
+                        fileId=settings.GOOGLE_DRIVE_FOLDER_ID, 
+                        fields='id',
+                        supportsAllDrives=True  # Поддержка Shared Drive
+                    ).execute()
                     logger.info(f"✅ Используется папка из настроек: {settings.GOOGLE_DRIVE_FOLDER_ID}")
                     self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
                     return self._bot_folder_id
                 except Exception as e:
-                    logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена (возможно, была удалена): {e}")
+                    logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена или недоступна: {e}")
                     logger.info("📁 Создаём новую папку...")
                     # Очищаем кэш и продолжаем создание новой папки
                     self._bot_folder_id = None
             
             # Инициализируем структуру, если ещё не инициализирована
+            # Метод _get_or_create_bot_folder автоматически обработает недоступность Shared Drive
             if not self._initialized:
                 self.initialize_structure()
             

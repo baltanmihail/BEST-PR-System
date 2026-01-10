@@ -378,26 +378,90 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER update_activity_on_task_assignment AFTER INSERT ON task_assignments
     FOR EACH ROW EXECUTE FUNCTION update_user_activity();
 
--- Автоматическое обновление уровня пользователя при изменении баллов
+-- ============================================
+-- АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ УРОВНЯ ПОЛЬЗОВАТЕЛЯ
+-- ============================================
+-- ВАЖНО: Эта функция была исправлена для сохранения специальных ролей (координаторы и VP4PR).
+-- Старая версия перезаписывала все роли на основе баллов, что приводило к потере прав координаторов.
+-- 
+-- ИСПРАВЛЕННАЯ ВЕРСИЯ (текущая):
+-- - Сохраняет специальные роли: coordinator_smm, coordinator_design, coordinator_channel, coordinator_prfr, vp4pr
+-- - Обновляет только level на основе баллов для всех пользователей
+-- - Обновляет role ТОЛЬКО для обычных пользователей (не координаторов и не VP4PR)
+--
+-- Миграция: 022_fix_update_user_level_preserve_special_roles.py
+-- Дата исправления: 2026-01-09
+-- ============================================
 CREATE OR REPLACE FUNCTION update_user_level()
 RETURNS TRIGGER AS $$
+DECLARE
+    is_special_role_old BOOLEAN := FALSE;
+    is_special_role_new BOOLEAN := FALSE;
 BEGIN
-    -- Обновляем уровень на основе баллов
+    -- ШАГ 1: Проверяем, является ли старая роль специальной (координатор или VP4PR)
+    -- Это важно для защиты от случайного понижения координатора при обновлении баллов
+    is_special_role_old := OLD.role IN (
+        'coordinator_smm',
+        'coordinator_design',
+        'coordinator_channel',
+        'coordinator_prfr',
+        'vp4pr'
+    );
+    
+    -- ШАГ 2: Проверяем, является ли новая роль специальной
+    -- Это необходимо на случай, если роль меняется явно вместе с баллами (явное назначение координатора)
+    is_special_role_new := NEW.role IN (
+        'coordinator_smm',
+        'coordinator_design',
+        'coordinator_channel',
+        'coordinator_prfr',
+        'vp4pr'
+    );
+    
+    -- ШАГ 3: Обновляем level на основе баллов (ВСЕГДА для всех пользователей)
+    -- Level обновляется независимо от роли, так как это просто числовой показатель
     IF NEW.points < 101 THEN
         NEW.level := 1;
-        NEW.role := 'novice';
     ELSIF NEW.points < 501 THEN
         NEW.level := 2;
-        NEW.role := 'participant';
     ELSIF NEW.points < 1501 THEN
         NEW.level := 3;
-        NEW.role := 'active_participant';
     ELSIF NEW.points < 3001 THEN
         NEW.level := 4;
-        NEW.role := 'active_participant';
     ELSE
         NEW.level := 5;
-        NEW.role := 'active_participant';
+    END IF;
+    
+    -- ШАГ 4: Обновляем role ТОЛЬКО для обычных пользователей
+    -- КРИТИЧЕСКИ ВАЖНО: Специальные роли (координаторы и VP4PR) НЕ должны перезаписываться!
+    -- Это предотвращает потерю прав доступа при начислении баллов координаторам
+    
+    IF is_special_role_new THEN
+        -- Случай 1: Новая роль явно установлена как специальная (явное назначение координатора)
+        -- NEW.role уже правильная, сохраняем её без изменений
+        -- Пример: UPDATE users SET role = 'coordinator_smm', points = 500 WHERE id = ...
+        NULL; -- Ничего не делаем, роль уже правильная
+    ELSIF is_special_role_old THEN
+        -- Случай 2: Была специальная роль, но NEW.role не специальная
+        -- Это защита от случайного понижения координатора при обновлении только баллов
+        -- Восстанавливаем специальную роль из OLD.role
+        -- Пример: UPDATE users SET points = 1000 WHERE id = ... (role не указан, но был coordinator_smm)
+        NEW.role := OLD.role;
+    ELSE
+        -- Случай 3: Роль не специальная (ни в OLD, ни в NEW) - обычный пользователь
+        -- В этом случае можем безопасно обновить роль на основе баллов
+        -- Это стандартное поведение для участников системы
+        IF NEW.points < 101 THEN
+            NEW.role := 'novice';
+        ELSIF NEW.points < 501 THEN
+            NEW.role := 'participant';
+        ELSIF NEW.points < 1501 THEN
+            NEW.role := 'active_participant';
+        ELSIF NEW.points < 3001 THEN
+            NEW.role := 'active_participant';
+        ELSE
+            NEW.role := 'active_participant';
+        END IF;
     END IF;
     
     RETURN NEW;

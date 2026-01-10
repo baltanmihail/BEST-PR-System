@@ -270,11 +270,12 @@ class SheetsSyncService:
             logger.warning(f"Ошибка поиска существующей таблицы: {e}")
         
         # Создаём новую таблицу
-        logger.info("Создание новой Google Sheets таблицы 'BEST PR System - Таймлайны'")
+        logger.info("📊 Создание новой Google Sheets таблицы 'BEST PR System - Таймлайны'")
         try:
             bot_folder_id = self.drive_structure.get_bot_folder_id()
+            logger.info(f"✅ ID папки бота: {bot_folder_id}")
         except Exception as e:
-            logger.error(f"❌ Не удалось получить ID папки бота: {e}")
+            logger.error(f"❌ Не удалось получить ID папки бота: {e}", exc_info=True)
             logger.info("📁 Пытаемся инициализировать структуру папок...")
             # Пытаемся инициализировать структуру папок
             try:
@@ -282,15 +283,23 @@ class SheetsSyncService:
                 bot_folder_id = structure.get("bot_folder_id")
                 if not bot_folder_id:
                     raise ValueError("Не удалось получить ID папки бота после инициализации")
+                logger.info(f"✅ Структура инициализирована, ID папки бота: {bot_folder_id}")
             except Exception as init_error:
-                logger.error(f"❌ Не удалось инициализировать структуру папок: {init_error}")
+                logger.error(f"❌ Не удалось инициализировать структуру папок: {init_error}", exc_info=True)
                 raise
         
-        sheets_doc = self.google_service.create_spreadsheet(
-            "BEST PR System - Таймлайны",
-            folder_id=bot_folder_id,
-            background=True
-        )
+        try:
+            logger.info(f"📝 Создание таблицы в папке {bot_folder_id}...")
+            sheets_doc = self.google_service.create_spreadsheet(
+                "BEST PR System - Таймлайны",
+                folder_id=bot_folder_id,
+                background=False  # Используем синхронный режим для лучшей обработки ошибок
+            )
+            logger.info(f"✅ Таблица создана: {sheets_doc.get('id')}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка создания таблицы таймлайна: {e}", exc_info=True)
+            logger.error(f"Тип ошибки: {type(e).__name__}")
+            raise
         
         self.timeline_sheets_id = sheets_doc["id"]
         

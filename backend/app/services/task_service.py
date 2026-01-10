@@ -335,7 +335,136 @@ class TaskService:
         await db.commit()
         await db.refresh(task)
         
+        # Обновляем Google Doc файл задачи, если он существует
+        try:
+            await TaskService._update_task_doc_in_drive(task, db)
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось обновить Google Doc для задачи {task_id}: {e}")
+            # Не прерываем выполнение, если обновление Doc не удалось
+        
         return task
+    
+    @staticmethod
+    async def _update_task_doc_in_drive(task: Task, db: AsyncSession):
+        """
+        Обновить Google Doc файл задачи в Drive при изменении задачи
+        
+        Находит Google Doc файл в папке задачи и обновляет его содержимое
+        """
+        if not task.drive_folder_id:
+            return  # Нет папки в Drive
+        
+        try:
+            from app.services.google_service import GoogleService
+            from app.services.drive_structure import DriveStructureService
+            from googleapiclient.discovery import build
+            
+            google_service = GoogleService()
+            drive_service = google_service._get_drive_service(background=False)
+            
+            # Ищем Google Doc файл в папке задачи
+            query = f"'{task.drive_folder_id}' in parents and mimeType='application/vnd.google-apps.document' and trashed=false"
+            results = drive_service.files().list(
+                q=query,
+                fields="files(id, name)",
+                pageSize=1
+            ).execute()
+            
+            doc_files = results.get('files', [])
+            if not doc_files:
+                logger.debug(f"Google Doc файл для задачи {task.id} не найден в папке")
+                return
+            
+            doc_id = doc_files[0]['id']
+            
+            # Получаем credentials для Docs API
+            credentials = google_service._get_credentials(background=False)
+            docs_service = build('docs', 'v1', credentials=credentials)
+            
+            # Формируем обновлённое содержимое документа
+            # Структура: название, метаданные, описание
+            requests = []
+            
+            # Получаем текущее содержимое документа для определения размера
+            doc = docs_service.documents().get(documentId=doc_id).execute()
+            
+            # Получаем индекс конца документа из body
+            body = doc.get('body', {})
+            end_index = body.get('endIndex', 1)
+            
+            # Формируем текст для обновления
+            doc_lines = [
+                task.title,
+                "",
+                f"**Тип:** {task.type.value.upper()}",
+                f"**Приоритет:** {task.priority.value}",
+            ]
+            
+            if task.due_date:
+                due_date_str = task.due_date.strftime('%Y-%m-%d')
+                doc_lines.append(f"**Дедлайн:** {due_date_str}")
+            
+            # Добавляем этапы, если есть
+            from app.models.task import TaskStage
+            
+            stages_query = select(TaskStage).where(TaskStage.task_id == task.id).order_by(TaskStage.stage_order)
+            stages_result = await db.execute(stages_query)
+            stages = stages_result.scalars().all()
+            
+            if stages:
+                doc_lines.append("**Этапы:**")
+                for stage in stages:
+                    stage_line = f"- {stage.stage_name}"
+                    if stage.due_date:
+                        stage_date = stage.due_date.strftime('%Y-%m-%d')
+                        stage_line += f" (дата: {stage_date}"
+                        if stage.status_color:
+                            stage_line += f", цвет: {stage.status_color}"
+                        stage_line += ")"
+                    doc_lines.append(stage_line)
+            
+            if task.description:
+                doc_lines.append("")
+                doc_lines.append(task.description)
+            
+            # Формируем запросы для обновления документа
+            # В Google Docs API индексы начинаются с 1
+            # Документ имеет структуру: [начало (1), контент, конец (endIndex)]
+            # Удаляем всё содержимое между индексом 1 и endIndex - 1
+            if end_index > 1:
+                requests.append({
+                    'deleteContentRange': {
+                        'range': {
+                            'startIndex': 1,
+                            'endIndex': end_index - 1
+                        }
+                    }
+                })
+            
+            # Вставляем новое содержимое в начало (после удаления старого содержимого)
+            new_text = '\n'.join(doc_lines)
+            if new_text:
+                requests.append({
+                    'insertText': {
+                        'location': {
+                            'index': 1
+                        },
+                        'text': new_text
+                    }
+                })
+            
+            # Применяем обновления
+            if requests:
+                docs_service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={'requests': requests}
+                ).execute()
+                
+                logger.info(f"✅ Обновлён Google Doc для задачи {task.id}")
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка обновления Google Doc для задачи {task.id}: {e}")
+            raise
     
     @staticmethod
     async def publish_task(
