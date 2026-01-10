@@ -67,7 +67,10 @@ export default function Layout({ children }: LayoutProps) {
       
       <Header onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       <div className="flex flex-col md:flex-row relative z-10">
-        <Sidebar isOpen={isMobileMenuOpen} onClose={() => setIsMobileMenuOpen(false)} />
+        <Sidebar 
+          isOpen={isMobileMenuOpen} 
+          onClose={() => setIsMobileMenuOpen(false)} 
+        />
         <main 
           ref={mainRef}
           className="flex-1 p-4 md:p-6 relative z-10 glass-trail"

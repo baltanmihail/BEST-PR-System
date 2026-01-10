@@ -32,11 +32,19 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           {/* Кнопка меню для мобильных */}
           {onMenuToggle && (
             <button
-              onClick={onMenuToggle}
-              className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors mr-2"
+              onClick={(e) => {
+                e.stopPropagation()
+                onMenuToggle()
+              }}
+              onTouchStart={(e) => {
+                // Для мобильных устройств используем touchstart для более быстрого отклика
+                e.stopPropagation()
+              }}
+              className="md:hidden p-2 rounded-lg hover:bg-white/10 active:bg-white/20 transition-colors mr-2 touch-manipulation"
               aria-label="Открыть меню"
+              type="button"
             >
-              <Menu className="h-6 w-6 text-white" />
+              <Menu className="h-6 w-6 text-white pointer-events-none" />
             </button>
           )}
           

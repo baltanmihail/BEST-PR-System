@@ -1,14 +1,14 @@
 import api from './api'
 
 export interface RegistrationRequest {
-  telegram_auth: {
+  telegram_auth?: {  // Опционально для QR-регистрации
     id: number
     first_name: string
     last_name?: string
     username?: string
     photo_url?: string
     auth_date: number
-    hash: string
+    hash: string  // Для QR-регистрации может быть пустой строкой, но для обычной обязателен
   }
   personal_data_consent: {
     consent: boolean

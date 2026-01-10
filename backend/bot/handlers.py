@@ -198,9 +198,77 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
     # Если параметр начинается с "qr_", это QR-код авторизация/регистрация
     if start_param and start_param.startswith("qr_"):
         # Парсим параметр: qr_TOKEN или qr_TOKEN_TELEGRAM_ID_USERNAME
-        parts = start_param.split("_")
-        if len(parts) >= 2:
-            qr_token = parts[1]  # Токен QR-сессии
+        # ПРОБЛЕМА: токен может содержать подчёркивания (secrets.token_urlsafe может вернуть _ и -)
+        # РЕШЕНИЕ: используем более надёжный способ извлечения токена
+        # Формат: qr_TOKEN или qr_TOKEN_TELEGRAM_ID или qr_TOKEN_TELEGRAM_ID_USERNAME
+        # Токен - это всё между "qr_" и последним числовым блоком (telegram_id)
+        remaining = start_param[3:]  # Убираем "qr_"
+        
+        # Пробуем найти последний блок, который является числом (telegram_id)
+        # Если такой есть - всё до него это токен
+        # secrets.token_urlsafe(32) возвращает токен длиной ~43 символа, может содержать - и _
+        # Telegram ID - это всегда число (обычно 9-10 цифр)
+        parts = remaining.split("_")
+        qr_token = None
+        telegram_id_from_qr = None
+        username_from_qr = None
+        
+        # Проверяем, является ли последний или предпоследний элемент числом (telegram_id)
+        if len(parts) >= 1:
+            # Пробуем все комбинации:
+            # Вариант 1: qr_TOKEN (только токен, может содержать _)
+            # Вариант 2: qr_TOKEN_TELEGRAM_ID (токен с _ и telegram_id)
+            # Вариант 3: qr_TOKEN_TELEGRAM_ID_USERNAME (токен с _, telegram_id и username)
+            
+            # Telegram ID обычно имеет 9-10 цифр и начинается с цифры 5-9
+            # Проверяем последние 1-2 элемента, являются ли они числом
+            # Если последний элемент - число (8+ цифр), это telegram_id
+            # Если предпоследний элемент - число, а последний - строка (username), то предпоследний - telegram_id
+            
+            # Telegram ID обычно имеет 9-10 цифр (начинается с 5-9)
+            # Проверяем последние элементы на наличие длинного числового блока
+            # Вариант 1: последний элемент - это telegram_id
+            if len(parts) >= 2:
+                try:
+                    potential_id = int(parts[-1])
+                    # Проверяем, что это похоже на telegram_id (обычно 8+ цифр)
+                    if len(str(potential_id)) >= 8:
+                        # Всё до последнего элемента - это токен
+                        qr_token = "_".join(parts[:-1])
+                        telegram_id_from_qr = potential_id
+                        logger.debug(f"Found telegram_id as last part: {telegram_id_from_qr}, token extracted: {qr_token[:20]}...")
+                except ValueError:
+                    pass
+            
+            # Вариант 2: предпоследний элемент - telegram_id, последний - username
+            if qr_token is None and len(parts) >= 3:
+                try:
+                    potential_id = int(parts[-2])
+                    if len(str(potential_id)) >= 8:
+                        # Всё до предпоследнего элемента - это токен
+                        qr_token = "_".join(parts[:-2])
+                        telegram_id_from_qr = potential_id
+                        username_from_qr = parts[-1]
+                        logger.debug(f"Found telegram_id as second-to-last part: {telegram_id_from_qr}, username: {username_from_qr}")
+                except ValueError:
+                    pass
+            
+            # Вариант 3: не нашли telegram_id - весь remaining это токен
+            if qr_token is None:
+                qr_token = remaining
+                logger.debug(f"No telegram_id found in parts, using full remaining as token: {qr_token[:20]}...")
+            
+            # Проверяем, что токен не пустой
+            if not qr_token:
+                logger.error(f"Empty QR token extracted from start_param: {start_param}")
+                await message.answer(
+                    "❌ <b>Неверный формат QR-кода</b>\n\n"
+                    "Пожалуйста, откройте страницу входа на сайте и отсканируйте новый QR-код.",
+                    parse_mode="HTML"
+                )
+                return
+            
+            logger.info(f"Extracted QR token from start_param: {start_param[:20]}... -> {qr_token[:20]}... (telegram_id_from_qr: {telegram_id_from_qr})")
             
             # Проверяем сессию через API
             check_response = await call_api("GET", f"/auth/qr/status/{qr_token}")
@@ -285,7 +353,8 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 await state.update_data(qr_auth_data=auth_data)
                 
                 # Проверяем, есть ли данные пользователя в параметре (для упрощённой регистрации)
-                is_registration_qr = len(parts) >= 3 and str(user.id) == parts[2]
+                # Используем telegram_id_from_qr, который мы извлекли ранее
+                is_registration_qr = telegram_id_from_qr is not None and telegram_id_from_qr == user.id
                 
                 # Показываем подтверждение
                 keyboard = InlineKeyboardMarkup(inline_keyboard=[

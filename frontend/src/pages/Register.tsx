@@ -73,22 +73,12 @@ export default function Register() {
 
   const handleTelegramAuth = () => {
     // Если есть QR-токен, используем упрощённую регистрацию
-    if (qrToken && fromBot && telegramId) {
+    // ВАЖНО: telegram_id может быть пустым в URL, но QR-сессия содержит его
+    if (qrToken) {
       // Упрощённая регистрация через QR-код
       // Данные пользователя уже подтверждены через бота, hash не нужен
-      const telegramAuth: RegistrationRequest['telegram_auth'] = {
-        id: parseInt(telegramId),
-        first_name: firstName || 'Пользователь',
-        auth_date: Math.floor(Date.now() / 1000),
-        hash: '', // Для QR-регистрации hash не проверяется на бэкенде
-      }
-      
-      if (username) {
-        telegramAuth.username = username
-      }
-      
+      // telegram_auth опционален для QR-регистрации - если есть данные, используем их
       const registrationData: RegistrationRequest = {
-        telegram_auth: telegramAuth,
         personal_data_consent: {
           consent: consentAccepted,
           consent_date: new Date().toISOString(),
@@ -100,10 +90,31 @@ export default function Register() {
         qr_token: qrToken,
       }
       
-      console.log('Sending QR registration request', { 
-        telegram_id: telegramAuth.id, 
-        qr_token: qrToken 
-      })
+      // Если есть данные пользователя в URL (fromBot=true и telegramId есть) - добавляем их
+      if (fromBot && telegramId) {
+        const telegramAuth: RegistrationRequest['telegram_auth'] = {
+          id: parseInt(telegramId),
+          first_name: firstName || 'Пользователь',
+          auth_date: Math.floor(Date.now() / 1000),
+          hash: '', // Для QR-регистрации hash не проверяется на бэкенде
+        }
+        
+        if (username) {
+          telegramAuth.username = username
+        }
+        
+        registrationData.telegram_auth = telegramAuth
+        
+        console.log('Sending QR registration request with auth data', { 
+          telegram_id: telegramAuth.id, 
+          qr_token: qrToken 
+        })
+      } else {
+        // QR-регистрация без данных в URL - бэкенд использует данные из QR-сессии
+        console.log('Sending QR registration request without auth data (will use QR session data)', { 
+          qr_token: qrToken 
+        })
+      }
       
       registrationMutation.mutate(registrationData)
       return

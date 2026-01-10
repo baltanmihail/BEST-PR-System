@@ -75,6 +75,7 @@ async def register(
     
     # Если есть qr_token, используем данные из QR-сессии (упрощённая регистрация)
     if registration.qr_token:
+        logger.info(f"QR registration attempt with token: {registration.qr_token[:20]}...")
         from app.models.qr_session import QRSession
         result = await db.execute(
             select(QRSession).where(QRSession.session_token == registration.qr_token)
@@ -82,14 +83,16 @@ async def register(
         qr_session = result.scalar_one_or_none()
         
         if not qr_session:
-            logger.warning(f"QR session not found for token: {registration.qr_token[:8]}...")
+            logger.warning(f"QR session not found for token: {registration.qr_token[:20]}... (full token length: {len(registration.qr_token)})")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="QR session not found"
             )
         
+        logger.info(f"QR session found: id={qr_session.id}, status={qr_session.status}, telegram_id={qr_session.telegram_id}")
+        
         if qr_session.status != "confirmed":
-            logger.warning(f"QR session not confirmed. Status: {qr_session.status}, token: {registration.qr_token[:8]}...")
+            logger.warning(f"QR session not confirmed. Status: {qr_session.status}, token: {registration.qr_token[:20]}...")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="QR session not confirmed. Please confirm QR code in Telegram bot first."
@@ -108,8 +111,11 @@ async def register(
         # Для QR-регистрации telegram_auth опционален
         # Если передан - используем данные из него (WebApp может передать)
         # Если не передан - используем данные из QR-сессии или минимальные данные
+        # ВАЖНО: Для QR-регистрации hash НЕ проверяется (пользователь уже подтверждён через бота)
         if registration.telegram_auth:
             auth_data = registration.telegram_auth.model_dump()
+            logger.info(f"QR registration with telegram_auth: id={auth_data.get('id')}, hash present={bool(auth_data.get('hash'))}, hash value='{auth_data.get('hash', '')[:10]}...'")
+            
             # Проверяем, что telegram_id совпадает (если передан)
             if auth_data.get("id") and auth_data.get("id") != telegram_id:
                 logger.warning(f"Telegram ID mismatch: QR session has {telegram_id}, auth_data has {auth_data.get('id')}")
@@ -118,6 +124,7 @@ async def register(
                     detail="Telegram ID mismatch between QR session and auth data"
                 )
             # Используем данные из auth_data, если доступны
+            # Игнорируем hash для QR-регистрации (не проверяем его)
             first_name = auth_data.get("first_name", "")
             last_name = auth_data.get("last_name", "")
             username = auth_data.get("username")
