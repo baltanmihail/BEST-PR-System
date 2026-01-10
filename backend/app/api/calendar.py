@@ -397,11 +397,12 @@ async def _get_month_view(
     # Добавляем бронирование оборудования (если нужно)
     equipment_bookings = []
     if include_equipment:
+        from app.models.equipment import EquipmentRequestStatus
         equipment_query = select(EquipmentRequest).where(
             and_(
                 EquipmentRequest.start_date <= last_day,
                 EquipmentRequest.end_date >= first_day,
-                EquipmentRequest.status.in_(["approved", "active"])
+                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
             )
         )
         equipment_result = await db.execute(equipment_query)
@@ -509,11 +510,12 @@ async def _get_week_view(
         
         # Добавляем оборудование на этот день (если нужно)
         if include_equipment:
+            from app.models.equipment import EquipmentRequestStatus
             equipment_query = select(EquipmentRequest).where(
                 and_(
                     EquipmentRequest.start_date <= current_date,
                     EquipmentRequest.end_date >= current_date,
-                    EquipmentRequest.status.in_(["approved", "active"])
+                    EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
                 )
             )
             equipment_result = await db.execute(equipment_query)
@@ -654,11 +656,12 @@ async def _get_timeline_view(
     
     # Добавляем бронирование оборудования (если нужно)
     if include_equipment:
+        from app.models.equipment import EquipmentRequestStatus
         equipment_query = select(EquipmentRequest).where(
             and_(
                 EquipmentRequest.start_date <= end_date,
                 EquipmentRequest.end_date >= start_date,
-                EquipmentRequest.status.in_(["approved", "active"])
+                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
             )
         )
         equipment_result = await db.execute(equipment_query)
@@ -805,11 +808,12 @@ async def _get_gantt_view(
     gantt_items.sort(key=lambda x: x["start"])
     
     # Добавляем бронирование оборудования в Gantt (как отдельные элементы)
+    from app.models.equipment import EquipmentRequestStatus
     equipment_query = select(EquipmentRequest).where(
         and_(
             EquipmentRequest.start_date <= end_date,
             EquipmentRequest.end_date >= start_date,
-            EquipmentRequest.status.in_(["approved", "active"])
+            EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
         )
     )
     equipment_result = await db.execute(equipment_query)

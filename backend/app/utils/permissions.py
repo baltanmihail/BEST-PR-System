@@ -16,10 +16,16 @@ security = HTTPBearer()
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    require_active: bool = False
 ) -> User:
-    """Получить текущего пользователя (требует активного аккаунта)"""
-    """Получить текущего пользователя из JWT токена"""
+    """
+    Получить текущего пользователя из JWT токена
+    
+    Args:
+        require_active: Если True, требует активного пользователя. 
+                       Если False, разрешает неактивных (для /auth/me и просмотра профиля)
+    """
     token = credentials.credentials
     payload = verify_token(token)
     
@@ -46,12 +52,6 @@ async def get_current_user(
             detail="User not found",
         )
     
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is inactive",
-        )
-    
     # Проверяем, не удалён ли пользователь
     if user.deleted_at is not None:
         raise HTTPException(
@@ -59,12 +59,23 @@ async def get_current_user(
             detail="User account has been deleted",
         )
     
+    # Проверяем активность только если требуется
+    if require_active and not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is inactive. Please wait for moderation approval.",
+        )
+    
     return user
 
 
-def require_role(*allowed_roles: UserRole):
+def require_role(*allowed_roles: UserRole, require_active: bool = True):
     """Декоратор для проверки роли пользователя"""
-    def role_checker(current_user: User = Depends(get_current_user)) -> User:
+    async def role_checker(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        current_user = await get_current_user(credentials, db, require_active=require_active)
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -88,6 +99,16 @@ def require_coordinator():
 def require_vp4pr():
     """Проверка, что пользователь - VP4PR"""
     return require_role(UserRole.VP4PR)
+
+
+def get_current_user_allow_inactive():
+    """Зависимость для получения текущего пользователя без требования активности"""
+    async def _get_user(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        db: AsyncSession = Depends(get_db)
+    ) -> User:
+        return await get_current_user(credentials, db, require_active=False)
+    return _get_user
 
 
 async def OptionalUser(

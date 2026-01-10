@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models.user import User, UserRole
 from app.schemas.user import UserResponse, UserCreate
 from app.utils.auth import create_access_token, verify_telegram_auth
-from app.utils.permissions import get_current_user, require_vp4pr
+from app.utils.permissions import get_current_user, require_vp4pr, get_current_user_allow_inactive
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -46,16 +46,15 @@ async def bot_login(
             detail="User not found"
         )
     
+    # Разрешаем вход неактивным пользователям, но они не смогут выполнять действия
+    # Токен будет работать для /auth/me и просмотра профиля
     if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is not active. Please wait for moderation approval."
-        )
+        logger.info(f"Bot login for inactive user {user.telegram_id} (awaiting moderation)")
     
     # Создаём JWT токен
     access_token = create_access_token(data={"sub": str(user.id), "telegram_id": user.telegram_id})
     
-    logger.info(f"Bot login successful for user {user.telegram_id}")
+    logger.info(f"Bot login successful for user {user.telegram_id} (is_active: {user.is_active})")
     
     return {
         "access_token": access_token,
@@ -67,7 +66,8 @@ async def bot_login(
             "full_name": user.full_name,
             "is_active": user.is_active,
             "role": user.role.value if hasattr(user.role, 'value') else str(user.role)
-        }
+        },
+        "message": "User is not active. Please wait for moderation approval." if not user.is_active else None
     }
 
 
@@ -180,9 +180,13 @@ async def auth_telegram(
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_allow_inactive())
 ):
-    """Получить текущего пользователя"""
+    """
+    Получить текущего пользователя
+    
+    Разрешает доступ неактивным пользователям, чтобы они могли видеть свой статус
+    """
     return UserResponse.model_validate(current_user)
 
 
