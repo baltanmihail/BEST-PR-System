@@ -500,3 +500,48 @@ async def get_structure_folders(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get structure folders: {str(e)}"
         )
+
+
+@router.post("/sync", response_model=dict)
+async def sync_drive_changes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Синхронизировать изменения из Google Drive в систему
+    
+    Отслеживает:
+    - Изменения файлов задач
+    - Новые файлы в папке Tasks
+    - Обновления файлов задач (Google Doc)
+    
+    Доступно только координаторам и VP4PR
+    """
+    from app.models.user import UserRole
+    from app.services.drive_sync_service import drive_sync_service
+    
+    # Проверка прав доступа
+    if current_user.role not in [
+        UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only coordinators and VP4PR can sync Drive changes"
+        )
+    
+    try:
+        stats = await drive_sync_service.sync_drive_changes(db)
+        logger.info(f"✅ Синхронизация Drive завершена: {stats}")
+        return {
+            "success": True,
+            "stats": stats,
+            "message": f"Обновлено: {stats.get('updated', 0)}, создано: {stats.get('created', 0)}, ошибок: {stats.get('errors', 0)}"
+        }
+    except Exception as e:
+        logger.error(f"❌ Ошибка синхронизации Drive: {e}")
+        logger.exception("Полная трассировка ошибки:")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to sync Drive changes: {str(e)}"
+        )

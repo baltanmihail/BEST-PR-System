@@ -62,6 +62,10 @@ class TemplateCategoryType(TypeDecorator):
             return value
 
 
+# Экспортируем TemplateCategoryType для использования в других модулях
+__all__ = ['TemplateCategory', 'TemplateCategoryType', 'TaskTemplate']
+
+
 class TaskTemplate(Base):
     """Шаблон задачи"""
     __tablename__ = "task_templates"

@@ -209,11 +209,20 @@ class DriveStructureService:
         Returns:
             ID папки бота
         """
-        # Сначала проверяем, задана ли папка в настройках
+        # Сначала проверяем, задана ли папка в настройках и существует ли она
         if settings.GOOGLE_DRIVE_FOLDER_ID:
-            logger.info(f"Используется папка из настроек: {settings.GOOGLE_DRIVE_FOLDER_ID}")
-            self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
-            return settings.GOOGLE_DRIVE_FOLDER_ID
+            try:
+                # Проверяем, существует ли папка
+                drive_service = google_service._get_drive_service(background=False)
+                drive_service.files().get(fileId=settings.GOOGLE_DRIVE_FOLDER_ID, fields='id').execute()
+                logger.info(f"✅ Используется папка из настроек: {settings.GOOGLE_DRIVE_FOLDER_ID}")
+                self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
+                return settings.GOOGLE_DRIVE_FOLDER_ID
+            except Exception as e:
+                logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена (возможно, была удалена): {e}")
+                logger.info("📁 Создаём новую папку вместо удалённой...")
+                # Очищаем кэш и продолжаем создание новой папки
+                self._bot_folder_id = None
         
         # Ищем существующую папку в новой корневой папке
         try:
@@ -263,18 +272,39 @@ class DriveStructureService:
     
     def get_bot_folder_id(self) -> str:
         """Получить ID главной папки бота"""
+        google_service = self._get_google_service()
+        
+        # Если есть кэшированный ID, убеждаемся, что папка существует (могла быть удалена вручную)
+        if self._bot_folder_id:
+            try:
+                drive_service = google_service._get_drive_service(background=False)
+                drive_service.files().get(fileId=self._bot_folder_id, fields='id').execute()
+            except Exception as e:
+                logger.warning(f"⚠️ Кэшированная папка бота {self._bot_folder_id} не найдена: {e}")
+                logger.info("📁 Создаём новую папку...")
+                self._bot_folder_id = None
+        
         if not self._bot_folder_id:
             if settings.GOOGLE_DRIVE_FOLDER_ID:
-                self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
-                return self._bot_folder_id
+                # Проверяем, существует ли папка
+                try:
+                    drive_service = google_service._get_drive_service(background=False)
+                    drive_service.files().get(fileId=settings.GOOGLE_DRIVE_FOLDER_ID, fields='id').execute()
+                    logger.info(f"✅ Используется папка из настроек: {settings.GOOGLE_DRIVE_FOLDER_ID}")
+                    self._bot_folder_id = settings.GOOGLE_DRIVE_FOLDER_ID
+                    return self._bot_folder_id
+                except Exception as e:
+                    logger.warning(f"⚠️ Папка {settings.GOOGLE_DRIVE_FOLDER_ID} не найдена (возможно, была удалена): {e}")
+                    logger.info("📁 Создаём новую папку...")
+                    # Очищаем кэш и продолжаем создание новой папки
+                    self._bot_folder_id = None
             
             # Инициализируем структуру, если ещё не инициализирована
             if not self._initialized:
                 self.initialize_structure()
             
-            # Если после инициализации папка всё ещё не задана, пробуем найти
+            # Если после инициализации папка всё ещё не задана, пробуем найти/создать
             if not self._bot_folder_id:
-                google_service = self._get_google_service()
                 self._bot_folder_id = self._get_or_create_bot_folder(google_service)
         
         return self._bot_folder_id
@@ -385,13 +415,14 @@ class DriveStructureService:
         )
     
     
-    def create_task_folder(self, task_id: str, task_name: str) -> Dict[str, str]:
+    def create_task_folder(self, task_id: str, task_name: str, task_description: str = None, task_data: dict = None) -> Dict[str, str]:
         """
-        Создать структуру папок для задачи
+        Создать структуру папок для задачи и файл задачи (Google Doc)
         
         Структура:
         - Tasks/
           - {task_id}_{task_name}/
+            - {task_name}.doc  (файл с описанием задачи)
             - materials/  (материалы задачи)
             - final/  (финальные работы)
             - drafts/  (черновики)
@@ -399,9 +430,11 @@ class DriveStructureService:
         Args:
             task_id: ID задачи
             task_name: Название задачи (для имени папки)
+            task_description: Описание задачи (для файла)
+            task_data: Полные данные задачи (dict) для создания детального описания
         
         Returns:
-            Словарь с ID папок
+            Словарь с ID папок и файла задачи
         """
         google_service = self._get_google_service()
         tasks_folder_id = self.get_tasks_folder_id()
@@ -415,6 +448,21 @@ class DriveStructureService:
             parent_folder_id=tasks_folder_id,
             background=False
         )
+        
+        # Создаём Google Doc файл с описанием задачи
+        task_doc_content = self._generate_task_doc_content(task_name, task_description, task_data)
+        task_doc_id = None
+        try:
+            task_doc = google_service.create_doc(
+                title=task_name,
+                content=task_doc_content,
+                folder_id=task_folder_id,
+                background=False
+            )
+            task_doc_id = task_doc.get("id")
+            logger.info(f"✅ Создан файл задачи '{task_name}' (ID: {task_doc_id})")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось создать файл задачи '{task_name}': {e}")
         
         # Создаём подпапки
         materials_folder_id = google_service.create_folder(
@@ -439,10 +487,65 @@ class DriveStructureService:
         
         return {
             "task_folder_id": task_folder_id,
+            "task_doc_id": task_doc_id,
             "materials_folder_id": materials_folder_id,
             "final_folder_id": final_folder_id,
             "drafts_folder_id": drafts_folder_id,
         }
+    
+    def _generate_task_doc_content(self, task_name: str, task_description: str = None, task_data: dict = None) -> str:
+        """
+        Генерировать содержимое Google Doc файла задачи
+        
+        Args:
+            task_name: Название задачи
+            task_description: Описание задачи
+            task_data: Полные данные задачи (для более детального описания)
+        
+        Returns:
+            HTML-содержимое документа
+        """
+        from app.config import settings
+        
+        content = f"""<h1>{task_name}</h1>
+        
+<h2>Описание задачи</h2>
+<p>{task_description or 'Описание отсутствует'}</p>
+"""
+        
+        if task_data:
+            content += f"""
+<h2>Детали задачи</h2>
+<ul>
+"""
+            if task_data.get('type'):
+                content += f"<li><strong>Тип:</strong> {task_data['type']}</li>\n"
+            if task_data.get('priority'):
+                content += f"<li><strong>Приоритет:</strong> {task_data['priority']}</li>\n"
+            if task_data.get('due_date'):
+                content += f"<li><strong>Дедлайн:</strong> {task_data['due_date']}</li>\n"
+            if task_data.get('status'):
+                content += f"<li><strong>Статус:</strong> {task_data['status']}</li>\n"
+            
+            content += "</ul>\n"
+        
+        content += f"""
+<h2>Ссылки</h2>
+<ul>
+    <li><a href="{settings.FRONTEND_URL}/tasks/{task_data.get('id', '') if task_data else ''}">Открыть карточку задачи в системе</a></li>
+</ul>
+
+<h2>Материалы</h2>
+<p>Материалы задачи находятся в подпапках:</p>
+<ul>
+    <li><strong>materials/</strong> - исходные материалы, референсы, брифы</li>
+    <li><strong>drafts/</strong> - черновики, промежуточные версии</li>
+    <li><strong>final/</strong> - финальные работы</li>
+</ul>
+
+<p><em>Создано автоматически системой BEST PR System</em></p>
+"""
+        return content
 
 
 # Singleton instance НЕ создаём при импорте - пусть создаётся лениво

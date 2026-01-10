@@ -247,32 +247,47 @@ class TaskService:
             from app.services.drive_structure import DriveStructureService
             import asyncio
             
-            # Создаём папки в фоне через executor (синхронная операция)
+            # Создаём папки и файл задачи в фоне через executor (синхронная операция)
             async def create_drive_folders_async():
                 try:
                     def create_folders_sync():
                         drive_structure = DriveStructureService()
+                        # Подготавливаем данные задачи для файла
+                        task_data_dict = {
+                            'id': str(task.id),
+                            'title': task.title,
+                            'description': task.description,
+                            'type': task.type.value if hasattr(task.type, 'value') else str(task.type),
+                            'priority': task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
+                            'status': task.status.value if hasattr(task.status, 'value') else str(task.status),
+                            'due_date': task.due_date.isoformat() if task.due_date else None,
+                        }
                         return drive_structure.create_task_folder(
                             task_id=str(task.id),
-                            task_name=task.title
+                            task_name=task.title,
+                            task_description=task.description,
+                            task_data=task_data_dict
                         )
                     
                     # Выполняем синхронную операцию в executor
                     loop = asyncio.get_event_loop()
                     folders = await loop.run_in_executor(None, create_folders_sync)
                     
-                    logger.info(f"✅ Создана структура папок Google Drive для задачи {task.id}: {folders}")
+                    logger.info(f"✅ Создана структура папок и файл задачи Google Drive для задачи {task.id}: {folders}")
                     
-                    # Сохраняем drive_folder_id в задачу
-                    if folders and folders.get('task_folder_id'):
-                        task.drive_folder_id = folders['task_folder_id']
+                    # Сохраняем drive_folder_id и drive_file_id в задачу
+                    if folders:
+                        if folders.get('task_folder_id'):
+                            task.drive_folder_id = folders['task_folder_id']
+                        # TODO: добавить поле drive_file_id в модель Task, если нужно
                         await db.commit()
                         await db.refresh(task)
-                        logger.info(f"✅ Сохранён drive_folder_id для задачи {task.id}: {folders['task_folder_id']}")
+                        logger.info(f"✅ Сохранён drive_folder_id для задачи {task.id}: {folders.get('task_folder_id')}")
                     
                     return folders
                 except Exception as e:
-                    logger.warning(f"⚠️ Не удалось создать папки Google Drive для задачи {task.id}: {e}")
+                    logger.warning(f"⚠️ Не удалось создать папки/файл Google Drive для задачи {task.id}: {e}")
+                    logger.exception("Полная трассировка ошибки:")
                     return None
             
             # Запускаем в фоне (не блокируем ответ)

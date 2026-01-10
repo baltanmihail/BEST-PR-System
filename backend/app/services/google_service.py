@@ -315,6 +315,35 @@ class GoogleService:
         except HttpError as e:
             logger.error(f"❌ Ошибка записи в Google Sheets: {e}")
             raise
+
+    def clear_sheet_range(self, range_name: str, spreadsheet_id: Optional[str] = None, background: bool = False):
+        """
+        Очистить диапазон в Google Sheets
+        
+        Args:
+            range_name: Диапазон ячеек для очистки (например, "Sheet1!A1:Z100")
+            spreadsheet_id: ID таблицы (если не указан, используется из настроек)
+            background: Если True, использовать фоновый клиент
+        """
+        spreadsheet_id = spreadsheet_id or settings.GOOGLE_SHEETS_ID
+        if not spreadsheet_id:
+            raise ValueError("Google Sheets ID not configured")
+        
+        service = self._get_sheets_service(background=background)
+        
+        try:
+            service.spreadsheets().values().clear(
+                spreadsheetId=spreadsheet_id,
+                range=range_name,
+                body={}
+            ).execute()
+            
+            # Инвалидируем кэш для этой таблицы
+            self.invalidate_cache(pattern=f"sheet:{spreadsheet_id}")
+            
+        except HttpError as e:
+            logger.error(f"❌ Ошибка очистки диапазона {range_name} в Google Sheets: {e}")
+            raise
     
     def append_to_sheet(self, range_name: str, values: List[List[Any]], 
                        sheet_id: Optional[str] = None, background: bool = False):
@@ -386,11 +415,11 @@ class GoogleService:
             
             # Передаём ownership владельцу папки (если указан), чтобы папка использовала квоту пользователя
             if settings.GOOGLE_DRIVE_OWNER_EMAIL:
-                try:
-                    self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
-                    logger.debug(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
-                except Exception as e:
-                    logger.debug(f"⚠️ Не удалось передать ownership папки '{name}': {e}")
+                ownership_transferred = self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
+                if ownership_transferred:
+                    logger.info(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                else:
+                    logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к папке '{name}' (ownership не передан)")
             
             # Инвалидируем кэш для родительской папки
             if parent_folder_id:
@@ -764,12 +793,11 @@ class GoogleService:
             
             # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя, а не сервисного аккаунта
             if settings.GOOGLE_DRIVE_OWNER_EMAIL:
-                try:
-                    self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
+                ownership_transferred = self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
+                if ownership_transferred:
                     logger.info(f"✅ Ownership таблицы '{title}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось передать ownership таблицы '{title}': {e}")
-                    # Продолжаем работу, даже если передача ownership не удалась
+                else:
+                    logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к таблице '{title}' (ownership не передан)")
             
             # Инвалидируем кэш для папки
             if folder_id:
@@ -793,13 +821,17 @@ class GoogleService:
         
         Это позволяет файлам использовать квоту пользователя, а не сервисного аккаунта
         
+        Примечание: Google Drive не позволяет передавать ownership между разными доменами.
+        В этом случае мы просто даём пользователю полный доступ (writer), что позволяет
+        использовать файлы, но они остаются в квоте сервисного аккаунта.
+        
         Args:
             file_id: ID файла или папки
             owner_email: Email пользователя, которому передаётся ownership
             drive_service: Экземпляр Drive API service
         
         Returns:
-            True если успешно передано
+            True если успешно передано ownership, False если только дали доступ
         """
         try:
             # Сначала даём пользователю доступ как редактору
@@ -813,21 +845,33 @@ class GoogleService:
                 fields='id'
             ).execute()
             
-            # Затем передаём ownership
-            drive_service.permissions().create(
-                fileId=file_id,
-                body={
-                    'type': 'user',
-                    'role': 'owner',
-                    'emailAddress': owner_email
-                },
-                transferOwnership=True,
-                fields='id'
-            ).execute()
-            
-            return True
+            # Затем пытаемся передать ownership
+            try:
+                drive_service.permissions().create(
+                    fileId=file_id,
+                    body={
+                        'type': 'user',
+                        'role': 'owner',
+                        'emailAddress': owner_email
+                    },
+                    transferOwnership=True,
+                    fields='id'
+                ).execute()
+                logger.info(f"✅ Ownership файла {file_id} передан пользователю {owner_email}")
+                return True
+            except HttpError as e:
+                # Если передача ownership невозможна (разные домены), просто даём доступ
+                if 'ownershipChangeAcrossDomainNotPermitted' in str(e):
+                    logger.info(f"ℹ️ Ownership не может быть передан между доменами. Пользователю {owner_email} предоставлен полный доступ (writer)")
+                    return False
+                else:
+                    raise
             
         except HttpError as e:
+            # Если передача ownership невозможна (разные домены), это нормально - уже обработано выше
+            if 'ownershipChangeAcrossDomainNotPermitted' in str(e):
+                logger.info(f"ℹ️ Ownership не может быть передан между доменами. Пользователю {owner_email} предоставлен полный доступ (writer)")
+                return False
             # Если файл уже принадлежит пользователю или нет прав - игнорируем
             if 'permissionDenied' in str(e) or 'notFound' in str(e):
                 logger.debug(f"Не удалось передать ownership файла {file_id}: {e}")

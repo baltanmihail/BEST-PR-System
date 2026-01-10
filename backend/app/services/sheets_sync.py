@@ -3,11 +3,12 @@
 Полная реализация с созданием таблицы, листов и заполнением данными
 """
 import logging
+import uuid
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
-from app.models.task import Task, TaskStage, TaskType
+from app.models.task import Task, TaskStage, TaskType, TaskStatus, TaskPriority
 from app.models.event import Event
 from app.models.equipment import EquipmentRequest
 from app.services.google_service import GoogleService
@@ -64,7 +65,8 @@ class SheetsSyncService:
         roles: List[str],
         db: AsyncSession,
         statuses: Optional[List[str]] = None,  # Фильтр по статусам задач
-        scale: str = "days"  # Масштаб: "days", "weeks", "months"
+        scale: str = "days",  # Масштаб: "days", "weeks", "months"
+        pull_from_sheets: bool = True  # Читать правки из Sheets -> система перед выгрузкой
     ) -> dict:
         """
         Асинхронная версия синхронизации календаря с Google Sheets
@@ -105,6 +107,16 @@ class SheetsSyncService:
                 logger.warning(f"Некорректные статусы в фильтре: {statuses}")
         tasks_result = await db.execute(tasks_query)
         tasks = tasks_result.scalars().all()
+        
+        # Если нужно, сначала применяем правки из Sheets -> систему
+        if pull_from_sheets:
+            try:
+                await self._pull_tasks_updates(db=db)
+                # После обновления перечитываем задачи
+                tasks_result = await db.execute(tasks_query)
+                tasks = tasks_result.scalars().all()
+            except Exception as e:
+                logger.warning(f"Не удалось применить правки из Sheets: {e}")
         
         # Загружаем этапы для всех задач одним запросом
         task_ids = [str(task.id) for task in tasks]
@@ -148,7 +160,7 @@ class SheetsSyncService:
         
         return await loop.run_in_executor(
             executor,
-            lambda: self._sync_to_sheets_sync(month, year, roles, tasks_list, first_day, last_day, statuses)
+            lambda: self._sync_to_sheets_sync(month, year, roles, tasks_list, first_day, last_day, statuses, scale)
         )
     
     def _sync_to_sheets_sync(
@@ -200,6 +212,12 @@ class SheetsSyncService:
                         role_tasks,
                         scale
                     )
+            
+            # Табличное представление задач (двусторонняя синхронизация)
+            try:
+                self._write_tasks_sheet(spreadsheet_id, tasks)
+            except Exception as e:
+                logger.warning(f"Не удалось обновить лист TasksData: {e}")
             
             logger.info(f"✅ Календарь синхронизирован с Google Sheets для {month}/{year}")
             
@@ -253,7 +271,21 @@ class SheetsSyncService:
         
         # Создаём новую таблицу
         logger.info("Создание новой Google Sheets таблицы 'BEST PR System - Таймлайны'")
-        bot_folder_id = self.drive_structure.get_bot_folder_id()
+        try:
+            bot_folder_id = self.drive_structure.get_bot_folder_id()
+        except Exception as e:
+            logger.error(f"❌ Не удалось получить ID папки бота: {e}")
+            logger.info("📁 Пытаемся инициализировать структуру папок...")
+            # Пытаемся инициализировать структуру папок
+            try:
+                structure = self.drive_structure.initialize_structure()
+                bot_folder_id = structure.get("bot_folder_id")
+                if not bot_folder_id:
+                    raise ValueError("Не удалось получить ID папки бота после инициализации")
+            except Exception as init_error:
+                logger.error(f"❌ Не удалось инициализировать структуру папок: {init_error}")
+                raise
+        
         sheets_doc = self.google_service.create_spreadsheet(
             "BEST PR System - Таймлайны",
             folder_id=bot_folder_id,
@@ -278,6 +310,167 @@ class SheetsSyncService:
         logger.info(f"💡 Сохраните GOOGLE_TIMELINE_SHEETS_ID={sheets_doc['id']} в переменные окружения")
         
         return sheets_doc
+    
+    def _ensure_tasks_sheet(self, spreadsheet_id: str) -> bool:
+        """Убедиться, что существует лист TasksData для двусторонней синхронизации"""
+        sheet_id = self._get_sheet_id(spreadsheet_id, "TasksData")
+        if sheet_id != 0:
+            return True
+        try:
+            self.google_service.create_sheet_tab(
+                spreadsheet_id,
+                "TasksData",
+                background=True
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Не удалось создать лист TasksData: {e}")
+            return False
+
+    def _write_tasks_sheet(self, spreadsheet_id: str, tasks: List[Task]) -> None:
+        """Записать актуальные данные задач в лист TasksData"""
+        if not self._ensure_tasks_sheet(spreadsheet_id):
+            return
+        
+        headers = ["task_id", "title", "status", "priority", "due_date", "updated_at"]
+        rows = []
+        for task in tasks:
+            due = task.due_date.isoformat() if task.due_date else ""
+            updated = task.updated_at.isoformat() if task.updated_at else ""
+            rows.append([
+                str(task.id),
+                task.title or "",
+                task.status.value if isinstance(task.status, TaskStatus) else str(task.status),
+                task.priority.value if isinstance(task.priority, TaskPriority) else str(task.priority),
+                due,
+                updated
+            ])
+        
+        # Очищаем предыдущие данные, чтобы не оставались "хвосты"
+        try:
+            self.google_service.clear_sheet_range(
+                "TasksData!A1:Z10000",
+                spreadsheet_id=spreadsheet_id,
+                background=True
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось очистить TasksData перед записью: {e}")
+        
+        self.google_service.write_sheet(
+            "TasksData!A1:F1",
+            [headers],
+            sheet_id=spreadsheet_id,  # write_sheet использует sheet_id как параметр
+            background=True
+        )
+        if rows:
+            self.google_service.write_sheet(
+                f"TasksData!A2:F{len(rows)+2}",
+                rows,
+                sheet_id=spreadsheet_id,  # write_sheet использует sheet_id как параметр
+                background=True
+            )
+
+    async def _pull_tasks_updates(self, db: AsyncSession) -> None:
+        """
+        Применить правки из листа TasksData -> задачи в системе.
+        Обновляем: статус, приоритет, дедлайн.
+        """
+        sheets_doc = self._get_or_create_timeline_sheets()
+        spreadsheet_id = sheets_doc["id"]
+        
+        if not self._ensure_tasks_sheet(spreadsheet_id):
+            return
+        
+        try:
+            data = self.google_service.read_sheet(
+                "TasksData!A2:F",
+                sheet_id=spreadsheet_id,  # read_sheet использует sheet_id как параметр
+                background=True
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось прочитать TasksData: {e}")
+            return
+        
+        if not data:
+            return
+        
+        task_ids = []
+        for row in data:
+            if not row or not row[0]:
+                continue
+            try:
+                task_ids.append(uuid.UUID(row[0].strip()))
+            except Exception:
+                continue
+        
+        if not task_ids:
+            return
+        
+        tasks_query = select(Task).where(Task.id.in_(task_ids))
+        tasks_result = await db.execute(tasks_query)
+        tasks = {t.id: t for t in tasks_result.scalars().all()}
+        
+        changes = 0
+        for row in data:
+            if not row or not row[0]:
+                continue
+            try:
+                task_id = uuid.UUID(row[0].strip())
+            except Exception:
+                continue
+            
+            task = tasks.get(task_id)
+            if not task:
+                continue
+            
+            status_str = row[2].strip() if len(row) > 2 and row[2] else ""
+            priority_str = row[3].strip() if len(row) > 3 and row[3] else ""
+            due_str = row[4].strip() if len(row) > 4 and row[4] else ""
+            
+            updated = False
+            
+            if status_str:
+                try:
+                    new_status = TaskStatus(status_str)
+                    if task.status != new_status:
+                        task.status = new_status
+                        updated = True
+                except Exception:
+                    pass
+            
+            if priority_str:
+                try:
+                    new_priority = TaskPriority(priority_str)
+                    if task.priority != new_priority:
+                        task.priority = new_priority
+                        updated = True
+                except Exception:
+                    pass
+            
+            if due_str:
+                try:
+                    # Парсим ISO формат даты/времени с timezone
+                    if 'T' in due_str or '+' in due_str or due_str.endswith('Z'):
+                        new_due = datetime.fromisoformat(due_str.replace('Z', '+00:00'))
+                    else:
+                        # Если только дата без времени, добавляем время начала дня
+                        new_due = datetime.fromisoformat(due_str)
+                        if new_due.tzinfo is None:
+                            from datetime import timezone
+                            new_due = new_due.replace(tzinfo=timezone.utc)
+                    if task.due_date is None or task.due_date != new_due:
+                        task.due_date = new_due
+                        updated = True
+                except Exception as e:
+                    logger.debug(f"Не удалось распарсить дату '{due_str}' для задачи {task_id}: {e}")
+                    pass
+            
+            if updated:
+                changes += 1
+        
+        if changes:
+            await db.commit()
+            logger.info(f"✅ Применено правок из TasksData: {changes}")
     
     def _sync_general_calendar(
         self,
@@ -311,6 +504,7 @@ class SheetsSyncService:
         # Формируем заголовки
         period_label = {"days": "Дата", "weeks": "Неделя", "months": "Месяц"}.get(scale, "Период")
         headers = [period_label]
+        # Добавляем скрытый технический столбец с ID задачи для двусторонней синхронизации (рядом с заголовком)
         task_columns = {}  # {task_id: column_index}
         col_idx = 1
         
@@ -349,8 +543,10 @@ class SheetsSyncService:
                     cell_parts.append(f"🆕 Создана {created_date.strftime('%d.%m')}")
                 
                 # Объединяем все части через перенос строки для читаемости
-                cell_value = "\n".join(cell_parts) if cell_parts else ""
-                row.append(cell_value)
+                cell_text = "\n".join(cell_parts) if cell_parts else ""
+                # Сохраняем информацию о задаче для последующего добавления гиперссылки
+                # Временно записываем просто текст, гиперссылка добавится в _format_sheet
+                row.append(cell_text)
             
             rows.append(row)
         
@@ -621,13 +817,56 @@ class SheetsSyncService:
                 period_start, period_end, _ = period_info
                 row_idx = period_idx + 1  # +1 потому что первая строка - заголовок
                 
+                # Проверяем, есть ли данные задачи в этом периоде
+                has_task_data = False
+                cell_text = ""
+                cell_color = task_color  # Цвет по умолчанию
+                
                 # Проверяем дедлайн задачи (попадает в период)
                 if task.due_date:
                     task_date = task.due_date.date()
                     if period_start <= task_date <= period_end:
+                        has_task_data = True
+                        cell_text += f"📅 Дедлайн {task_date.strftime('%d.%m')}\n"
                         # Красный цвет для просроченных дедлайнов
-                        deadline_color = OVERDUE_COLOR if task_date < current_date else task_color
-                        requests.append({
+                        cell_color = OVERDUE_COLOR if task_date < current_date else task_color
+                        
+                # Проверяем этапы задачи
+                if hasattr(task, '_stages_cache') and task._stages_cache:
+                    for stage in task._stages_cache:
+                        if stage.due_date:
+                            stage_date = stage.due_date.date()
+                            if period_start <= stage_date <= period_end:
+                                has_task_data = True
+                                status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
+                                color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
+                                cell_text += f"{color_emoji} {status_icon} {stage.stage_name} ({stage_date.strftime('%d.%m')})\n"
+                                # Цвет этапа из status_color
+                                stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
+                                
+                                # Если этап просрочен и не завершён - красный
+                                if stage_date < current_date and stage.status.value != "completed":
+                                    stage_color = OVERDUE_COLOR
+                                
+                                cell_color = stage_color
+                                break  # Один этап на день
+                
+                # Если задача создана в этот период
+                if task.created_at:
+                    created_date = task.created_at.date()
+                    if period_start <= created_date <= period_end:
+                        has_task_data = True
+                        cell_text += f"🆕 Создана {created_date.strftime('%d.%m')}\n"
+                
+                # Если есть данные задачи, обновляем ячейку с гиперссылкой и форматированием
+                if has_task_data:
+                    cell_text = cell_text.strip()
+                    task_url = f"{settings.FRONTEND_URL}/tasks/{task.id}"
+                    # Экранируем кавычки в тексте для формулы
+                    cell_text_escaped = cell_text.replace('"', '""')[:100]  # Ограничиваем длину и экранируем
+                    hyperlink_formula = f'=HYPERLINK("{task_url}"; "{cell_text_escaped}")'
+                    
+                    requests.append({
                         "updateCells": {
                             "range": {
                                 "sheetId": sheet_id,
@@ -638,8 +877,11 @@ class SheetsSyncService:
                             },
                             "rows": [{
                                 "values": [{
+                                    "userEnteredValue": {
+                                        "formulaValue": hyperlink_formula
+                                    },
                                     "userEnteredFormat": {
-                                        "backgroundColor": deadline_color,
+                                        "backgroundColor": cell_color,
                                         "textFormat": {
                                             "bold": True,
                                             "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}
@@ -647,47 +889,9 @@ class SheetsSyncService:
                                     }
                                 }]
                             }],
-                            "fields": "userEnteredFormat"
+                            "fields": "userEnteredValue,userEnteredFormat"
                         }
                     })
-                
-                # Форматируем ячейки с этапами
-                if hasattr(task, '_stages_cache') and task._stages_cache:
-                    for stage in task._stages_cache:
-                        if stage.due_date:
-                            stage_date = stage.due_date.date()
-                            if period_start <= stage_date <= period_end:
-                                # Цвет этапа из status_color
-                                stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
-                                
-                                # Если этап просрочен и не завершён - красный
-                                if stage_date < current_date and stage.status.value != "completed":
-                                    stage_color = OVERDUE_COLOR
-                                
-                                requests.append({
-                                    "updateCells": {
-                                    "range": {
-                                        "sheetId": sheet_id,
-                                        "startRowIndex": row_idx,
-                                        "endRowIndex": row_idx + 1,
-                                        "startColumnIndex": col_idx,
-                                        "endColumnIndex": col_idx + 1
-                                    },
-                                    "rows": [{
-                                        "values": [{
-                                            "userEnteredFormat": {
-                                                "backgroundColor": stage_color,
-                                                "textFormat": {
-                                                    "bold": stage.status.value == "completed",
-                                                    "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}
-                                                }
-                                            }
-                                        }]
-                                    }],
-                                    "fields": "userEnteredFormat"
-                                }
-                            })
-                            break  # Один этап на день
         
         # Выполняем batch update (разбиваем на батчи по 50 запросов для избежания ошибок)
         batch_size = 50
