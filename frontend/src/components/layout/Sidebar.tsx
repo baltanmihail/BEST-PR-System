@@ -118,14 +118,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Link
                 key={item.name}
                 to={item.href}
-                onClick={(e) => {
+                onClick={() => {
                   // Закрываем меню при клике на мобильных
                   const isMobileDevice = window.innerWidth < 768 || 'ontouchstart' in window
                   if (isMobileDevice && onClose) {
                     onClose()
                   }
                 }}
-                onTouchStart={(e) => {
+                onTouchStart={() => {
                   // Для мобильных устройств обрабатываем touch
                   const isMobileDevice = window.innerWidth < 768 || 'ontouchstart' in window
                   if (isMobileDevice && onClose) {
