@@ -193,10 +193,17 @@ async def register(
     
     # Общая логика для обоих случаев (QR и обычная регистрация)
     
-    # ВАЖНО: Проверяем, является ли пользователь VP4PR (из TELEGRAM_ADMIN_IDS)
-    # Если да - создаём пользователя сразу активным с ролью VP4PR без модерации
-    is_vp4pr = telegram_id in (settings.TELEGRAM_ADMIN_IDS or [])
-    logger.info(f"User telegram_id {telegram_id} is VP4PR: {is_vp4pr}")
+    # ВАЖНО: Проверяем, является ли пользователь VP4PR (первый ID из TELEGRAM_ADMIN_IDS)
+    # Только VP4PR регистрируется сразу активным без модерации
+    # Остальные координаторы (в TELEGRAM_ADMIN_IDS) проходят модерацию как обычно
+    admin_ids = settings.TELEGRAM_ADMIN_IDS or []
+    is_vp4pr = False
+    if admin_ids and len(admin_ids) > 0:
+        # Первый ID в списке - это VP4PR
+        vp4pr_id = admin_ids[0] if isinstance(admin_ids, list) else admin_ids
+        is_vp4pr = telegram_id == vp4pr_id
+    
+    logger.info(f"User telegram_id {telegram_id} is VP4PR: {is_vp4pr}, admin_ids: {admin_ids}")
     
     # Проверяем, не зарегистрирован ли уже пользователь
     result = await db.execute(
