@@ -224,11 +224,23 @@ async def create_system_templates(db: AsyncSession):
     vp4pr = vp4pr_result.scalar_one_or_none()
     
     if not vp4pr:
-        logger.warning("⚠️ VP4PR не найден, создаём шаблоны с системным пользователем")
-        # Создаём системного пользователя для шаблонов
-        system_user_id = uuid4()
+        # Если VP4PR не найден, ищем любого активного пользователя
+        logger.warning("⚠️ VP4PR не найден, ищем любого активного пользователя...")
+        any_user_query = select(User).where(User.is_active == True).limit(1)
+        any_user_result = await db.execute(any_user_query)
+        any_user = any_user_result.scalar_one_or_none()
+        
+        if not any_user:
+            logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА: В базе данных нет ни одного активного пользователя!")
+            logger.error("💡 Создайте хотя бы одного пользователя перед созданием системных шаблонов.")
+            logger.error("💡 Запустите скрипт: python scripts/create_coordinators.py")
+            raise ValueError("Не найден ни один активный пользователь для создания системных шаблонов. Запустите create_coordinators.py сначала.")
+        
+        system_user_id = any_user.id
+        logger.info(f"✅ Используем пользователя {any_user.full_name} (ID: {system_user_id}) для создания системных шаблонов")
     else:
         system_user_id = vp4pr.id
+        logger.info(f"✅ Найден VP4PR: {vp4pr.full_name} (ID: {system_user_id})")
     
     created_count = 0
     skipped_count = 0

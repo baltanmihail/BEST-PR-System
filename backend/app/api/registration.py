@@ -23,7 +23,7 @@ router = APIRouter(prefix="/registration", tags=["registration"])
 
 class RegistrationRequest(BaseModel):
     """Запрос на регистрацию"""
-    telegram_auth: TelegramAuthData
+    telegram_auth: Optional[TelegramAuthData] = None  # Опционально для QR-регистрации
     personal_data_consent: PersonalDataConsent
     user_agreement: UserAgreementAccept
     qr_token: Optional[str] = None  # Опциональный токен QR-сессии для упрощённой регистрации
@@ -52,22 +52,26 @@ async def register(
     
     Доступно всем (публичный endpoint)
     """
+    # Логируем для отладки
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Registration attempt - qr_token: {registration.qr_token is not None}, telegram_auth: {registration.telegram_auth is not None}")
+    
     # Проверяем согласие
     if not registration.personal_data_consent.consent:
+        logger.warning("Registration failed: personal_data_consent is False")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Согласие на обработку персональных данных обязательно"
         )
     
     if not registration.user_agreement.accepted:
+        logger.warning("Registration failed: user_agreement not accepted")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Необходимо принять пользовательское соглашение"
         )
-    
-    # Логируем для отладки
-    import logging
-    logger = logging.getLogger(__name__)
     
     # Если есть qr_token, используем данные из QR-сессии (упрощённая регистрация)
     if registration.qr_token:
@@ -78,44 +82,66 @@ async def register(
         qr_session = result.scalar_one_or_none()
         
         if not qr_session:
+            logger.warning(f"QR session not found for token: {registration.qr_token[:8]}...")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="QR session not found"
             )
         
         if qr_session.status != "confirmed":
+            logger.warning(f"QR session not confirmed. Status: {qr_session.status}, token: {registration.qr_token[:8]}...")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="QR session not confirmed. Please confirm QR code in Telegram bot first."
             )
         
         if not qr_session.telegram_id:
+            logger.error(f"QR session does not have telegram_id. Session ID: {qr_session.id}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="QR session does not have telegram_id"
             )
         
         # Используем telegram_id из QR-сессии
-        # Данные пользователя берём из telegram_auth (они должны быть переданы с фронтенда)
         telegram_id = qr_session.telegram_id
         
-        # Проверяем, что telegram_id в auth_data совпадает с telegram_id в QR-сессии
-        auth_data = registration.telegram_auth.model_dump()
-        if auth_data.get("id") != telegram_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Telegram ID mismatch between QR session and auth data"
-            )
+        # Для QR-регистрации telegram_auth опционален
+        # Если передан - используем данные из него (WebApp может передать)
+        # Если не передан - используем данные из QR-сессии или минимальные данные
+        if registration.telegram_auth:
+            auth_data = registration.telegram_auth.model_dump()
+            # Проверяем, что telegram_id совпадает (если передан)
+            if auth_data.get("id") and auth_data.get("id") != telegram_id:
+                logger.warning(f"Telegram ID mismatch: QR session has {telegram_id}, auth_data has {auth_data.get('id')}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Telegram ID mismatch between QR session and auth data"
+                )
+            # Используем данные из auth_data, если доступны
+            first_name = auth_data.get("first_name", "")
+            last_name = auth_data.get("last_name", "")
+            username = auth_data.get("username")
+        else:
+            # Если telegram_auth не передан, используем минимальные данные
+            # Полное имя будет обновлено при первом входе через бота
+            first_name = "Пользователь"
+            last_name = ""
+            username = None
+            logger.info(f"QR registration without telegram_auth - using minimal data")
         
-        # Для QR-регистрации не проверяем hash (пользователь уже подтвердил через бота)
-        first_name = auth_data.get("first_name", "")
-        last_name = auth_data.get("last_name", "")
-        username = auth_data.get("username")
-        full_name = f"{first_name} {last_name}".strip() or first_name
+        full_name = f"{first_name} {last_name}".strip() or first_name or "Пользователь"
         
         logger.info(f"Registration via QR token for telegram_id: {telegram_id} (simplified - no hash check)")
     else:
         # Обычная регистрация через Telegram WebApp
+        # Для обычной регистрации telegram_auth обязателен
+        if not registration.telegram_auth:
+            logger.error("Regular registration attempted without telegram_auth")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="telegram_auth is required for registration without QR token"
+            )
+        
         auth_data = registration.telegram_auth.model_dump()
         
         logger.info(f"Registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
@@ -129,6 +155,13 @@ async def register(
             )
         
         telegram_id = auth_data.get("id")
+        if not telegram_id:
+            logger.error("telegram_auth provided but id is missing")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="telegram_auth.id is required"
+            )
+        
         first_name = auth_data.get("first_name", "")
         last_name = auth_data.get("last_name", "")
         username = auth_data.get("username")
@@ -144,6 +177,7 @@ async def register(
     existing_user = result.scalar_one_or_none()
     
     if existing_user:
+        logger.warning(f"Registration failed: User with telegram_id {telegram_id} already exists (user_id: {existing_user.id})")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already registered"
