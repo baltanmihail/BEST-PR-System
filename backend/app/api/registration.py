@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.database import get_db
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.auth import TelegramAuthData, PersonalDataConsent, UserAgreementAccept
 from app.utils.auth import create_access_token, verify_telegram_auth
 from app.utils.permissions import OptionalUser
@@ -193,6 +193,11 @@ async def register(
     
     # Общая логика для обоих случаев (QR и обычная регистрация)
     
+    # ВАЖНО: Проверяем, является ли пользователь VP4PR (из TELEGRAM_ADMIN_IDS)
+    # Если да - создаём пользователя сразу активным с ролью VP4PR без модерации
+    is_vp4pr = telegram_id in (settings.TELEGRAM_ADMIN_IDS or [])
+    logger.info(f"User telegram_id {telegram_id} is VP4PR: {is_vp4pr}")
+    
     # Проверяем, не зарегистрирован ли уже пользователь
     result = await db.execute(
         select(User).where(User.telegram_id == telegram_id)
@@ -214,7 +219,8 @@ async def register(
             )
         
         # Пользователь существует, но не активен - обновляем данные и создаём новую заявку на модерацию
-        logger.info(f"User with telegram_id {telegram_id} exists but is inactive - updating data and creating new moderation request (user_id: {existing_user.id})")
+        # ВАЖНО: Если пользователь VP4PR - активируем его сразу без модерации
+        logger.info(f"User with telegram_id {telegram_id} exists but is inactive - updating data (user_id: {existing_user.id}, is_vp4pr: {is_vp4pr})")
         
         # Обновляем данные пользователя
         existing_user.username = username
@@ -225,25 +231,75 @@ async def register(
         existing_user.agreement_version = registration.user_agreement.version or "1.0"
         existing_user.agreement_accepted_at = now
         
+        # Если пользователь VP4PR - активируем его сразу и устанавливаем роль
+        if is_vp4pr:
+            existing_user.is_active = True
+            existing_user.role = UserRole.VP4PR
+            logger.info(f"User {telegram_id} is VP4PR - activating immediately and setting role to VP4PR")
+        
         user = existing_user
         await db.commit()
         await db.refresh(user)
         
-        # Проверяем, есть ли уже активная заявка на модерацию
-        from app.services.moderation_service import ModerationService
-        from app.models.moderation import ModerationQueue, ModerationStatus
-        
-        existing_application_result = await db.execute(
-            select(ModerationQueue).where(
-                ModerationQueue.user_id == user.id,
-                ModerationQueue.status == ModerationStatus.PENDING,
-                ModerationQueue.task_id.is_(None)  # Заявка на регистрацию (не на задачу)
+        # Создаём заявку на модерацию ТОЛЬКО если пользователь НЕ VP4PR
+        if not is_vp4pr:
+            # Проверяем, есть ли уже активная заявка на модерацию
+            from app.services.moderation_service import ModerationService
+            from app.models.moderation import ModerationQueue, ModerationStatus
+            
+            existing_application_result = await db.execute(
+                select(ModerationQueue).where(
+                    ModerationQueue.user_id == user.id,
+                    ModerationQueue.status == ModerationStatus.PENDING,
+                    ModerationQueue.task_id.is_(None)  # Заявка на регистрацию (не на задачу)
+                )
             )
+            existing_application = existing_application_result.scalar_one_or_none()
+            
+            if not existing_application:
+                # Создаём новую заявку на модерацию только если нет активной заявки
+                application = await ModerationService.create_user_application(
+                    db=db,
+                    user_id=user.id,
+                    application_data={
+                        "telegram_id": telegram_id,
+                        "username": username,
+                        "full_name": full_name,
+                        "source": "qr_registration" if registration.qr_token else "registration",
+                        "consent_date": now.isoformat(),
+                        "agreement_version": registration.user_agreement.version or "1.0"
+                    }
+                )
+            else:
+                logger.info(f"Active moderation application already exists for user {user.id}, skipping creation")
+                application = existing_application
+        else:
+            logger.info(f"User {telegram_id} is VP4PR - skipping moderation request")
+            existing_application = None
+            application = None  # Нет заявки на модерацию для VP4PR
+    else:
+        # Создаём нового пользователя
+        # ВАЖНО: Если пользователь VP4PR (в TELEGRAM_ADMIN_IDS), создаём его сразу активным с ролью VP4PR без модерации
+        user = User(
+            telegram_id=telegram_id,
+            username=username,
+            full_name=full_name,
+            is_active=is_vp4pr,  # VP4PR сразу активен, остальные требуют модерации
+            role=UserRole.VP4PR if is_vp4pr else UserRole.NOVICE,  # VP4PR получает роль сразу, остальные - novice
+            personal_data_consent=True,
+            consent_date=now,
+            user_agreement_accepted=True,
+            agreement_version=registration.user_agreement.version or "1.0",
+            agreement_accepted_at=now
         )
-        existing_application = existing_application_result.scalar_one_or_none()
         
-        if not existing_application:
-            # Создаём новую заявку на модерацию только если нет активной заявки
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        
+        # Создаём заявку на модерацию ТОЛЬКО если пользователь НЕ VP4PR
+        if not is_vp4pr:
+            from app.services.moderation_service import ModerationService
             application = await ModerationService.create_user_application(
                 db=db,
                 user_id=user.id,
@@ -257,43 +313,13 @@ async def register(
                 }
             )
         else:
-            logger.info(f"Active moderation application already exists for user {user.id}, skipping creation")
-    else:
-        # Создаём нового пользователя
-        user = User(
-            telegram_id=telegram_id,
-            username=username,
-            full_name=full_name,
-            is_active=False,  # Требует модерации
-            personal_data_consent=True,
-            consent_date=now,
-            user_agreement_accepted=True,
-            agreement_version=registration.user_agreement.version or "1.0",
-            agreement_accepted_at=now
-        )
-        
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-        # Создаём заявку на модерацию
-        from app.services.moderation_service import ModerationService
-        application = await ModerationService.create_user_application(
-            db=db,
-            user_id=user.id,
-            application_data={
-                "telegram_id": telegram_id,
-                "username": username,
-                "full_name": full_name,
-                "source": "qr_registration" if registration.qr_token else "registration",
-                "consent_date": now.isoformat(),
-                "agreement_version": registration.user_agreement.version or "1.0"
-            }
-        )
+            logger.info(f"User {telegram_id} is VP4PR - skipping moderation request, user is immediately active")
+            application = None  # Нет заявки на модерацию для VP4PR
     
-    # Уведомляем админов о новой заявке (только если создали новую заявку на модерацию)
+    # Уведомляем админов о новой заявке (только если создали новую заявку на модерацию и пользователь НЕ VP4PR)
     # Если заявка уже существует - не отправляем повторное уведомление
-    if not existing_user or (existing_user and not existing_application):
+    # VP4PR не требуют модерации, поэтому уведомления не отправляем
+    if not is_vp4pr and (not existing_user or (existing_user and not existing_application)):
         from app.services.notification_service import NotificationService
         try:
             await NotificationService.notify_moderation_request(
@@ -305,9 +331,17 @@ async def register(
         except Exception as e:
             import logging
             logging.error(f"Failed to send moderation request notification: {e}")
+    elif is_vp4pr:
+        logger.info(f"User {telegram_id} is VP4PR - skipping moderation notification")
     
-    # Создаём JWT токен (пользователь может пользоваться системой, но не может брать задачи до модерации)
+    # Создаём JWT токен (пользователь может пользоваться системой, но не может брать задачи до модерации, если не VP4PR)
     access_token = create_access_token(data={"sub": str(user.id), "telegram_id": telegram_id})
+    
+    # Формируем сообщение в зависимости от статуса пользователя
+    if is_vp4pr:
+        success_message = "Регистрация успешна! Вы зарегистрированы как VP4PR и имеете полный доступ к системе."
+    else:
+        success_message = "Регистрация успешна! Ваша заявка отправлена на модерацию. Вы можете просматривать задачи, но не сможете брать их до одобрения."
     
     return {
         "access_token": access_token,
@@ -320,7 +354,7 @@ async def register(
             "is_active": user.is_active,
             "role": user.role.value
         },
-        "message": "Регистрация успешна! Ваша заявка отправлена на модерацию. Вы можете просматривать задачи, но не сможете брать их до одобрения."
+        "message": success_message
     }
 
 
