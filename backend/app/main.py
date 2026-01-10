@@ -110,7 +110,8 @@ async def startup_event():
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Database URL: {settings.DATABASE_URL[:20]}..." if len(settings.DATABASE_URL) > 20 else f"Database URL: {settings.DATABASE_URL}")
     
-    # Инициализация структуры Google Drive (только в production, если credentials доступны)
+    # Инициализация структуры Google Drive (в production, если credentials доступны)
+    # ВНИМАНИЕ: Если нет доступа к Shared Drive, система автоматически создаст папку в корне Google Drive сервисного аккаунта
     if settings.ENVIRONMENT == "production":
         try:
             # Lazy import - не создаём GoogleService при импорте

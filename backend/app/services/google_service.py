@@ -396,7 +396,6 @@ class GoogleService:
         """
         parent_folder_id = parent_folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
         
-        service = self._get_drive_service(background=background)
         file_metadata = {
             'name': name,
             'mimeType': 'application/vnd.google-apps.folder'
@@ -405,36 +404,57 @@ class GoogleService:
         if parent_folder_id:
             file_metadata['parents'] = [parent_folder_id]
         
-        try:
-            # Поддержка Shared Drive (Team Drive)
-            create_params = {
-                'body': file_metadata,
-                'fields': 'id, name, parents',
-                'supportsAllDrives': True,  # Обязательно для Shared Drive
-            }
-            
-            folder = service.files().create(**create_params).execute()
-            
-            folder_id = folder.get('id')
-            
-            # Передаём ownership владельцу папки (если указан), чтобы папка использовала квоту пользователя
-            if settings.GOOGLE_DRIVE_OWNER_EMAIL:
-                ownership_transferred = self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
-                if ownership_transferred:
-                    logger.info(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+        # Пробуем создать папку, при ошибке квоты - пробуем следующий credential
+        # Примечание: папки почти не занимают места, но для консистентности тоже добавляем ротацию
+        last_error = None
+        initial_client_index = self._background_client_index if background else self._user_client_index
+        
+        for attempt in range(len(self._clients)):
+            try:
+                service = self._get_drive_service(background=background)
+                create_params = {
+                    'body': file_metadata,
+                    'fields': 'id, name, parents',
+                    'supportsAllDrives': True,  # Обязательно для Shared Drive
+                }
+                
+                folder = service.files().create(**create_params).execute()
+                folder_id = folder.get('id')
+                
+                # Передаём ownership владельцу папки (если указан), чтобы папка использовала квоту пользователя
+                if settings.GOOGLE_DRIVE_OWNER_EMAIL:
+                    ownership_transferred = self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
+                    if ownership_transferred:
+                        logger.info(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                    else:
+                        logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к папке '{name}' (ownership не передан)")
+                
+                # Инвалидируем кэш для родительской папки
+                if parent_folder_id:
+                    self.invalidate_cache(pattern=f"folder_list:{parent_folder_id}")
+                
+                logger.info(f"✅ Создана папка '{name}' (ID: {folder_id})")
+                return folder_id
+                
+            except HttpError as e:
+                error_str = str(e)
+                last_error = e
+                if 'storageQuotaExceeded' in error_str and attempt < len(self._clients) - 1:
+                    logger.warning(f"⚠️ Квота превышена для credential #{attempt + 1} при создании папки '{name}'. Пробуем следующий credential...")
+                    # Переключаемся на следующий credential для следующей попытки
+                    if background:
+                        self._background_client_index = (self._background_client_index + 1) % len(self._clients)
+                    else:
+                        self._user_client_index = (self._user_client_index + 1) % len(self._clients)
+                    continue
                 else:
-                    logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к папке '{name}' (ownership не передан)")
-            
-            # Инвалидируем кэш для родительской папки
-            if parent_folder_id:
-                self.invalidate_cache(pattern=f"folder_list:{parent_folder_id}")
-            
-            logger.info(f"✅ Создана папка '{name}' (ID: {folder_id})")
-            return folder_id
-            
-        except HttpError as e:
-            logger.error(f"❌ Ошибка создания папки '{name}': {e}")
-            raise
+                    logger.error(f"❌ Ошибка создания папки '{name}': {e}")
+                    raise
+        
+        # Если все попытки исчерпаны
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"Не удалось создать папку '{name}' после {len(self._clients)} попыток")
     
     def get_folder_by_name(self, name: str, parent_folder_id: Optional[str] = None,
                           background: bool = False) -> Optional[str]:
@@ -775,54 +795,79 @@ class GoogleService:
         
         Returns:
             Словарь с информацией о созданной таблице: {"id": "...", "url": "..."}
+        
+        Note:
+            Таблицы занимают место в Google Drive. При ошибке storageQuotaExceeded
+            автоматически пробуем следующий credential из списка.
         """
         folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
         
-        sheets_service = self._get_sheets_service(background=background)
-        drive_service = self._get_drive_service(background=background)
+        file_metadata = {
+            'name': title,
+            'mimeType': 'application/vnd.google-apps.spreadsheet'
+        }
         
-        try:
-            # Создаём таблицу через Drive API (так можно сразу указать папку)
-            file_metadata = {
-                'name': title,
-                'mimeType': 'application/vnd.google-apps.spreadsheet'
-            }
-            
-            if folder_id:
-                file_metadata['parents'] = [folder_id]
-            
-            spreadsheet = drive_service.files().create(
-                body=file_metadata,
-                fields='id, name, webViewLink',
-                supportsAllDrives=True  # Поддержка Shared Drive
-            ).execute()
-            
-            spreadsheet_id = spreadsheet.get('id')
-            spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
-            
-            # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя, а не сервисного аккаунта
-            if settings.GOOGLE_DRIVE_OWNER_EMAIL:
-                ownership_transferred = self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
-                if ownership_transferred:
-                    logger.info(f"✅ Ownership таблицы '{title}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+        if folder_id:
+            file_metadata['parents'] = [folder_id]
+        
+        # Пробуем создать таблицу, при ошибке квоты - пробуем следующий credential
+        last_error = None
+        for attempt in range(len(self._clients)):
+            try:
+                drive_service = self._get_drive_service(background=background)
+                
+                spreadsheet = drive_service.files().create(
+                    body=file_metadata,
+                    fields='id, name, webViewLink',
+                    supportsAllDrives=True  # Поддержка Shared Drive
+                ).execute()
+                
+                spreadsheet_id = spreadsheet.get('id')
+                spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
+                
+                # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя, а не сервисного аккаунта
+                if settings.GOOGLE_DRIVE_OWNER_EMAIL:
+                    ownership_transferred = self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
+                    if ownership_transferred:
+                        logger.info(f"✅ Ownership таблицы '{title}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
+                    else:
+                        logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к таблице '{title}' (ownership не передан)")
+                
+                # Инвалидируем кэш для папки
+                if folder_id:
+                    self.invalidate_cache(pattern=f"file_list:{folder_id}")
+                
+                logger.info(f"✅ Создана Google Sheets таблица '{title}' (ID: {spreadsheet_id}) с credential #{attempt + 1}")
+                
+                return {
+                    "id": spreadsheet_id,
+                    "url": spreadsheet_url,
+                    "name": title
+                }
+                
+            except HttpError as e:
+                error_str = str(e)
+                last_error = e
+                if 'storageQuotaExceeded' in error_str and attempt < len(self._clients) - 1:
+                    logger.warning(f"⚠️ Квота превышена для credential #{attempt + 1} при создании таблицы '{title}'. Пробуем следующий credential...")
+                    # Переключаемся на следующий credential для следующей попытки
+                    if background:
+                        self._background_client_index = (self._background_client_index + 1) % len(self._clients)
+                    else:
+                        self._user_client_index = (self._user_client_index + 1) % len(self._clients)
+                    continue
+                elif 'storageQuotaExceeded' in error_str:
+                    logger.error(f"❌ Квота превышена для ВСЕХ credentials при создании таблицы '{title}'")
+                    logger.error(f"💡 Все сервисные аккаунты переполнены. Освободите место или добавьте новые credentials.")
+                    raise
                 else:
-                    logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к таблице '{title}' (ownership не передан)")
-            
-            # Инвалидируем кэш для папки
-            if folder_id:
-                self.invalidate_cache(pattern=f"file_list:{folder_id}")
-            
-            logger.info(f"✅ Создана Google Sheets таблица '{title}' (ID: {spreadsheet_id})")
-            
-            return {
-                "id": spreadsheet_id,
-                "url": spreadsheet_url,
-                "name": title
-            }
-            
-        except HttpError as e:
-            logger.error(f"❌ Ошибка создания Google Sheets таблицы '{title}': {e}")
-            raise
+                    logger.error(f"❌ Ошибка создания Google Sheets таблицы '{title}': {e}")
+                    raise
+        
+        # Если все попытки исчерпаны
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"Не удалось создать таблицу '{title}' после {len(self._clients)} попыток")
     
     def _transfer_file_ownership(self, file_id: str, owner_email: str, drive_service) -> bool:
         """

@@ -65,12 +65,25 @@ class ModerationQueue(Base):
     
     @validates('status')
     def validate_status(self, key, value):
-        """Валидация и конвертация статуса"""
+        """Валидация статуса перед сохранением.
+        
+        ВАЖНО: возвращаем ModerationStatus (enum), чтобы сравнения в коде работали:
+        `queue.status == ModerationStatus.APPROVED` и т.п.
+        Конвертацию в строку делает ModerationStatusType.process_bind_param().
+        """
         if value is None:
             return None
         if isinstance(value, ModerationStatus):
-            return value.value
-        return str(value) if value else None
+            # Возвращаем enum, а не строку - для консистентности с Task.validate_status
+            return value
+        if isinstance(value, str):
+            # Если передана строка, конвертируем в enum
+            try:
+                return ModerationStatus(value)
+            except ValueError:
+                # Если значение не найдено в enum, возвращаем PENDING по умолчанию
+                return ModerationStatus.PENDING
+        return value
     
     decision_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     decision_at = Column(DateTime(timezone=True), nullable=True)

@@ -259,15 +259,38 @@ async def create_system_templates(db: AsyncSession):
             continue
         
         # Создаём шаблон
-        # SQLAlchemy Enum колонки автоматически конвертируют enum объекты в их значения при сохранении
-        # Убеждаемся, что передаём именно enum объекты (TaskType.SMM, TaskPriority.MEDIUM и т.д.)
+        # ВАЖНО: TypeDecorator в модели TaskTemplate автоматически конвертирует enum объекты в их значения (lowercase)
+        # TaskType.SMM -> 'smm', TaskPriority.MEDIUM -> 'medium'
+        # Убеждаемся, что передаём именно enum объекты, не строки
+        task_type_value = template_data["task_type"]
+        priority_value = template_data["priority"]
+        
+        # Дополнительная проверка и логирование для отладки
+        if isinstance(task_type_value, str):
+            logger.warning(f"⚠️ task_type передан как строка '{task_type_value}', конвертируем в enum")
+            try:
+                task_type_value = TaskType(task_type_value.lower())
+            except ValueError:
+                logger.error(f"❌ Некорректное значение task_type: '{task_type_value}', используем TaskType.SMM")
+                task_type_value = TaskType.SMM
+        
+        if isinstance(priority_value, str):
+            logger.warning(f"⚠️ priority передан как строка '{priority_value}', конвертируем в enum")
+            try:
+                priority_value = TaskPriority(priority_value.lower())
+            except ValueError:
+                logger.error(f"❌ Некорректное значение priority: '{priority_value}', используем TaskPriority.MEDIUM")
+                priority_value = TaskPriority.MEDIUM
+        
+        logger.debug(f"Создание шаблона '{template_data['name']}' с task_type={task_type_value} (значение: {task_type_value.value if isinstance(task_type_value, TaskType) else task_type_value})")
+        
         template = TaskTemplate(
             name=template_data["name"],
             description=template_data["description"],
             category=template_data["category"],  # TemplateCategoryType обработает enum автоматически
             created_by=system_user_id,
-            task_type=template_data["task_type"],  # Enum объект (TaskType.SMM -> 'smm' в БД)
-            priority=template_data["priority"],  # Enum объект (TaskPriority.MEDIUM -> 'medium' в БД)
+            task_type=task_type_value,  # Enum объект (TaskType.SMM) -> TypeDecorator конвертирует в 'smm'
+            priority=priority_value,  # Enum объект (TaskPriority.MEDIUM) -> TypeDecorator конвертирует в 'medium'
             default_description=template_data["default_description"],
             equipment_available=template_data["equipment_available"],
             role_specific_requirements=template_data["role_specific_requirements"],

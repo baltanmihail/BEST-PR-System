@@ -105,14 +105,25 @@ class User(Base):
     
     @validates('role')
     def validate_role(self, key, value):
-        """Валидация и конвертация роли - гарантируем, что передаётся строка"""
+        """Валидация роли перед сохранением.
+        
+        ВАЖНО: возвращаем UserRole (enum), чтобы сравнения в коде работали:
+        `user.role == UserRole.VP4PR` и т.п.
+        Конвертацию в строку делает UserRoleType.process_bind_param().
+        """
         if value is None:
             return None
         if isinstance(value, UserRole):
-            # Конвертируем enum в его значение (строку)
-            return value.value
-        # Если уже строка, возвращаем как есть
-        return str(value) if value else None
+            # Возвращаем enum, а не строку - для консистентности с Task.validate_status
+            return value
+        if isinstance(value, str):
+            # Если передана строка, конвертируем в enum
+            try:
+                return UserRole(value)
+            except ValueError:
+                # Если значение не найдено в enum, возвращаем NOVICE по умолчанию
+                return UserRole.NOVICE
+        return value
     
     def __repr__(self):
         return f"<User {self.telegram_id} ({self.full_name})>"
