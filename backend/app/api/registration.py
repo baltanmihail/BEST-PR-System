@@ -56,7 +56,8 @@ async def register(
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"Registration attempt - qr_token: {registration.qr_token is not None}, telegram_auth: {registration.telegram_auth is not None}")
+    logger.info(f"🔵 Registration attempt - qr_token: {registration.qr_token is not None}, telegram_auth: {registration.telegram_auth is not None}")
+    logger.info(f"🔵 Registration data: personal_data_consent={registration.personal_data_consent.consent}, user_agreement={registration.user_agreement.accepted}")
     
     # Проверяем согласие
     if not registration.personal_data_consent.consent:
@@ -75,7 +76,8 @@ async def register(
     
     # Если есть qr_token, используем данные из QR-сессии (упрощённая регистрация)
     if registration.qr_token:
-        logger.info(f"QR registration attempt with token: {registration.qr_token[:20]}...")
+        logger.info(f"🔵 QR registration path - token: {registration.qr_token[:20]}...")
+        logger.info(f"🔵 QR token full length: {len(registration.qr_token)}")
         from app.models.qr_session import QRSession
         result = await db.execute(
             select(QRSession).where(QRSession.session_token == registration.qr_token)
@@ -151,11 +153,16 @@ async def register(
         
         auth_data = registration.telegram_auth.model_dump()
         
-        logger.info(f"Registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
+        logger.info(f"🔵 Regular registration attempt for telegram_id: {auth_data.get('id')}, hash present: {bool(auth_data.get('hash'))}, auth_date: {auth_data.get('auth_date')}")
+        logger.info(f"🔵 Full auth_data keys: {list(auth_data.keys())}, hash value: '{auth_data.get('hash', '')[:20]}...'")
         
         # Проверяем hash только для обычной регистрации (не через QR)
-        if not verify_telegram_auth(auth_data):
-            logger.warning(f"Telegram auth verification failed for telegram_id: {auth_data.get('id')}")
+        verification_result = verify_telegram_auth(auth_data)
+        logger.info(f"🔵 Telegram auth verification result: {verification_result}")
+        if not verification_result:
+            logger.warning(f"❌ Telegram auth verification failed for telegram_id: {auth_data.get('id')}")
+            logger.warning(f"❌ Auth data: id={auth_data.get('id')}, hash_present={bool(auth_data.get('hash'))}, hash_value='{auth_data.get('hash', '')[:20]}...', auth_date={auth_data.get('auth_date')}")
+            logger.warning(f"❌ TELEGRAM_BOT_TOKEN configured: {bool(settings.TELEGRAM_BOT_TOKEN)}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid Telegram authentication data. Please open this page through Telegram bot."

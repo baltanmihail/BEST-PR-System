@@ -148,7 +148,51 @@ async def startup_event():
                         if timeline_sheets and timeline_sheets.get('id'):
                             logger.info(f"✅ Google таблица таймлайна задач готова: {timeline_sheets.get('id')}")
                             logger.info(f"🔗 URL таблицы: {timeline_sheets.get('url', 'N/A')}")
-                            logger.info(f"💡 Для заполнения данными вызовите: POST /api/v1/calendar/sync/sheets")
+                            
+                            # Автоматическая синхронизация при старте (если есть задачи)
+                            try:
+                                from app.database import AsyncSessionLocal
+                                from app.models.task import Task
+                                from sqlalchemy import select, func
+                                from datetime import datetime
+                                
+                                async def auto_sync_calendar():
+                                    """Автоматическая синхронизация календаря при старте"""
+                                    try:
+                                        async with AsyncSessionLocal() as db:
+                                            # Проверяем, есть ли задачи в системе
+                                            count_query = select(func.count(Task.id))
+                                            count_result = await db.execute(count_query)
+                                            tasks_count = count_result.scalar() or 0
+                                            
+                                            if tasks_count > 0:
+                                                logger.info(f"📊 Автоматическая синхронизация календаря (найдено задач: {tasks_count})...")
+                                                now = datetime.now()
+                                                result = await sheets_sync.sync_calendar_to_sheets_async(
+                                                    month=now.month,
+                                                    year=now.year,
+                                                    roles=["all"],
+                                                    db=db,
+                                                    statuses=None,
+                                                    scale="days",
+                                                    pull_from_sheets=False  # При старте не читаем из Sheets
+                                                )
+                                                logger.info(f"✅ Автоматическая синхронизация завершена: {result.get('status', 'unknown')}")
+                                            else:
+                                                logger.info(f"ℹ️ Задачи не найдены, пропускаем автоматическую синхронизацию")
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Ошибка автоматической синхронизации календаря: {e}")
+                                
+                                # Запускаем автоматическую синхронизацию в фоне через 10 секунд (после полного старта)
+                                import asyncio
+                                async def delayed_sync():
+                                    await asyncio.sleep(10)
+                                    await auto_sync_calendar()
+                                asyncio.create_task(delayed_sync())
+                                logger.info(f"💡 Автоматическая синхронизация календаря будет выполнена через 10 секунд")
+                            except Exception as e:
+                                logger.warning(f"⚠️ Не удалось запустить автоматическую синхронизацию: {e}")
+                                logger.info(f"💡 Для заполнения данными вызовите: POST /api/v1/calendar/sync/sheets")
                         else:
                             logger.warning(f"⚠️ Таблица таймлайна не была создана или не вернула ID: {timeline_sheets}")
                     except HttpError as e:
