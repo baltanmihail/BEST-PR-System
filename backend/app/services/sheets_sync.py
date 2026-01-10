@@ -502,6 +502,7 @@ class SheetsSyncService:
         
         # Генерируем периоды в зависимости от масштаба
         periods = self._generate_periods(first_day, last_day, scale)
+        periods_count = len(periods)  # Количество периодов для форматирования
         
         # Формируем данные для таблицы
         # Структура: Период | Задача 1 | Этапы задачи 1 | Задача 2 | Этапы задачи 2 | ...
@@ -585,8 +586,10 @@ class SheetsSyncService:
             sheet_name,
             sorted_tasks,
             task_columns,
-            days_in_month,
-            first_day
+            periods_count,
+            first_day,
+            periods=periods,
+            scale=scale
         )
     
     def _sync_role_calendar(
