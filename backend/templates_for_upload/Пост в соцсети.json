@@ -1,0 +1,46 @@
+{
+  "id": "00000000-0000-0000-0000-000000000001",
+  "name": "Пост в соцсети",
+  "description": "Шаблон для создания поста в социальных сетях",
+  "category": "coordinator_smm",
+  "task_type": "smm",
+  "priority": "medium",
+  "default_description": "Создать пост для социальных сетей с текстом и дизайном",
+  "equipment_available": false,
+  "role_specific_requirements": {
+    "smm": "Написать текст поста, подобрать хештеги, определить время публикации",
+    "design": "Создать графику для поста в соответствии с брендбуком"
+  },
+  "questions": [
+    "Какая цель поста?",
+    "Какая целевая аудитория?",
+    "Есть ли особые требования к дизайну?"
+  ],
+  "example_project_ids": [],
+  "stages_template": [
+    {
+      "stage_name": "Концепт",
+      "stage_order": 1,
+      "due_date_offset": 7,
+      "status_color": "green"
+    },
+    {
+      "stage_name": "Текст",
+      "stage_order": 2,
+      "due_date_offset": 5,
+      "status_color": "yellow"
+    },
+    {
+      "stage_name": "Дизайн",
+      "stage_order": 3,
+      "due_date_offset": 3,
+      "status_color": "blue"
+    },
+    {
+      "stage_name": "Публикация",
+      "stage_order": 4,
+      "due_date_offset": 0,
+      "status_color": "green"
+    }
+  ]
+}

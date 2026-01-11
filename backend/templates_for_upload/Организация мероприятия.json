@@ -1,0 +1,45 @@
+{
+  "id": "00000000-0000-0000-0000-000000000004",
+  "name": "Организация мероприятия",
+  "description": "Шаблон для организации мероприятия",
+  "category": "coordinator_prfr",
+  "task_type": "prfr",
+  "priority": "high",
+  "default_description": "Организовать мероприятие",
+  "equipment_available": false,
+  "role_specific_requirements": {
+    "prfr": "Организовать мероприятие: найти место, пригласить гостей, подготовить программу"
+  },
+  "questions": [
+    "Какое мероприятие?",
+    "Сколько участников ожидается?",
+    "Какие требования к месту?"
+  ],
+  "example_project_ids": [],
+  "stages_template": [
+    {
+      "stage_name": "Планирование",
+      "stage_order": 1,
+      "due_date_offset": 14,
+      "status_color": "green"
+    },
+    {
+      "stage_name": "Подготовка",
+      "stage_order": 2,
+      "due_date_offset": 7,
+      "status_color": "yellow"
+    },
+    {
+      "stage_name": "Проведение",
+      "stage_order": 3,
+      "due_date_offset": 0,
+      "status_color": "blue"
+    },
+    {
+      "stage_name": "Отчёт",
+      "stage_order": 4,
+      "due_date_offset": -2,
+      "status_color": "green"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "id": "00000000-0000-0000-0000-000000000002",
+  "name": "Графика для поста",
+  "description": "Шаблон для создания графики для поста",
+  "category": "coordinator_design",
+  "task_type": "design",
+  "priority": "medium",
+  "default_description": "Создать графику для поста в социальных сетях",
+  "equipment_available": false,
+  "role_specific_requirements": {
+    "design": "Создать графику в соответствии с брендбуком и требованиями SMM"
+  },
+  "questions": [
+    "Какие размеры нужны?",
+    "Есть ли референсы?",
+    "Какие цвета использовать?"
+  ],
+  "example_project_ids": [],
+  "stages_template": [
+    {
+      "stage_name": "Бриф",
+      "stage_order": 1,
+      "due_date_offset": 7,
+      "status_color": "green"
+    },
+    {
+      "stage_name": "Концепт",
+      "stage_order": 2,
+      "due_date_offset": 5,
+      "status_color": "yellow"
+    },
+    {
+      "stage_name": "Эскиз",
+      "stage_order": 3,
+      "due_date_offset": 4,
+      "status_color": "blue"
+    },
+    {
+      "stage_name": "Финальная версия",
+      "stage_order": 4,
+      "due_date_offset": 2,
+      "status_color": "purple"
+    },
+    {
+      "stage_name": "Публикация",
+      "stage_order": 5,
+      "due_date_offset": 0,
+      "status_color": "green"
+    }
+  ]
+}

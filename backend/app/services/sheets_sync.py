@@ -74,8 +74,9 @@ class SheetsSyncService:
         Используется для вызова из async context
         """
         # Получаем данные из БД асинхронно
-        first_day = date(year, month, 1)
-        last_day = date(year, month, cal_lib.monthrange(year, month)[1])
+        # Синхронизируем несколько месяцев: январь-май текущего года
+        first_day = date(year, 1, 1)  # Начало января
+        last_day = date(year, 5, cal_lib.monthrange(year, 5)[1])  # Конец мая
         
         start_dt = datetime.combine(first_day, datetime.min.time())
         end_dt = datetime.combine(last_day, datetime.max.time())
@@ -184,9 +185,9 @@ class SheetsSyncService:
             sheets_doc = self._get_or_create_timeline_sheets()
             spreadsheet_id = sheets_doc["id"]
             
-            # Синхронизируем общий календарь
+            # Синхронизируем общий календарь (январь-май)
             self._sync_general_calendar(
-                spreadsheet_id, first_day, last_day, month, year, tasks, scale
+                spreadsheet_id, first_day, last_day, None, year, tasks, scale
             )
             
             # Синхронизируем календари по ролям
@@ -481,116 +482,188 @@ class SheetsSyncService:
             await db.commit()
             logger.info(f"✅ Применено правок из TasksData: {changes}")
     
+    def _ensure_sheet_exists(self, spreadsheet_id: str, sheet_name: str) -> bool:
+        """Убедиться, что лист существует, если нет - создать"""
+        sheet_id = self._get_sheet_id(spreadsheet_id, sheet_name)
+        if sheet_id != 0:
+            return True
+        try:
+            self.google_service.create_sheet_tab(
+                spreadsheet_id,
+                sheet_name,
+                background=True
+            )
+            logger.info(f"✅ Создан лист '{sheet_name}'")
+            return True
+        except Exception as e:
+            logger.warning(f"Не удалось создать лист '{sheet_name}': {e}")
+            return False
+    
+    def _format_task_number(self, task: Task) -> str:
+        """Форматировать номер задачи в строку (TASK-001, TASK-002, ...)"""
+        if task.task_number:
+            return f"TASK-{task.task_number:03d}"
+        # Если номера нет, используем последние 8 символов UUID
+        return f"TASK-{str(task.id)[-8:].upper()}"
+    
     def _sync_general_calendar(
         self,
         spreadsheet_id: str,
         first_day: date,
         last_day: date,
-        month: int,
+        month: Optional[int],
         year: int,
         tasks: List[Task],
         scale: str = "days"
     ):
-        """Синхронизировать общий календарь
+        """Синхронизировать общий календарь в формате календарной сетки
+        
+        Формат: Первая колонка - номера задач (TASK-001, TASK-002, ...), 
+        остальные колонки - даты периода (01.01, 02.01, ...)
         
         Args:
+            first_day: Первый день периода
+            last_day: Последний день периода
+            month: Номер месяца (опционально, для логирования)
+            year: Год
+            tasks: Список задач
             scale: Масштаб отображения - "days" (дни), "weeks" (недели), "months" (месяцы)
         """
-        logger.info(f"Синхронизация общего календаря для {month}/{year} (масштаб: {scale}): {len(tasks)} задач")
+        month_str = f"{month}/" if month else ""
+        logger.info(f"Синхронизация общего календаря для {month_str}{year} ({first_day.strftime('%d.%m')} - {last_day.strftime('%d.%m')}, масштаб: {scale}): {len(tasks)} задач")
         
         sheet_name = "Общий"
         
-        # Генерируем периоды в зависимости от масштаба
-        periods = self._generate_periods(first_day, last_day, scale)
-        periods_count = len(periods)  # Количество периодов для форматирования
+        # Убеждаемся, что лист существует
+        if not self._ensure_sheet_exists(spreadsheet_id, sheet_name):
+            logger.error(f"❌ Не удалось создать или найти лист '{sheet_name}', пропускаем синхронизацию")
+            return
         
-        # Формируем данные для таблицы
-        # Структура: Период | Задача 1 | Этапы задачи 1 | Задача 2 | Этапы задачи 2 | ...
-        # Для простоты: каждая задача занимает одну колонку, этапы под ней
+        # Получаем ID листа для форматирования
+        sheet_id = self._get_sheet_id(spreadsheet_id, sheet_name)
+        if sheet_id == 0:
+            logger.error(f"❌ Не удалось получить ID листа '{sheet_name}'")
+            return
         
-        # Сортируем задачи по дате создания
-        sorted_tasks = sorted(tasks, key=lambda t: t.created_at or datetime.min)
-        
-        # Формируем заголовки
-        period_label = {"days": "Дата", "weeks": "Неделя", "months": "Месяц"}.get(scale, "Период")
-        headers = [period_label]
-        # Добавляем скрытый технический столбец с ID задачи для двусторонней синхронизации (рядом с заголовком)
-        task_columns = {}  # {task_id: column_index}
+        # Создаём заголовки (даты месяца)
+        headers = ["Задача"]
+        current_date = first_day
+        date_columns = {}  # {date: column_index}
         col_idx = 1
         
-        for task in sorted_tasks:
-            headers.append(task.title[:50])  # Ограничиваем длину названия
-            task_columns[str(task.id)] = col_idx
+        while current_date <= last_day:
+            date_str = current_date.strftime("%d.%m")
+            headers.append(date_str)
+            date_columns[current_date] = col_idx
             col_idx += 1
+            current_date += timedelta(days=1)
         
-        # Формируем данные по периодам
+        # Сортируем задачи по номеру (если есть) или по дате создания
+        sorted_tasks = sorted(
+            tasks, 
+            key=lambda t: (t.task_number if t.task_number else 999999, t.created_at or datetime.min)
+        )
+        
+        # Формируем строки данных (одна строка на задачу)
         rows = []
-        for period_start, period_end, period_label_str in periods:
-            row = [period_label_str]
+        task_rows = {}  # {task_id: row_index} для форматирования
+        
+        for row_idx, task in enumerate(sorted_tasks):
+            # Первая колонка: номер задачи + название
+            task_number_str = self._format_task_number(task)
+            task_label = f"{task_number_str} {task.title[:40]}"  # Ограничиваем длину
+            row = [task_label]
+            task_rows[str(task.id)] = row_idx + 1  # +1 потому что первая строка - заголовок
             
-            # Для каждой задачи проверяем, попадает ли она в этот период
-            for task in sorted_tasks:
+            # Для каждой даты месяца проверяем события
+            current_date = first_day
+            while current_date <= last_day:
                 cell_parts = []
-                task_date = task.due_date.date() if task.due_date else None
-                created_date = task.created_at.date() if task.created_at else None
                 
-                # Проверяем дедлайн задачи (попадает в период)
-                if task_date and period_start <= task_date <= period_end:
-                    cell_parts.append(f"📅 Дедлайн {task_date.strftime('%d.%m')}")
+                # Проверяем дедлайн задачи
+                if task.due_date:
+                    task_date = task.due_date.date()
+                    if task_date == current_date:
+                        cell_parts.append("📅 Дедлайн")
                 
-                # Проверяем этапы задачи (показываем все этапы в этом периоде)
+                # Проверяем этапы задачи
                 if hasattr(task, '_stages_cache') and task._stages_cache:
                     for stage in task._stages_cache:
                         if stage.due_date:
                             stage_date = stage.due_date.date()
-                            if period_start <= stage_date <= period_end:
+                            if stage_date == current_date:
                                 status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
                                 color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
-                                cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name} ({stage_date.strftime('%d.%m')})")
+                                cell_parts.append(f"{color_emoji} {status_icon} {stage.stage_name}")
                 
-                # Если задача создана в этот период
-                if created_date and period_start <= created_date <= period_end:
-                    cell_parts.append(f"🆕 Создана {created_date.strftime('%d.%m')}")
+                # Если задача создана в эту дату
+                if task.created_at:
+                    created_date = task.created_at.date()
+                    if created_date == current_date:
+                        cell_parts.append("🆕 Создана")
                 
-                # Объединяем все части через перенос строки для читаемости
+                # Объединяем все части через перенос строки
                 cell_text = "\n".join(cell_parts) if cell_parts else ""
-                # Сохраняем информацию о задаче для последующего добавления гиперссылки
-                # Временно записываем просто текст, гиперссылка добавится в _format_sheet
                 row.append(cell_text)
+                current_date += timedelta(days=1)
             
             rows.append(row)
         
-        # Записываем данные в таблицу (используем batch для экономии запросов)
-        range_name = f"{sheet_name}!A1"
+        # Записываем данные в таблицу через batch_update
+        all_data = [headers] + rows
         
-        # Сначала записываем заголовки
-        self.google_service.write_sheet(
-            f"{sheet_name}!A1:{chr(64 + len(headers))}1",
-            [headers],
-            sheet_id=spreadsheet_id,
-            background=True
-        )
+        # Используем batch_update для записи данных
+        requests = [{
+            "updateCells": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": len(all_data),
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(headers)
+                },
+                "rows": [
+                    {
+                        "values": [
+                            {"userEnteredValue": {"stringValue": str(cell)}}
+                            for cell in row
+                        ]
+                    }
+                    for row in all_data
+                ],
+                "fields": "userEnteredValue"
+            }
+        }]
         
-        # Затем данные
-        if rows:
-            self.google_service.write_sheet(
-                f"{sheet_name}!A2:{chr(64 + len(headers))}{len(rows) + 1}",
-                rows,
-                sheet_id=spreadsheet_id,
-                background=True
+        # Сначала записываем данные
+        if requests:
+            self.google_service.batch_update_sheet(
+                spreadsheet_id=spreadsheet_id,
+                requests=requests,
+                background=False
             )
         
-        # Добавляем форматирование и гиперссылки
-        self._format_sheet(
+        # Затем применяем форматирование
+        format_requests = self._format_calendar_grid_sheet(
             spreadsheet_id,
-            sheet_name,
+            sheet_id,
             sorted_tasks,
-            task_columns,
-            periods_count,
+            task_rows,
+            date_columns,
+            len(headers),
+            len(rows) + 1,
             first_day,
-            periods=periods,
-            scale=scale
+            last_day
         )
+        
+        if format_requests:
+            self.google_service.batch_update_sheet(
+                spreadsheet_id=spreadsheet_id,
+                requests=format_requests,
+                background=False
+            )
+        
+        logger.info(f"✅ Обновлён календарь задач: {len(rows)} задач")
     
     def _sync_role_calendar(
         self,
@@ -608,6 +681,11 @@ class SheetsSyncService:
         logger.info(f"Синхронизация календаря {role} для {month}/{year} (масштаб: {scale}): {len(tasks)} задач")
         
         sheet_name = role.capitalize() if role != "prfr" else "PR-FR"
+        
+        # Убеждаемся, что лист существует
+        if not self._ensure_sheet_exists(spreadsheet_id, sheet_name):
+            logger.error(f"❌ Не удалось создать или найти лист '{sheet_name}', пропускаем синхронизацию")
+            return
         
         # Генерируем периоды в зависимости от масштаба
         periods = self._generate_periods(first_day, last_day, scale)
@@ -917,6 +995,153 @@ class SheetsSyncService:
                 )
             except Exception as e:
                 logger.warning(f"Ошибка форматирования листа {sheet_name} (батч {i//batch_size + 1}): {e}")
+    
+    def _format_calendar_grid_sheet(
+        self,
+        spreadsheet_id: str,
+        sheet_id: int,
+        tasks: List[Task],
+        task_rows: Dict[str, int],
+        date_columns: Dict[date, int],
+        num_columns: int,
+        num_rows: int,
+        first_day: date,
+        last_day: date
+    ) -> List[Dict]:
+        """Применить форматирование к календарной сетке"""
+        from app.config import settings
+        from datetime import datetime, timezone
+        
+        requests = []
+        
+        # Форматирование заголовка (первая строка)
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": num_columns
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2},
+                        "textFormat": {
+                            "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                            "bold": True,
+                            "fontSize": 11
+                        },
+                        "horizontalAlignment": "CENTER"
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+            }
+        })
+        
+        # Фиксируем первую строку и первый столбец
+        requests.append({
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "gridProperties": {
+                        "frozenRowCount": 1,
+                        "frozenColumnCount": 1
+                    }
+                },
+                "fields": "gridProperties.frozenRowCount,gridProperties.frozenColumnCount"
+            }
+        })
+        
+        # Форматируем первую колонку (названия задач)
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": 1,
+                    "endRowIndex": num_rows,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 1
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95},
+                        "textFormat": {
+                            "bold": True
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)"
+            }
+        })
+        
+        # Форматируем ячейки с событиями (цвет по типу задачи)
+        current_date = datetime.now(timezone.utc).date()
+        
+        for task_id, row_idx in task_rows.items():
+            task = next((t for t in tasks if str(t.id) == task_id), None)
+            if not task:
+                continue
+            
+            # Цвет по типу задачи
+            task_color = TASK_TYPE_COLORS.get(task.type, {"red": 0.9, "green": 0.9, "blue": 0.9})
+            
+            # Форматируем ячейки с дедлайнами и этапами
+            for task_date, col_idx in date_columns.items():
+                cell_requests = []
+                
+                # Проверяем дедлайн
+                if task.due_date and task.due_date.date() == task_date:
+                    cell_color = OVERDUE_COLOR if task_date < current_date else task_color
+                    cell_requests.append({
+                        "updateCells": {
+                            "range": {
+                                "sheetId": sheet_id,
+                                "startRowIndex": row_idx,
+                                "endRowIndex": row_idx + 1,
+                                "startColumnIndex": col_idx,
+                                "endColumnIndex": col_idx + 1
+                            },
+                            "rows": [{
+                                "values": [{
+                                    "userEnteredFormat": {
+                                        "backgroundColor": cell_color
+                                    }
+                                }]
+                            }],
+                            "fields": "userEnteredFormat.backgroundColor"
+                        }
+                    })
+                
+                # Проверяем этапы
+                if hasattr(task, '_stages_cache') and task._stages_cache:
+                    for stage in task._stages_cache:
+                        if stage.due_date and stage.due_date.date() == task_date:
+                            stage_color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
+                            cell_requests.append({
+                                "updateCells": {
+                                    "range": {
+                                        "sheetId": sheet_id,
+                                        "startRowIndex": row_idx,
+                                        "endRowIndex": row_idx + 1,
+                                        "startColumnIndex": col_idx,
+                                        "endColumnIndex": col_idx + 1
+                                    },
+                                    "rows": [{
+                                        "values": [{
+                                            "userEnteredFormat": {
+                                                "backgroundColor": stage_color
+                                            }
+                                        }]
+                                    }],
+                                    "fields": "userEnteredFormat.backgroundColor"
+                                }
+                            })
+                            break  # Используем цвет последнего этапа
+                
+                requests.extend(cell_requests)
+        
+        return requests
     
     def _get_sheet_id(self, spreadsheet_id: str, sheet_name: str) -> int:
         """Получить ID листа по имени"""

@@ -142,6 +142,7 @@ class Task(Base):
     __tablename__ = "tasks"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_number = Column(Integer, nullable=True, unique=True, index=True)  # Автоинкремент: TASK-001, TASK-002, ...
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     type = Column(Enum(TaskType), nullable=False, index=True)

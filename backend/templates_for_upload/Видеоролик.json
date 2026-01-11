@@ -1,0 +1,52 @@
+{
+  "id": "00000000-0000-0000-0000-000000000003",
+  "name": "Видеоролик",
+  "description": "Шаблон для создания видеоролика",
+  "category": "coordinator_channel",
+  "task_type": "channel",
+  "priority": "high",
+  "default_description": "Создать видеоролик для публикации",
+  "equipment_available": true,
+  "role_specific_requirements": {
+    "channel": "Снять и смонтировать видеоролик, добавить музыку и эффекты"
+  },
+  "questions": [
+    "Какой формат видео нужен?",
+    "Какая длительность?",
+    "Нужна ли озвучка?",
+    "Есть ли сценарий?"
+  ],
+  "example_project_ids": [],
+  "stages_template": [
+    {
+      "stage_name": "Сценарий",
+      "stage_order": 1,
+      "due_date_offset": 10,
+      "status_color": "green"
+    },
+    {
+      "stage_name": "Съёмка",
+      "stage_order": 2,
+      "due_date_offset": 7,
+      "status_color": "yellow"
+    },
+    {
+      "stage_name": "Монтаж",
+      "stage_order": 3,
+      "due_date_offset": 4,
+      "status_color": "blue"
+    },
+    {
+      "stage_name": "Озвучка",
+      "stage_order": 4,
+      "due_date_offset": 2,
+      "status_color": "purple"
+    },
+    {
+      "stage_name": "Публикация",
+      "stage_order": 5,
+      "due_date_offset": 0,
+      "status_color": "green"
+    }
+  ]
+}
