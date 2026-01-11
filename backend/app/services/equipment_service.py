@@ -95,9 +95,9 @@ class EquipmentService:
                 and_(
                     EquipmentRequest.equipment_id == equipment.id,
                     EquipmentRequest.status.in_([
-                        EquipmentRequestStatus.PENDING,
-                        EquipmentRequestStatus.APPROVED,
-                        EquipmentRequestStatus.ACTIVE
+                        EquipmentRequestStatus.PENDING.value,
+                        EquipmentRequestStatus.APPROVED.value,
+                        EquipmentRequestStatus.ACTIVE.value
                     ]),
                     # Пересечение дат
                     EquipmentRequest.start_date <= end_date,
@@ -452,9 +452,9 @@ class EquipmentService:
             and_(
                 EquipmentRequest.equipment_id == equipment_id,
                 EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.PENDING,
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
+                    EquipmentRequestStatus.PENDING.value,
+                    EquipmentRequestStatus.APPROVED.value,
+                    EquipmentRequestStatus.ACTIVE.value
                 ])
             )
         )

@@ -1,8 +1,8 @@
 """
 Модель уведомлений
 """
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Enum, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -34,7 +34,8 @@ class Notification(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    type = Column(Enum(NotificationType), nullable=False, index=True)
+    # Используем PostgreSQL ENUM с правильным именем типа из миграции
+    type = Column(PG_ENUM(NotificationType, name='notification_type', create_type=False), nullable=False, index=True)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     data = Column(String, nullable=True)  # JSON строка с дополнительными данными (task_id, etc.)

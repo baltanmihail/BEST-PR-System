@@ -212,7 +212,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value
                 )
             )
             tasks_result = await db.execute(tasks_query)
@@ -232,7 +232,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     TaskAssignment.completed_at >= week_ago
                 )
             )
@@ -253,7 +253,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).join(Task).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     TaskAssignment.completed_at >= month_ago,
                     Task.due_date.isnot(None),
                     TaskAssignment.completed_at <= Task.due_date
@@ -266,7 +266,7 @@ class GamificationService:
             all_tasks_query = select(TaskAssignment).join(Task).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     TaskAssignment.completed_at >= month_ago,
                     Task.due_date.isnot(None)
                 )
@@ -287,7 +287,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).join(Task).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     Task.type == TaskType.CHANNEL
                 )
             )
@@ -307,7 +307,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).join(Task).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     Task.type == TaskType.DESIGN
                 )
             )
@@ -327,7 +327,7 @@ class GamificationService:
             tasks_query = select(TaskAssignment).join(Task).where(
                 and_(
                     TaskAssignment.user_id == user_id,
-                    TaskAssignment.status == AssignmentStatus.COMPLETED,
+                    TaskAssignment.status == AssignmentStatus.COMPLETED.value,
                     Task.type == TaskType.SMM
                 )
             )
@@ -386,10 +386,11 @@ class GamificationService:
             raise ValueError(f"User with id {user_id} not found")
         
         # Количество выполненных задач
+        # Используем .value для корректного сравнения с PostgreSQL ENUM (lowercase)
         completed_query = select(func.count(TaskAssignment.id)).where(
             and_(
                 TaskAssignment.user_id == user_id,
-                TaskAssignment.status == AssignmentStatus.COMPLETED
+                TaskAssignment.status == AssignmentStatus.COMPLETED.value
             )
         )
         completed_result = await db.execute(completed_query)
@@ -400,8 +401,8 @@ class GamificationService:
             and_(
                 TaskAssignment.user_id == user_id,
                 TaskAssignment.status.in_([
-                    AssignmentStatus.ASSIGNED,
-                    AssignmentStatus.IN_PROGRESS
+                    AssignmentStatus.ASSIGNED.value,
+                    AssignmentStatus.IN_PROGRESS.value
                 ])
             )
         )
@@ -492,7 +493,7 @@ class GamificationService:
             User.points,
             User.level,
             func.count(TaskAssignment.id).filter(
-                TaskAssignment.status == AssignmentStatus.COMPLETED
+                TaskAssignment.status == AssignmentStatus.COMPLETED.value
             ).label("completed_tasks")
         ).outerjoin(
             TaskAssignment, User.id == TaskAssignment.user_id

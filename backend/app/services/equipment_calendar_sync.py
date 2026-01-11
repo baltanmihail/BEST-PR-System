@@ -102,9 +102,9 @@ class EquipmentCalendarSync:
             # Получаем все заявки из БД
             requests_query = select(EquipmentRequest).where(
                 EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.PENDING,
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
+                    EquipmentRequestStatus.PENDING.value,
+                    EquipmentRequestStatus.APPROVED.value,
+                    EquipmentRequestStatus.ACTIVE.value
                 ])
             )
             result = await db.execute(requests_query)

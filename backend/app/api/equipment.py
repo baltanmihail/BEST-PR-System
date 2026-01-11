@@ -611,9 +611,9 @@ async def get_equipment_booked_dates(
             and_(
                 EquipmentRequest.equipment_id == equipment_id,
                 EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.PENDING,
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
+                    EquipmentRequestStatus.PENDING.value,
+                    EquipmentRequestStatus.APPROVED.value,
+                    EquipmentRequestStatus.ACTIVE.value
                 ])
             )
         )

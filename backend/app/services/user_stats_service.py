@@ -34,9 +34,10 @@ class UserStatsService:
             raise ValueError(f"User {user_id} not found")
         
         # Подсчитываем выполненные задачи
+        # Используем .value для корректного сравнения с PostgreSQL ENUM (lowercase)
         completed_tasks_query = select(func.count(TaskAssignment.id)).join(Task).where(
             TaskAssignment.user_id == user_id,
-            TaskAssignment.status == AssignmentStatus.COMPLETED
+            TaskAssignment.status == AssignmentStatus.COMPLETED.value
         )
         completed_result = await db.execute(completed_tasks_query)
         completed_tasks = completed_result.scalar_one() or 0
@@ -44,7 +45,7 @@ class UserStatsService:
         # Подсчитываем активные задачи
         active_tasks_query = select(func.count(TaskAssignment.id)).where(
             TaskAssignment.user_id == user_id,
-            TaskAssignment.status.in_([AssignmentStatus.ASSIGNED, AssignmentStatus.IN_PROGRESS])
+            TaskAssignment.status.in_([AssignmentStatus.ASSIGNED.value, AssignmentStatus.IN_PROGRESS.value])
         )
         active_result = await db.execute(active_tasks_query)
         active_tasks = active_result.scalar_one() or 0
@@ -103,7 +104,7 @@ class UserStatsService:
         # Получаем все выполненные задачи пользователя с дедлайнами
         completed_assignments_query = select(TaskAssignment, Task).join(Task).where(
             TaskAssignment.user_id == user_id,
-            TaskAssignment.status == AssignmentStatus.COMPLETED,
+            TaskAssignment.status == AssignmentStatus.COMPLETED.value,
             TaskAssignment.completed_at.isnot(None),
             Task.due_date.isnot(None)
         )
@@ -141,7 +142,7 @@ class UserStatsService:
         # Получаем все выполненные задачи пользователя
         completed_assignments_query = select(TaskAssignment, Task).join(Task).where(
             TaskAssignment.user_id == user_id,
-            TaskAssignment.status == AssignmentStatus.COMPLETED,
+            TaskAssignment.status == AssignmentStatus.COMPLETED.value,
             TaskAssignment.completed_at.isnot(None),
             TaskAssignment.assigned_at.isnot(None)
         )

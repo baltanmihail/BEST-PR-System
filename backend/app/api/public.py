@@ -230,10 +230,11 @@ async def get_public_leaderboard(
     leaderboard = []
     for user in users:
         # Подсчитываем выполненные задачи через task_assignments
+        # Используем .value для корректного сравнения с PostgreSQL ENUM (lowercase)
         completed_query = select(func.count(TaskAssignment.id)).where(
             and_(
                 TaskAssignment.user_id == user.id,
-                TaskAssignment.status == AssignmentStatus.COMPLETED
+                TaskAssignment.status == AssignmentStatus.COMPLETED.value
             )
         )
         completed_result = await db.execute(completed_query)
