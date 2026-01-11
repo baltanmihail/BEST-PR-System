@@ -238,7 +238,8 @@ class TaskAssignment(Base):
     task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     role_in_task = Column(String, nullable=False)  # 'executor', 'designer', 'videographer', 'reviewer'
-    status = Column(Enum(AssignmentStatus), nullable=False, default=AssignmentStatus.ASSIGNED, index=True)
+    # Используем существующий в БД ENUM assignment_status (создан в миграции 001)
+    status = Column(PG_ENUM(AssignmentStatus, name="assignment_status", create_type=False), nullable=False, default=AssignmentStatus.ASSIGNED, index=True)
     rating = Column(Integer, nullable=True)  # 1-5
     feedback = Column(Text, nullable=True)
     assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

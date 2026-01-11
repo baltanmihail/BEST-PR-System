@@ -2,6 +2,7 @@
 API endpoints для геймификации
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from uuid import UUID
@@ -17,13 +18,18 @@ router = APIRouter(prefix="/gamification", tags=["gamification"])
 @router.get("/stats", response_model=dict)
 async def get_my_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user_allow_inactive())
+    current_user: Optional[User] = Depends(OptionalUser)
 ):
     """
     Получить мою статистику (баллы, уровень, ачивки)
     
     Доступно всем авторизованным пользователям (включая неактивных)
     """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required"
+        )
     stats = await GamificationService.get_user_stats(db, current_user.id)
     return stats
 

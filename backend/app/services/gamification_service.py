@@ -380,7 +380,10 @@ class GamificationService:
         """Получить статистику пользователя"""
         user_query = select(User).where(User.id == user_id)
         user_result = await db.execute(user_query)
-        user = user_result.scalar_one()
+        user = user_result.scalar_one_or_none()
+        
+        if not user:
+            raise ValueError(f"User with id {user_id} not found")
         
         # Количество выполненных задач
         completed_query = select(func.count(TaskAssignment.id)).where(

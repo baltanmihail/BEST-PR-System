@@ -47,6 +47,16 @@ export default function UserMonitoring() {
     roleValue === UserRole.COORDINATOR_PRFR
   )
 
+  // Отладка для VP4PR
+  if (user && (roleValue === 'vp4pr' || roleValue === UserRole.VP4PR)) {
+    console.log('[UserMonitoring] VP4PR user detected:', {
+      user,
+      roleValue,
+      userRole: user.role,
+      isCoordinator
+    })
+  }
+
   if (!isCoordinator) {
     return (
       <div className="max-w-7xl mx-auto p-4 md:p-6">
