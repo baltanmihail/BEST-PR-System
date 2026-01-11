@@ -670,6 +670,29 @@ class SheetsSyncService:
         
         logger.info(f"📊 Записываем {len(all_data)} строк x {end_col_idx} колонок")
         
+        # Сначала расширяем лист до нужного размера
+        try:
+            resize_requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {
+                            "rowCount": max(len(all_data) + 10, 100),
+                            "columnCount": max(end_col_idx + 5, 110)
+                        }
+                    },
+                    "fields": "gridProperties.rowCount,gridProperties.columnCount"
+                }
+            }]
+            self.google_service.batch_update_sheet(
+                spreadsheet_id=spreadsheet_id,
+                requests=resize_requests,
+                background=False
+            )
+            logger.info(f"✅ Лист расширен до {end_col_idx + 5} колонок")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось расширить лист: {e}")
+        
         # Используем batch_update для записи данных
         requests = [{
             "updateCells": {
