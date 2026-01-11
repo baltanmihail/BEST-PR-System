@@ -16,7 +16,7 @@ from app.schemas.equipment import (
     EquipmentRequestResponse, EquipmentRequestCreate, EquipmentRequestUpdate
 )
 from app.services.equipment_service import EquipmentService
-from app.utils.permissions import get_current_user, require_coordinator
+from app.utils.permissions import get_current_user, require_coordinator, get_current_user_allow_inactive
 import logging
 
 logger = logging.getLogger(__name__)
