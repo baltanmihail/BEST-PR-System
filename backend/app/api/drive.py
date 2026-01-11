@@ -545,3 +545,117 @@ async def sync_drive_changes(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sync Drive changes: {str(e)}"
         )
+
+
+@router.post("/cleanup-quota", response_model=dict)
+async def cleanup_service_account_quota(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Очистить хранилище всех сервисных аккаунтов Google Drive.
+    Удаляет файлы, созданные сервисными аккаунтами, освобождая квоту.
+    
+    ⚠️ ВНИМАНИЕ: Удаляет ВСЕ файлы, принадлежащие сервисным аккаунтам!
+    Файлы в Shared Drive НЕ удаляются (они не занимают квоту).
+    
+    Доступно только VP4PR
+    """
+    from app.models.user import UserRole
+    
+    # Только VP4PR может очищать квоту
+    if current_user.role != UserRole.VP4PR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only VP4PR can cleanup service account quota"
+        )
+    
+    try:
+        google_service = GoogleService()
+        results = []
+        total_files = 0
+        total_bytes = 0
+        
+        # Очищаем каждый клиент
+        for i, client_info in enumerate(google_service._clients):
+            try:
+                service = client_info["drive"]
+                email = f"Account #{i+1}"
+                
+                # Получаем информацию о квоте
+                about = service.about().get(fields="storageQuota,user").execute()
+                quota = about.get('storageQuota', {})
+                user_info = about.get('user', {})
+                email = user_info.get('emailAddress', f'Account #{i+1}')
+                used_before = int(quota.get('usageInDrive', 0))
+                
+                # Находим файлы, принадлежащие этому аккаунту
+                files_deleted = 0
+                bytes_freed = 0
+                page_token = None
+                
+                while True:
+                    file_results = service.files().list(
+                        q="'me' in owners",
+                        spaces='drive',
+                        fields="nextPageToken, files(id, name, size)",
+                        pageToken=page_token,
+                        pageSize=100
+                    ).execute()
+                    
+                    files = file_results.get('files', [])
+                    
+                    for file in files:
+                        file_id = file['id']
+                        file_size = int(file.get('size', 0))
+                        
+                        try:
+                            service.files().delete(fileId=file_id).execute()
+                            files_deleted += 1
+                            bytes_freed += file_size
+                        except Exception as del_error:
+                            logger.warning(f"Не удалось удалить файл {file_id}: {del_error}")
+                    
+                    page_token = file_results.get('nextPageToken')
+                    if not page_token:
+                        break
+                
+                # Очищаем корзину
+                try:
+                    service.files().emptyTrash().execute()
+                except Exception:
+                    pass
+                
+                results.append({
+                    "account": email,
+                    "files_deleted": files_deleted,
+                    "bytes_freed": bytes_freed,
+                    "used_before_mb": round(used_before / 1024 / 1024, 2)
+                })
+                
+                total_files += files_deleted
+                total_bytes += bytes_freed
+                
+                logger.info(f"✅ Очищен аккаунт {email}: {files_deleted} файлов, {bytes_freed / 1024 / 1024:.2f} МБ")
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка очистки аккаунта #{i+1}: {e}")
+                results.append({
+                    "account": f"Account #{i+1}",
+                    "error": str(e)
+                })
+        
+        return {
+            "success": True,
+            "total_files_deleted": total_files,
+            "total_bytes_freed": total_bytes,
+            "total_mb_freed": round(total_bytes / 1024 / 1024, 2),
+            "accounts": results,
+            "message": f"Очищено {total_files} файлов, освобождено {total_bytes / 1024 / 1024:.2f} МБ"
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Ошибка очистки квоты: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup quota: {str(e)}"
+        )
