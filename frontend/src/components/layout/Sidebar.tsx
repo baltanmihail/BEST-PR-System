@@ -31,13 +31,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user } = useAuthStore()
   const isRegistered = user?.is_active || false
   
-  const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
-  )
+  // Проверяем роль координатора или VP4PR (роль может быть строкой или enum)
+  const roleStr = typeof user?.role === 'string' ? user.role : String(user?.role || '')
+  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr' || user.role === UserRole.VP4PR)
 
   // Фильтруем навигацию для незарегистрированных пользователей и координаторов
   const filteredNavigation = navigation.filter(
