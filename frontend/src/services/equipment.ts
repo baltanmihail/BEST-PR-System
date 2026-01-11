@@ -12,6 +12,7 @@ export interface Equipment {
   status: EquipmentStatus
   specs?: Record<string, any>
   description?: string
+  image_url?: string
   created_at?: string
   updated_at?: string
 }
@@ -51,6 +52,7 @@ export interface EquipmentCreate {
   quantity: number
   specs?: Record<string, any>
   status?: EquipmentStatus
+  image_url?: string
 }
 
 export interface EquipmentUpdate {
