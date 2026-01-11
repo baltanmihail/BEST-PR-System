@@ -16,7 +16,7 @@ from uuid import UUID
 import logging
 
 from app.database import get_db
-from app.api.deps import get_current_user
+from app.utils.permissions import get_current_user
 from app.models.user import User, UserRole
 from app.models.file_upload import FileUpload, FileUploadStatus, FileUploadCategory
 from app.schemas.file_upload import (
