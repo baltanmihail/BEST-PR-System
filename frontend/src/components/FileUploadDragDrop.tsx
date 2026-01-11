@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Upload, X, Image as ImageIcon, Video, File as FileIcon, Loader2 } from 'lucide-react'
+import { Upload, X, Video, File as FileIcon, Loader2 } from 'lucide-react'
 import { useThemeStore } from '../store/themeStore'
 
 export interface FilePreview {
