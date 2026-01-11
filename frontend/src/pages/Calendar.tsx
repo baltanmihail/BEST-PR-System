@@ -158,17 +158,18 @@ export default function Calendar() {
             <button
               onClick={() => syncToSheetsMutation.mutate()}
               disabled={syncToSheetsMutation.isPending}
-            className="hidden md:flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 touch-manipulation"
-            data-tour="calendar-sync"
-          >
-            {syncToSheetsMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            <span>Синхронизировать с Sheets</span>
-          </button>
-        )}
+              className="hidden md:flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 touch-manipulation"
+              data-tour="calendar-sync"
+            >
+              {syncToSheetsMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span>Синхронизировать с Sheets</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Панель управления */}

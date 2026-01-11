@@ -108,25 +108,26 @@ export default function Tasks() {
             </Link>
           )}
           <button 
-          onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-          className="flex items-center justify-between md:justify-center space-x-2 bg-white/20 text-white px-4 py-2.5 md:py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30 touch-manipulation w-full md:w-auto"
-          data-tour="task-filters"
-        >
-          <div className="flex items-center space-x-2">
-            <Filter className="h-5 w-5" />
-            <span>Фильтры</span>
-            {hasActiveFilters && (
-              <span className="bg-best-primary text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                {Object.values(filters).filter(v => v).length}
-              </span>
+            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
+            className="flex items-center justify-between md:justify-center space-x-2 bg-white/20 text-white px-4 py-2.5 md:py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30 touch-manipulation w-full md:w-auto"
+            data-tour="task-filters"
+          >
+            <div className="flex items-center space-x-2">
+              <Filter className="h-5 w-5" />
+              <span>Фильтры</span>
+              {hasActiveFilters && (
+                <span className="bg-best-primary text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {Object.values(filters).filter(v => v).length}
+                </span>
+              )}
+            </div>
+            {isFiltersOpen ? (
+              <ChevronUp className="h-5 w-5 md:hidden" />
+            ) : (
+              <ChevronDown className="h-5 w-5 md:hidden" />
             )}
-          </div>
-          {isFiltersOpen ? (
-            <ChevronUp className="h-5 w-5 md:hidden" />
-          ) : (
-            <ChevronDown className="h-5 w-5 md:hidden" />
-          )}
-        </button>
+          </button>
+        </div>
       </div>
 
       {/* Панель фильтров */}
