@@ -3,7 +3,7 @@ API endpoints для уведомлений
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from typing import Optional, List
 from uuid import UUID
 import json
@@ -157,11 +157,13 @@ async def get_unread_count(
         ]
         
         # Используем .value для сравнения с PostgreSQL ENUM (lowercase)
+        # Создаём список строк-значений enum и используем or_() вместо .in_() для PG_ENUM
+        important_type_values = [t.value for t in important_types]
         query = select(func.count(Notification.id)).where(
             and_(
                 Notification.user_id == current_user.id,
                 Notification.is_read == False,
-                Notification.type.in_([t.value for t in important_types])
+                or_(*[Notification.type == val for val in important_type_values])
             )
         )
         result = await db.execute(query)
