@@ -40,6 +40,47 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TaskPriorityType(TypeDecorator):
+    """TypeDecorator для правильной конвертации TaskPriority в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            # Используем правильное имя типа из базы данных: task_priority (с подчеркиванием)
+            return dialect.type_descriptor(PG_ENUM(
+                TaskPriority, 
+                name='task_priority', 
+                create_type=False, 
+                values_callable=lambda x: [e.value for e in TaskPriority]
+            ))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, TaskPriority):
+            return value.value
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return TaskPriority(value)
+            except ValueError:
+                return TaskPriority.MEDIUM
+        return value
+
+
 class TaskStatusType(TypeDecorator):
     """TypeDecorator для правильной конвертации TaskStatus в строку"""
     impl = String
@@ -105,7 +146,7 @@ class Task(Base):
     description = Column(Text, nullable=True)
     type = Column(Enum(TaskType), nullable=False, index=True)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
-    priority = Column(Enum(TaskPriority), nullable=False, default=TaskPriority.MEDIUM, index=True)
+    priority = Column(TaskPriorityType(), nullable=False, default=TaskPriority.MEDIUM, server_default='medium', index=True)
     status = Column(TaskStatusType(), nullable=False, default=TaskStatus.DRAFT, server_default='draft', index=True)
     
     @validates('status')

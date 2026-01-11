@@ -19,12 +19,23 @@ export default function UserMonitoring() {
   const [pointsDelta, setPointsDelta] = useState(0)
   const [pointsReason, setPointsReason] = useState('')
 
+  // Проверяем роль (роль приходит как строка из API, например "vp4pr", "coordinator_smm")
+  // VP4PR тоже должен иметь доступ к мониторингу пользователей
+  // Используем более надежную проверку, учитывающую что роль может быть строкой или enum
+  const userRole = user?.role
+  const roleStr = typeof userRole === 'string' ? userRole : (userRole as any)?.value || String(userRole || '')
   const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
+    roleStr === 'coordinator_smm' ||
+    roleStr === 'coordinator_design' ||
+    roleStr === 'coordinator_channel' ||
+    roleStr === 'coordinator_prfr' ||
+    roleStr === 'vp4pr' ||
+    (typeof roleStr === 'string' && roleStr.includes('coordinator')) ||
+    userRole === UserRole.COORDINATOR_SMM ||
+    userRole === UserRole.COORDINATOR_DESIGN ||
+    userRole === UserRole.COORDINATOR_CHANNEL ||
+    userRole === UserRole.COORDINATOR_PRFR ||
+    userRole === UserRole.VP4PR
   )
 
   if (!isCoordinator) {
@@ -246,7 +257,7 @@ export default function UserMonitoring() {
                   <TrendingUp className="h-4 w-4" />
                   <span>Баллы</span>
                 </button>
-                {user?.role === UserRole.VP4PR && (
+                {(roleStr === 'vp4pr' || userRole === UserRole.VP4PR) && (
                   <button
                     onClick={() => {
                       exportUserDataMutation.mutate(u.id)
