@@ -643,6 +643,16 @@ class SheetsSyncService:
         # Записываем данные в таблицу через batch_update
         headers_len = len(headers)
         
+        # Google Sheets имеет ограничение на количество колонок (максимум 256, но обычно используется меньше)
+        # Ограничиваем количество колонок до разумного максимума (например, 100 для календаря)
+        MAX_COLUMNS = 100
+        if headers_len > MAX_COLUMNS:
+            logger.warning(f"⚠️ Заголовков {headers_len}, обрезаем до {MAX_COLUMNS}")
+            headers = headers[:MAX_COLUMNS]
+            headers_len = MAX_COLUMNS
+            # Обрезаем date_columns тоже
+            date_columns = {k: v for k, v in date_columns.items() if v < MAX_COLUMNS}
+        
         # Обрезаем/дополняем все строки до длины headers (гарантируем одинаковую длину)
         all_data = [headers]
         for row in rows:
@@ -657,15 +667,29 @@ class SheetsSyncService:
             else:
                 all_data.append(row)
         
+        # Убеждаемся что endColumnIndex не превышает headers_len
+        end_col_idx = min(headers_len, MAX_COLUMNS)
+        
+        # Финальная проверка: убеждаемся, что все строки имеют одинаковую длину (end_col_idx)
+        # и обрезаем/дополняем их при необходимости
+        normalized_data = []
+        for row in all_data:
+            if len(row) > end_col_idx:
+                normalized_data.append(row[:end_col_idx])
+            elif len(row) < end_col_idx:
+                normalized_data.append(row + [""] * (end_col_idx - len(row)))
+            else:
+                normalized_data.append(row)
+        
         # Используем batch_update для записи данных
         requests = [{
             "updateCells": {
                 "range": {
                     "sheetId": sheet_id,
                     "startRowIndex": 0,
-                    "endRowIndex": len(all_data),
+                    "endRowIndex": len(normalized_data),
                     "startColumnIndex": 0,
-                    "endColumnIndex": headers_len
+                    "endColumnIndex": end_col_idx
                 },
                 "rows": [
                     {
@@ -674,7 +698,7 @@ class SheetsSyncService:
                             for cell in row
                         ]
                     }
-                    for row in all_data
+                    for row in normalized_data
                 ],
                 "fields": "userEnteredValue"
             }
@@ -695,7 +719,7 @@ class SheetsSyncService:
             sorted_tasks,
             task_rows,
             date_columns,
-            headers_len,  # Используем количество колонок из headers
+            end_col_idx,  # Используем ограниченное количество колонок
             len(rows) + 1,
             first_day,
             last_day

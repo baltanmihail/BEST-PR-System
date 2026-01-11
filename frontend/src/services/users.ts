@@ -1,4 +1,5 @@
 import api from './api'
+import { Task, TaskAssignment } from '../types/task'
 
 export interface ProfileUpdate {
   full_name?: string
@@ -76,6 +77,18 @@ export interface UserActivityResponse {
   limit: number
 }
 
+export interface UserTasksResponse {
+  active: Array<{
+    task: Task
+    assignment: TaskAssignment
+  }>
+  completed: Array<{
+    task: Task
+    assignment: TaskAssignment
+  }>
+  total: number
+}
+
 export const usersApi = {
   getMyProfile: async (): Promise<UserProfile> => {
     const response = await api.get<UserProfile>('/users/me')
@@ -125,6 +138,11 @@ export const usersApi = {
     return response.data
   },
 
+  getUserTasks: async (userId: string): Promise<UserTasksResponse> => {
+    const response = await api.get<UserTasksResponse>(`/users/${userId}/tasks`)
+    return response.data
+  },
+
   updateUser: async (userId: string, data: Partial<UserProfile>): Promise<UserProfile> => {
     const response = await api.put<UserProfile>(`/users/${userId}`, data)
     return response.data
@@ -141,7 +159,16 @@ export const usersApi = {
   },
 
   adjustPoints: async (userId: string, points: number, reason: string): Promise<UserProfile> => {
-    const response = await api.post<UserProfile>(`/users/${userId}/points`, { points, reason })
+    const formData = new FormData()
+    formData.append('points_delta', points.toString())
+    if (reason) {
+      formData.append('reason', reason)
+    }
+    const response = await api.post<UserProfile>(`/users/${userId}/points`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
     return response.data
   },
 

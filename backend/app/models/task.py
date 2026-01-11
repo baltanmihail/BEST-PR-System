@@ -19,6 +19,7 @@ class TaskType(str, enum.Enum):
     DESIGN = "design"
     CHANNEL = "channel"
     PRFR = "prfr"
+    MULTITASK = "multitask"  # Многозадачная - для задач, которые требуют работы нескольких ролей
 
 
 class TaskPriority(str, enum.Enum):

@@ -8,6 +8,8 @@ import { useAuthStore } from '../store/authStore'
 import { tasksApi } from '../services/tasks'
 import { taskTemplatesApi } from '../services/taskTemplates'
 import { galleryApi } from '../services/gallery'
+import { fileUploadsApi } from '../services/fileUploads'
+import FileUploadDragDrop, { type FilePreview } from '../components/FileUploadDragDrop'
 import { TaskCreate, TaskType, TaskPriority, TaskStageCreate } from '../types/task'
 
 export default function CreateTask() {
@@ -26,7 +28,7 @@ export default function CreateTask() {
   const [stages, setStages] = useState<TaskStageCreate[]>([])
   const [roleRequirements, setRoleRequirements] = useState<{ smm?: string; design?: string; channel?: string; prfr?: string }>({})
   const [exampleProjectIds, setExampleProjectIds] = useState<string[]>([])
-  const [thumbnailUrl, setThumbnailUrl] = useState('')
+  const [uploadedFiles, setUploadedFiles] = useState<FilePreview[]>([])
   const [questions, setQuestions] = useState<string[]>([''])
   const [error, setError] = useState<string | null>(null)
 
@@ -93,7 +95,21 @@ export default function CreateTask() {
 
   const createTaskMutation = useMutation({
     mutationFn: (data: TaskCreate) => tasksApi.createTask(data),
-    onSuccess: () => {
+    onSuccess: async (task) => {
+      // Загружаем файлы после создания задачи
+      if (uploadedFiles.length > 0) {
+        try {
+          await Promise.all(
+            uploadedFiles.map(filePreview =>
+              fileUploadsApi.uploadTaskFile(task.id, filePreview.file)
+            )
+          )
+        } catch (err) {
+          console.error('Ошибка загрузки файлов:', err)
+          // Не прерываем процесс, просто логируем ошибку
+        }
+      }
+      
       // Инвалидируем кэш задач
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       // Перенаправляем на страницу задачи или список задач
@@ -128,10 +144,19 @@ export default function CreateTask() {
 
     // Подготовка ТЗ по ролям (только непустые значения)
     const validRoleRequirements: { [key: string]: string } = {}
-    if (roleRequirements.smm?.trim()) validRoleRequirements.smm = roleRequirements.smm.trim()
-    if (roleRequirements.design?.trim()) validRoleRequirements.design = roleRequirements.design.trim()
-    if (roleRequirements.channel?.trim()) validRoleRequirements.channel = roleRequirements.channel.trim()
-    if (roleRequirements.prfr?.trim()) validRoleRequirements.prfr = roleRequirements.prfr.trim()
+    // Для многозадачной задачи сохраняем все роли, для остальных - только выбранную
+    if (taskType === 'multitask') {
+      if (roleRequirements.smm?.trim()) validRoleRequirements.smm = roleRequirements.smm.trim()
+      if (roleRequirements.design?.trim()) validRoleRequirements.design = roleRequirements.design.trim()
+      if (roleRequirements.channel?.trim()) validRoleRequirements.channel = roleRequirements.channel.trim()
+      if (roleRequirements.prfr?.trim()) validRoleRequirements.prfr = roleRequirements.prfr.trim()
+    } else {
+      // Для обычных типов - только выбранная роль
+      const roleKey = taskType
+      if (roleRequirements[roleKey as keyof typeof roleRequirements]?.trim()) {
+        validRoleRequirements[roleKey] = roleRequirements[roleKey as keyof typeof roleRequirements]!.trim()
+      }
+    }
 
     // Подготовка вопросов (только непустые)
     const validQuestions = questions.filter(q => q.trim()).map(q => q.trim())
@@ -146,7 +171,6 @@ export default function CreateTask() {
       stages: validStages.length > 0 ? validStages : undefined,
       role_specific_requirements: Object.keys(validRoleRequirements).length > 0 ? validRoleRequirements : undefined,
       example_project_ids: exampleProjectIds.length > 0 ? exampleProjectIds : undefined,
-      thumbnail_image_url: thumbnailUrl.trim() || undefined,
       questions: validQuestions.length > 0 ? validQuestions : undefined,
     }
 
@@ -245,10 +269,17 @@ export default function CreateTask() {
             <select
               value={taskType}
               onChange={(e) => {
-                setTaskType(e.target.value as TaskType)
+                const newType = e.target.value as TaskType
+                setTaskType(newType)
                 // Сбрасываем equipment_available при смене типа
-                if (e.target.value !== 'channel') {
+                if (newType !== 'channel') {
                   setEquipmentAvailable(false)
+                }
+                // При смене типа задачи (если не multitask) очищаем ТЗ других ролей
+                if (newType !== 'multitask') {
+                  const clearedRequirements: { [key: string]: string } = {}
+                  clearedRequirements[newType] = roleRequirements[newType as keyof typeof roleRequirements] || ''
+                  setRoleRequirements(clearedRequirements)
                 }
               }}
               required
@@ -259,6 +290,7 @@ export default function CreateTask() {
               <option value="design">Design</option>
               <option value="channel">Channel</option>
               <option value="prfr">PR-FR</option>
+              <option value="multitask">Многозадачная</option>
             </select>
           </div>
 
@@ -353,21 +385,21 @@ export default function CreateTask() {
             </p>
           </div>
 
-          {/* Thumbnail URL */}
+          {/* Загрузка файлов */}
           <div>
             <label className={`block text-white mb-2 text-sm font-medium text-readable ${theme}`}>
-              URL превью изображения
+              Фото и видео для задачи
             </label>
-            <input
-              type="url"
-              value={thumbnailUrl}
-              onChange={(e) => setThumbnailUrl(e.target.value)}
-              placeholder="https://example.com/image.jpg"
-              className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40`}
+            <FileUploadDragDrop
+              files={uploadedFiles}
+              onFilesChange={setUploadedFiles}
+              maxFiles={10}
+              maxSizeMB={100}
               disabled={createTaskMutation.isPending}
+              acceptedTypes={['image/*', 'video/*']}
             />
-            <p className={`text-white/60 text-xs mt-1 text-readable ${theme}`}>
-              Ссылка на изображение для карточки задачи
+            <p className={`text-white/60 text-xs mt-2 text-readable ${theme}`}>
+              Перетащите файлы в область или нажмите для выбора. Первое изображение будет использовано как превью карточки задачи.
             </p>
           </div>
 
@@ -376,52 +408,73 @@ export default function CreateTask() {
             <label className={`block text-white mb-3 text-sm font-medium text-readable ${theme}`}>
               Техническое задание по ролям
             </label>
-            <div className="space-y-4">
+            {taskType === 'multitask' ? (
+              // Для многозадачной задачи - показываем все роли
+              <div className="space-y-4">
+                <div>
+                  <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>SMM</label>
+                  <textarea
+                    value={roleRequirements.smm || ''}
+                    onChange={(e) => setRoleRequirements({ ...roleRequirements, smm: e.target.value })}
+                    placeholder="ТЗ для SMM (опционально)"
+                    rows={3}
+                    className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
+                    disabled={createTaskMutation.isPending}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>Design</label>
+                  <textarea
+                    value={roleRequirements.design || ''}
+                    onChange={(e) => setRoleRequirements({ ...roleRequirements, design: e.target.value })}
+                    placeholder="ТЗ для Design (опционально)"
+                    rows={3}
+                    className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
+                    disabled={createTaskMutation.isPending}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>Channel</label>
+                  <textarea
+                    value={roleRequirements.channel || ''}
+                    onChange={(e) => setRoleRequirements({ ...roleRequirements, channel: e.target.value })}
+                    placeholder="ТЗ для Channel (опционально)"
+                    rows={3}
+                    className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
+                    disabled={createTaskMutation.isPending}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>PR-FR</label>
+                  <textarea
+                    value={roleRequirements.prfr || ''}
+                    onChange={(e) => setRoleRequirements({ ...roleRequirements, prfr: e.target.value })}
+                    placeholder="ТЗ для PR-FR (опционально)"
+                    rows={3}
+                    className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
+                    disabled={createTaskMutation.isPending}
+                  />
+                </div>
+              </div>
+            ) : (
+              // Для обычных типов - показываем только ТЗ для выбранной роли
               <div>
-                <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>SMM</label>
+                <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>
+                  {taskType === 'smm' ? 'SMM' : 
+                   taskType === 'design' ? 'Design' : 
+                   taskType === 'channel' ? 'Channel' : 
+                   taskType === 'prfr' ? 'PR-FR' : 'ТЗ для роли'}
+                </label>
                 <textarea
-                  value={roleRequirements.smm || ''}
-                  onChange={(e) => setRoleRequirements({ ...roleRequirements, smm: e.target.value })}
-                  placeholder="ТЗ для SMM (опционально)"
-                  rows={3}
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
+                  value={roleRequirements[taskType] || ''}
+                  onChange={(e) => setRoleRequirements({ ...roleRequirements, [taskType]: e.target.value })}
+                  placeholder={`ТЗ для ${taskType === 'smm' ? 'SMM' : taskType === 'design' ? 'Design' : taskType === 'channel' ? 'Channel' : taskType === 'prfr' ? 'PR-FR' : taskType} (опционально)`}
+                  rows={6}
+                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y`}
                   disabled={createTaskMutation.isPending}
                 />
               </div>
-              <div>
-                <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>Design</label>
-                <textarea
-                  value={roleRequirements.design || ''}
-                  onChange={(e) => setRoleRequirements({ ...roleRequirements, design: e.target.value })}
-                  placeholder="ТЗ для Design (опционально)"
-                  rows={3}
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                  disabled={createTaskMutation.isPending}
-                />
-              </div>
-              <div>
-                <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>Channel</label>
-                <textarea
-                  value={roleRequirements.channel || ''}
-                  onChange={(e) => setRoleRequirements({ ...roleRequirements, channel: e.target.value })}
-                  placeholder="ТЗ для Channel (опционально)"
-                  rows={3}
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                  disabled={createTaskMutation.isPending}
-                />
-              </div>
-              <div>
-                <label className={`block text-white/80 mb-2 text-xs text-readable ${theme}`}>PR-FR</label>
-                <textarea
-                  value={roleRequirements.prfr || ''}
-                  onChange={(e) => setRoleRequirements({ ...roleRequirements, prfr: e.target.value })}
-                  placeholder="ТЗ для PR-FR (опционально)"
-                  rows={3}
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                  disabled={createTaskMutation.isPending}
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Этапы задачи */}

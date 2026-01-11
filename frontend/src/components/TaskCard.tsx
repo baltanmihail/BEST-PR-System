@@ -15,6 +15,7 @@ const typeLabels = {
   design: 'Дизайн',
   channel: 'Channel',
   prfr: 'PR-FR',
+  multitask: 'Многозадачная',
 }
 
 const statusLabels = {

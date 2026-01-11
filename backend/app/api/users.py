@@ -258,6 +258,7 @@ async def get_users(
         conditions.append(User.is_active == is_active)
     if search:
         search_pattern = f"%{search}%"
+        # Поиск только по имени и username (email не запрашивается при регистрации)
         conditions.append(
             or_(
                 User.full_name.ilike(search_pattern),
@@ -530,6 +531,64 @@ async def get_user_activity(
         }
         for activity in activities
     ]
+
+
+@router.get("/{user_id}/tasks")
+async def get_user_tasks(
+    user_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Получить задачи пользователя (текущие и выполненные)
+    
+    Доступно самому пользователю, координаторам и VP4PR
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from app.models.task import Task, TaskAssignment, AssignmentStatus
+    from app.schemas.task import TaskResponse, TaskAssignmentResponse
+    
+    # Проверка прав: пользователь может видеть только свои задачи, координаторы и VP4PR - любые
+    if current_user.id != user_id and current_user.role not in [
+        UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only view your own tasks"
+        )
+    
+    # Получаем назначения задач пользователя
+    assignments_query = select(TaskAssignment).options(
+        selectinload(TaskAssignment.task)
+    ).where(
+        TaskAssignment.user_id == user_id
+    ).order_by(TaskAssignment.assigned_at.desc())
+    
+    result = await db.execute(assignments_query)
+    assignments = result.scalars().all()
+    
+    # Разделяем на текущие и выполненные задачи
+    active_tasks = []
+    completed_tasks = []
+    
+    for assignment in assignments:
+        task_data = {
+            "task": TaskResponse.model_validate(assignment.task),
+            "assignment": TaskAssignmentResponse.model_validate(assignment)
+        }
+        
+        if assignment.status in [AssignmentStatus.ASSIGNED, AssignmentStatus.IN_PROGRESS]:
+            active_tasks.append(task_data)
+        elif assignment.status == AssignmentStatus.COMPLETED:
+            completed_tasks.append(task_data)
+    
+    return {
+        "active": active_tasks,
+        "completed": completed_tasks,
+        "total": len(assignments)
+    }
 
 
 @router.get("/{user_id}/export")

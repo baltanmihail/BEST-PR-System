@@ -1,4 +1,4 @@
-export type TaskType = 'smm' | 'design' | 'channel' | 'prfr'
+export type TaskType = 'smm' | 'design' | 'channel' | 'prfr' | 'multitask'
 export type TaskStatus = 'draft' | 'open' | 'assigned' | 'in_progress' | 'review' | 'completed' | 'cancelled'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'critical'
 

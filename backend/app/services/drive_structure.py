@@ -509,13 +509,13 @@ class DriveStructureService:
         task_doc_content = self._generate_task_doc_content(task_name, task_description, task_data)
         task_doc_id = None
         try:
-            task_doc = google_service.create_doc(
+            # create_doc возвращает строку (doc_id), а не dict
+            task_doc_id = google_service.create_doc(
                 title=task_name,
                 content=task_doc_content,
                 folder_id=task_folder_id,
                 background=False
             )
-            task_doc_id = task_doc.get("id")
             logger.info(f"✅ Создан файл задачи '{task_name}' (ID: {task_doc_id})")
         except Exception as e:
             logger.warning(f"⚠️ Не удалось создать файл задачи '{task_name}': {e}")

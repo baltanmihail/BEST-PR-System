@@ -14,7 +14,9 @@ from sqlalchemy import select
 
 from app.models.user import User, UserRole
 from app.models.file_upload import FileUpload, FileUploadStatus, FileUploadCategory
+from app.models.task import Task
 from app.services.google_service import GoogleService
+from app.services.drive_structure import DriveStructureService
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -81,25 +83,38 @@ class FileUploadService:
                 detail=f"Файл слишком большой. Максимум: {MAX_FILE_SIZE_MB} МБ"
             )
         
-        # Проверяем, является ли пользователь координатором/VP4PR
+        # Проверяем, является ли пользователь VP4PR (автоодобрение) или координатором (модерация)
+        is_vp4pr = user.role == UserRole.VP4PR
         is_coordinator = user.role in [
             UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR
         ]
         
-        # Для координаторов - загружаем сразу в постоянную папку
-        # Для обычных пользователей - во временную папку
-        if is_coordinator:
-            # Загружаем сразу в постоянную папку для категории
+        # Для файлов задач (task_material) сохраняем в папку задачи (materials)
+        # Для остальных категорий - в общие папки
+        if category == FileUploadCategory.TASK_MATERIAL and task_id:
+            # Получаем папку задачи и подпапку materials
+            folder_id = await self._get_task_materials_folder(task_id)
+            # Переименовываем файл с префиксом task_id
+            file_extension = file.filename.split('.')[-1] if '.' in file.filename else ''
+            file_base_name = file.filename.rsplit('.', 1)[0] if '.' in file.filename else file.filename
+            filename = f"{task_id}_{file_base_name}.{file_extension}" if file_extension else f"{task_id}_{file_base_name}"
+            # Для VP4PR - одобряем сразу, для координаторов и остальных - на модерацию
+            initial_status = FileUploadStatus.APPROVED if is_vp4pr else FileUploadStatus.PENDING
+            is_approved_immediately = is_vp4pr
+        elif is_vp4pr:
+            # Для VP4PR - загружаем сразу в постоянную папку для категории (автоодобрение)
             final_folder_id = await self._get_category_folder(category)
             folder_id = final_folder_id
             filename = file.filename
             initial_status = FileUploadStatus.APPROVED
+            is_approved_immediately = True
         else:
-            # Загружаем во временную папку
+            # Для координаторов и обычных пользователей - загружаем во временную папку (на модерацию)
             folder_id = await self._get_or_create_temp_folder()
             filename = f"pending_{user.id}_{file.filename}"
             initial_status = FileUploadStatus.PENDING
+            is_approved_immediately = False
         
         # Загружаем на Google Drive
         try:
@@ -125,23 +140,23 @@ class FileUploadService:
             original_filename=file.filename,
             mime_type=file.content_type,
             file_size=file_size,
-            temp_drive_id=drive_file_id if not is_coordinator else None,
-            final_drive_id=drive_file_id if is_coordinator else None,
+            temp_drive_id=drive_file_id if not is_approved_immediately else None,
+            final_drive_id=drive_file_id if is_approved_immediately else None,
             drive_url=drive_url,
             category=category,
             task_id=task_id,
             description=description,
             status=initial_status,
-            moderated_by_id=user.id if is_coordinator else None,
-            moderated_at=datetime.now(timezone.utc) if is_coordinator else None
+            moderated_by_id=user.id if is_approved_immediately else None,
+            moderated_at=datetime.now(timezone.utc) if is_approved_immediately else None
         )
         
         self.db.add(upload)
         await self.db.commit()
         await self.db.refresh(upload)
         
-        if is_coordinator:
-            logger.info(f"✅ Файл '{file.filename}' загружен и автоматически одобрен для координатора (ID: {upload.id})")
+        if is_approved_immediately:
+            logger.info(f"✅ Файл '{file.filename}' загружен и автоматически одобрен для VP4PR (ID: {upload.id})")
         else:
             logger.info(f"✅ Файл '{file.filename}' загружен на модерацию (ID: {upload.id})")
         
@@ -160,7 +175,16 @@ class FileUploadService:
             )
         
         # Получаем постоянную папку для категории
-        final_folder_id = await self._get_category_folder(upload.category)
+        # Для файлов задач - в папку задачи (materials), для остальных - в категорию
+        if upload.category == FileUploadCategory.TASK_MATERIAL and upload.task_id:
+            final_folder_id = await self._get_task_materials_folder(upload.task_id)
+            # Переименовываем файл с префиксом task_id
+            file_extension = upload.original_filename.split('.')[-1] if '.' in upload.original_filename else ''
+            file_base_name = upload.original_filename.rsplit('.', 1)[0] if '.' in upload.original_filename else upload.original_filename
+            new_filename = f"{upload.task_id}_{file_base_name}.{file_extension}" if file_extension else f"{upload.task_id}_{file_base_name}"
+        else:
+            final_folder_id = await self._get_category_folder(upload.category)
+            new_filename = upload.original_filename
         
         # Перемещаем файл
         try:
@@ -185,10 +209,10 @@ class FileUploadService:
                     supportsAllDrives=True
                 ).execute()
                 
-                # Переименовываем (убираем pending_ префикс)
+                # Переименовываем (убираем pending_ префикс, добавляем task_id для задач)
                 drive_service.files().update(
                     fileId=upload.temp_drive_id,
-                    body={'name': upload.original_filename},
+                    body={'name': new_filename},
                     supportsAllDrives=True
                 ).execute()
                 
@@ -306,3 +330,76 @@ class FileUploadService:
             logger.info(f"📁 Создана папка для категории {category.value}: {folder_id}")
         
         return folder_id
+    
+    async def _get_task_materials_folder(self, task_id: UUID) -> str:
+        """
+        Получить папку materials для задачи
+        
+        Если папка задачи не существует, создаёт её структуру.
+        """
+        # Получаем задачу из БД
+        from sqlalchemy import select
+        result = await self.db.execute(select(Task).where(Task.id == task_id))
+        task = result.scalar_one_or_none()
+        
+        if not task:
+            raise HTTPException(status_code=404, detail="Задача не найдена")
+        
+        # Если папка задачи уже существует, получаем materials
+        if task.drive_folder_id:
+            # Ищем подпапку materials в папке задачи
+            materials_folder_id = self.google_service.get_folder_by_name(
+                name="materials",
+                parent_folder_id=task.drive_folder_id
+            )
+            if materials_folder_id:
+                return materials_folder_id
+            else:
+                # Создаём подпапку materials
+                materials_folder_id = self.google_service.create_folder(
+                    name="materials",
+                    parent_folder_id=task.drive_folder_id
+                )
+                logger.info(f"📁 Создана подпапка materials для задачи {task_id}: {materials_folder_id}")
+                return materials_folder_id
+        
+        # Если папка задачи не существует, создаём структуру
+        # create_task_folder синхронная, поэтому запускаем в executor
+        import asyncio
+        drive_structure = DriveStructureService()
+        task_data_dict = {
+            'id': str(task.id),
+            'title': task.title,
+            'description': task.description,
+            'type': task.type.value if hasattr(task.type, 'value') else str(task.type),
+            'priority': task.priority.value if hasattr(task.priority, 'value') else str(task.priority),
+            'status': task.status.value if hasattr(task.status, 'value') else str(task.status),
+            'due_date': task.due_date.isoformat() if task.due_date else None,
+        }
+        
+        loop = asyncio.get_event_loop()
+        folders = await loop.run_in_executor(
+            None,
+            lambda: drive_structure.create_task_folder(
+                task_id=str(task.id),
+                task_name=task.title,
+                task_description=task.description,
+                task_data=task_data_dict
+            )
+        )
+        
+        # Сохраняем drive_folder_id в задачу
+        if folders.get('task_folder_id'):
+            task.drive_folder_id = folders['task_folder_id']
+            await self.db.commit()
+            await self.db.refresh(task)
+        
+        materials_folder_id = folders.get('materials_folder_id')
+        if not materials_folder_id:
+            # Если materials не была создана, создаём её
+            materials_folder_id = self.google_service.create_folder(
+                name="materials",
+                parent_folder_id=folders['task_folder_id']
+            )
+        
+        return materials_folder_id

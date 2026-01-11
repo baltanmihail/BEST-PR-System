@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, Search, Shield, Ban, Unlock, TrendingUp, Download, Eye, Loader2, AlertCircle } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Users, Search, Shield, Ban, Unlock, TrendingUp, Download, Eye, Loader2, AlertCircle, X, CheckCircle2, Clock, ExternalLink } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { usersApi, type UserProfile } from '../services/users'
@@ -18,6 +18,7 @@ export default function UserMonitoring() {
   const [showPointsModal, setShowPointsModal] = useState(false)
   const [pointsDelta, setPointsDelta] = useState(0)
   const [pointsReason, setPointsReason] = useState('')
+  const [showViewModal, setShowViewModal] = useState(false)
 
   // Проверяем роль (роль приходит как строка из API через Pydantic, например "vp4pr", "coordinator_smm")
   // Pydantic сериализует enum UserRole в его значение (строку), поэтому user.role - это строка, а не enum
@@ -133,6 +134,36 @@ export default function UserMonitoring() {
     return roleMap[role] || role
   }
 
+  const navigate = useNavigate()
+
+  // Загружаем задачи выбранного пользователя
+  const { data: userTasks, isLoading: tasksLoading } = useQuery({
+    queryKey: ['user-tasks', selectedUser?.id],
+    queryFn: () => selectedUser ? usersApi.getUserTasks(selectedUser.id) : null,
+    enabled: !!selectedUser && showViewModal,
+  })
+
+  const getTaskTypeLabel = (type: string) => {
+    const typeMap: Record<string, string> = {
+      smm: 'SMM',
+      design: 'Дизайн',
+      channel: 'Channel',
+      prfr: 'PR-FR',
+      multitask: 'Многозадачная',
+    }
+    return typeMap[type] || type
+  }
+
+  const getAssignmentStatusLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      assigned: 'Назначена',
+      in_progress: 'В работе',
+      completed: 'Завершена',
+      cancelled: 'Отменена',
+    }
+    return statusMap[status] || status
+  }
+
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
       {/* Заголовок */}
@@ -157,7 +188,7 @@ export default function UserMonitoring() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-white/50" />
           <input
             type="text"
-            placeholder="Поиск по имени, username или email..."
+            placeholder="Поиск по имени или username..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={`w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
@@ -190,12 +221,15 @@ export default function UserMonitoring() {
                       <Users className="h-6 w-6 text-best-primary" />
                     </div>
                   )}
-                  <div>
-                    <h3 className={`text-white font-semibold text-readable ${theme}`}>
+                  <div className="flex-1 min-w-0">
+                    <h3 
+                      className={`text-white font-semibold text-readable ${theme} break-words`}
+                      title={u.full_name}
+                    >
                       {u.full_name}
                     </h3>
                     {u.username && (
-                      <p className="text-white/60 text-sm">@{u.username}</p>
+                      <p className="text-white/60 text-sm truncate" title={`@${u.username}`}>@{u.username}</p>
                     )}
                   </div>
                 </div>
@@ -237,7 +271,7 @@ export default function UserMonitoring() {
                 <button
                   onClick={() => {
                     setSelectedUser(u)
-                    // Загружаем активность пользователя
+                    setShowViewModal(true)
                   }}
                   className="flex-1 px-3 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all text-sm flex items-center justify-center space-x-1"
                 >
@@ -400,6 +434,277 @@ export default function UserMonitoring() {
                 className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
               >
                 Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно просмотра пользователя */}
+      {showViewModal && selectedUser && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowViewModal(false)}>
+          <div 
+            className={`glass-enhanced ${theme} rounded-xl p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className={`text-2xl font-semibold text-white text-readable ${theme}`}>
+                Профиль пользователя
+              </h3>
+              <button
+                onClick={() => {
+                  setShowViewModal(false)
+                  setSelectedUser(null)
+                }}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+                aria-label="Закрыть"
+              >
+                <X className="h-5 w-5 text-white" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Основная информация */}
+              <div className="flex items-start space-x-4">
+                {selectedUser.avatar_url ? (
+                  <img
+                    src={selectedUser.avatar_url}
+                    alt={selectedUser.full_name}
+                    className="w-20 h-20 rounded-full object-cover border-2 border-best-primary flex-shrink-0"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-best-primary/20 flex items-center justify-center flex-shrink-0">
+                    <Users className="h-10 w-10 text-best-primary" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <h4 className={`text-xl font-bold text-white mb-1 text-readable ${theme} break-words`}>
+                    {selectedUser.full_name}
+                  </h4>
+                  {selectedUser.username && (
+                    <p className="text-white/60 text-sm">@{selectedUser.username}</p>
+                  )}
+                  {selectedUser.telegram_username && selectedUser.telegram_username !== selectedUser.username && (
+                    <p className="text-white/60 text-sm">Telegram: @{selectedUser.telegram_username}</p>
+                  )}
+                  <span
+                    className={`inline-block mt-2 px-3 py-1 rounded-full text-xs font-medium ${
+                      selectedUser.is_active
+                        ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                        : 'bg-red-500/20 text-red-400 border border-red-500/50'
+                    }`}
+                  >
+                    {selectedUser.is_active ? 'Активен' : 'Заблокирован'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Детали */}
+              <div className={`bg-white/5 rounded-lg p-4 space-y-3`}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-white/60 text-sm">Роль:</span>
+                    <p className={`text-white font-medium text-readable ${theme}`}>{getRoleName(selectedUser.role)}</p>
+                  </div>
+                  <div>
+                    <span className="text-white/60 text-sm">Telegram ID:</span>
+                    <p className={`text-white font-mono text-sm text-readable ${theme}`}>{selectedUser.telegram_id}</p>
+                  </div>
+                  <div>
+                    <span className="text-white/60 text-sm">Баллы:</span>
+                    <p className={`text-white font-medium text-readable ${theme}`}>{selectedUser.points}</p>
+                  </div>
+                  <div>
+                    <span className="text-white/60 text-sm">Уровень:</span>
+                    <p className={`text-white font-medium text-readable ${theme}`}>{selectedUser.level}</p>
+                  </div>
+                  <div>
+                    <span className="text-white/60 text-sm">Дней подряд:</span>
+                    <p className={`text-white font-medium text-readable ${theme}`}>{selectedUser.streak_days}</p>
+                  </div>
+                  {selectedUser.email && (
+                    <div>
+                      <span className="text-white/60 text-sm">Email:</span>
+                      <p className={`text-white text-sm break-words text-readable ${theme}`}>{selectedUser.email}</p>
+                    </div>
+                  )}
+                  {selectedUser.last_activity_at && (
+                    <div>
+                      <span className="text-white/60 text-sm">Последняя активность:</span>
+                      <p className={`text-white text-sm text-readable ${theme}`}>
+                        {new Date(selectedUser.last_activity_at).toLocaleString('ru-RU')}
+                      </p>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-white/60 text-sm">Зарегистрирован:</span>
+                    <p className={`text-white text-sm text-readable ${theme}`}>
+                      {new Date(selectedUser.created_at).toLocaleDateString('ru-RU')}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedUser.bio && (
+                  <div>
+                    <span className="text-white/60 text-sm block mb-1">О себе:</span>
+                    <p className={`text-white text-sm text-readable ${theme} break-words`}>{selectedUser.bio}</p>
+                  </div>
+                )}
+
+                {selectedUser.contacts && (
+                  <div>
+                    <span className="text-white/60 text-sm block mb-2">Контакты:</span>
+                    <div className="space-y-1">
+                      {selectedUser.contacts.phone && (
+                        <p className={`text-white text-sm text-readable ${theme}`}>📞 {selectedUser.contacts.phone}</p>
+                      )}
+                      {selectedUser.contacts.telegram && (
+                        <p className={`text-white text-sm text-readable ${theme}`}>✈️ {selectedUser.contacts.telegram}</p>
+                      )}
+                      {selectedUser.contacts.vk && (
+                        <p className={`text-white text-sm text-readable ${theme}`}>🔵 {selectedUser.contacts.vk}</p>
+                      )}
+                      {selectedUser.contacts.instagram && (
+                        <p className={`text-white text-sm text-readable ${theme}`}>📷 {selectedUser.contacts.instagram}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {selectedUser.skills && selectedUser.skills.length > 0 && (
+                  <div>
+                    <span className="text-white/60 text-sm block mb-2">Навыки:</span>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedUser.skills.map((skill, index) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-best-primary/20 text-best-primary rounded text-xs"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Задачи пользователя */}
+              <div className="space-y-4">
+                <h4 className={`text-lg font-semibold text-white text-readable ${theme}`}>
+                  Задачи пользователя
+                </h4>
+                
+                {tasksLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-best-primary" />
+                  </div>
+                ) : userTasks && userTasks.total > 0 ? (
+                  <div className="space-y-4">
+                    {/* Активные задачи */}
+                    {userTasks.active.length > 0 && (
+                      <div>
+                        <div className="flex items-center space-x-2 mb-3">
+                          <Clock className="h-5 w-5 text-yellow-400" />
+                          <h5 className={`text-md font-medium text-white text-readable ${theme}`}>
+                            Текущие задачи ({userTasks.active.length})
+                          </h5>
+                        </div>
+                        <div className="space-y-2">
+                          {userTasks.active.map(({ task, assignment }) => (
+                            <div
+                              key={assignment.id}
+                              className="bg-white/5 rounded-lg p-4 border border-white/10 hover:border-best-primary/50 transition-colors cursor-pointer"
+                              onClick={() => {
+                                navigate(`/tasks`)
+                                setShowViewModal(false)
+                              }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h6 className={`text-white font-medium text-readable ${theme} flex-1`}>
+                                  {task.title}
+                                </h6>
+                                <ExternalLink className="h-4 w-4 text-white/40 ml-2 flex-shrink-0" />
+                              </div>
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="px-2 py-1 bg-best-primary/20 text-best-primary rounded">
+                                  {getTaskTypeLabel(task.type)}
+                                </span>
+                                <span className="px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded">
+                                  {getAssignmentStatusLabel(assignment.status)}
+                                </span>
+                                {task.due_date && (
+                                  <span className="px-2 py-1 bg-white/10 text-white/70 rounded">
+                                    {new Date(task.due_date).toLocaleDateString('ru-RU')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Выполненные задачи */}
+                    {userTasks.completed.length > 0 && (
+                      <div>
+                        <div className="flex items-center space-x-2 mb-3">
+                          <CheckCircle2 className="h-5 w-5 text-green-400" />
+                          <h5 className={`text-md font-medium text-white text-readable ${theme}`}>
+                            Выполненные задачи ({userTasks.completed.length})
+                          </h5>
+                        </div>
+                        <div className="space-y-2">
+                          {userTasks.completed.map(({ task, assignment }) => (
+                            <div
+                              key={assignment.id}
+                              className="bg-white/5 rounded-lg p-4 border border-white/10 hover:border-best-primary/50 transition-colors cursor-pointer"
+                              onClick={() => {
+                                navigate(`/tasks`)
+                                setShowViewModal(false)
+                              }}
+                            >
+                              <div className="flex items-start justify-between mb-2">
+                                <h6 className={`text-white font-medium text-readable ${theme} flex-1`}>
+                                  {task.title}
+                                </h6>
+                                <ExternalLink className="h-4 w-4 text-white/40 ml-2 flex-shrink-0" />
+                              </div>
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                <span className="px-2 py-1 bg-best-primary/20 text-best-primary rounded">
+                                  {getTaskTypeLabel(task.type)}
+                                </span>
+                                <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded">
+                                  Завершена
+                                </span>
+                                {assignment.completed_at && (
+                                  <span className="px-2 py-1 bg-white/10 text-white/70 rounded">
+                                    {new Date(assignment.completed_at).toLocaleDateString('ru-RU')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-white/60">
+                    <p className="text-sm">У пользователя пока нет задач</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => {
+                  setShowViewModal(false)
+                  setSelectedUser(null)
+                }}
+                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
+              >
+                Закрыть
               </button>
             </div>
           </div>
