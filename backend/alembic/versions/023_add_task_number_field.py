@@ -58,22 +58,22 @@ def upgrade():
     """)
     
     # Создаём триггер для автоматического присвоения номера
+    op.execute("DROP TRIGGER IF EXISTS trigger_assign_task_number ON tasks")
     op.execute("""
-        DROP TRIGGER IF EXISTS trigger_assign_task_number ON tasks;
         CREATE TRIGGER trigger_assign_task_number
             BEFORE INSERT ON tasks
             FOR EACH ROW
-            EXECUTE FUNCTION assign_task_number();
+            EXECUTE FUNCTION assign_task_number()
     """)
 
 
 def downgrade():
     # Удаляем триггер и функцию
-    op.execute("DROP TRIGGER IF EXISTS trigger_assign_task_number ON tasks;")
-    op.execute("DROP FUNCTION IF EXISTS assign_task_number();")
+    op.execute("DROP TRIGGER IF EXISTS trigger_assign_task_number ON tasks")
+    op.execute("DROP FUNCTION IF EXISTS assign_task_number()")
     
     # Удаляем последовательность
-    op.execute("DROP SEQUENCE IF EXISTS task_number_seq;")
+    op.execute("DROP SEQUENCE IF EXISTS task_number_seq")
     
     # Удаляем индекс и колонку
     op.drop_index('ix_tasks_task_number', table_name='tasks')
