@@ -68,6 +68,11 @@ class Settings(BaseSettings):
     # Email пользователя для передачи ownership файлов (чтобы файлы использовали квоту пользователя, а не сервисного аккаунта)
     GOOGLE_DRIVE_OWNER_EMAIL: str = os.getenv("GOOGLE_DRIVE_OWNER_EMAIL", "")
     
+    # OAuth 2.0 для создания файлов от имени пользователя (используется квота пользователя, а не сервисных аккаунтов)
+    GOOGLE_OAUTH_CLIENT_ID: str = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+    GOOGLE_OAUTH_CLIENT_SECRET: str = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+    GOOGLE_OAUTH_REFRESH_TOKEN: str = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN", "")
+    
     # Frontend URL (для ссылок в боте и уведомлениях)
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
     

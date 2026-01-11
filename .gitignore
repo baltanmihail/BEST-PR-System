@@ -51,6 +51,7 @@ logs/
 # Google Credentials
 credentials*.json
 !credentials.example.json
+oauth_token.json
 
 # Документация с секретами (если нужно)
 # docs/RAILWAY_SETUP_SIMPLE.md

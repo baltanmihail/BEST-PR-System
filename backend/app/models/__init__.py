@@ -7,6 +7,7 @@ from app.models.equipment import Equipment, EquipmentRequest
 from app.models.event import Event
 from app.models.gamification import PointsLog, Achievement
 from app.models.file import File
+from app.models.file_upload import FileUpload, FileUploadStatus, FileUploadCategory
 from app.models.telegram import TelegramChat
 from app.models.moderation import ModerationQueue
 from app.models.activity import ActivityLog
@@ -27,6 +28,9 @@ __all__ = [
     "PointsLog",
     "Achievement",
     "File",
+    "FileUpload",
+    "FileUploadStatus",
+    "FileUploadCategory",
     "TelegramChat",
     "ModerationQueue",
     "ActivityLog",

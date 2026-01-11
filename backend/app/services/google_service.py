@@ -1,6 +1,10 @@
 """
 Сервис для работы с Google APIs (Sheets, Drive, Docs)
 Улучшенная версия с ротацией credentials, rate limiting, кэшированием и батчингом
+
+Поддержка OAuth 2.0:
+- Если указаны GOOGLE_OAUTH_* переменные, файлы создаются от имени пользователя (его квота)
+- Сервисные аккаунты используются для чтения и как fallback
 """
 import json
 import time
@@ -9,6 +13,8 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Callable, Tuple
 from app.config import settings
 from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseUpload
 from googleapiclient.errors import HttpError
@@ -49,8 +55,16 @@ class GoogleService:
         self._clients: List[Dict] = []  # Кэшированные клиенты для каждого credentials
         self._user_client_index = 0
         self._background_client_index = 0
+        
+        # OAuth клиент (для создания файлов от имени пользователя)
+        self._oauth_credentials: Optional[Credentials] = None
+        self._oauth_drive_service = None
+        self._oauth_sheets_service = None
+        self._oauth_docs_service = None
+        
         self._load_credentials()
         self._initialize_clients()
+        self._initialize_oauth_client()  # OAuth для создания файлов
         
         # Rate limiting - отдельно для каждого credential
         # Структура: {credential_index: deque([timestamps])}
@@ -128,6 +142,105 @@ class GoogleService:
                 raise
         
         logger.info(f"📊 Клиенты разделены: {self._user_clients_count} пользовательских, {len(self._clients) - self._user_clients_count} фоновых")
+    
+    def _initialize_oauth_client(self):
+        """
+        Инициализировать OAuth клиент для создания файлов от имени пользователя
+        
+        OAuth используется для операций, которые потребляют квоту (создание файлов).
+        Это позволяет использовать квоту пользователя вместо квоты сервисных аккаунтов.
+        """
+        # Проверяем наличие OAuth credentials в настройках
+        oauth_client_id = getattr(settings, 'GOOGLE_OAUTH_CLIENT_ID', None)
+        oauth_client_secret = getattr(settings, 'GOOGLE_OAUTH_CLIENT_SECRET', None)
+        oauth_refresh_token = getattr(settings, 'GOOGLE_OAUTH_REFRESH_TOKEN', None)
+        
+        if not all([oauth_client_id, oauth_client_secret, oauth_refresh_token]):
+            logger.warning("⚠️ OAuth credentials не настроены. Файлы будут создаваться сервисными аккаунтами (ограниченная квота).")
+            logger.info("💡 Для использования квоты пользователя добавьте GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN")
+            return
+        
+        try:
+            # Создаём OAuth credentials
+            self._oauth_credentials = Credentials(
+                token=None,  # Будет получен автоматически при первом запросе
+                refresh_token=oauth_refresh_token,
+                token_uri='https://oauth2.googleapis.com/token',
+                client_id=oauth_client_id,
+                client_secret=oauth_client_secret,
+                scopes=[
+                    'https://www.googleapis.com/auth/drive',
+                    'https://www.googleapis.com/auth/spreadsheets',
+                    'https://www.googleapis.com/auth/documents',
+                ]
+            )
+            
+            # Обновляем токен (получаем access_token из refresh_token)
+            self._oauth_credentials.refresh(Request())
+            
+            # Создаём сервисы на основе OAuth
+            self._oauth_drive_service = build('drive', 'v3', credentials=self._oauth_credentials)
+            self._oauth_sheets_service = build('sheets', 'v4', credentials=self._oauth_credentials)
+            self._oauth_docs_service = build('docs', 'v1', credentials=self._oauth_credentials)
+            
+            logger.info("✅ OAuth клиент инициализирован! Файлы будут создаваться от имени пользователя.")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации OAuth клиента: {e}")
+            logger.warning("⚠️ Файлы будут создаваться сервисными аккаунтами (ограниченная квота)")
+            self._oauth_credentials = None
+            self._oauth_drive_service = None
+            self._oauth_sheets_service = None
+            self._oauth_docs_service = None
+    
+    def _get_oauth_drive_service(self):
+        """
+        Получить Drive сервис на основе OAuth (для создания файлов от имени пользователя)
+        
+        Returns:
+            Drive service или None если OAuth не настроен
+        """
+        if not self._oauth_drive_service:
+            return None
+        
+        # Проверяем, не истёк ли токен
+        if self._oauth_credentials and self._oauth_credentials.expired:
+            try:
+                self._oauth_credentials.refresh(Request())
+                logger.debug("🔄 OAuth токен обновлён")
+            except Exception as e:
+                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
+                return None
+        
+        return self._oauth_drive_service
+    
+    def _get_oauth_sheets_service(self):
+        """Получить Sheets сервис на основе OAuth"""
+        if not self._oauth_sheets_service:
+            return None
+        
+        if self._oauth_credentials and self._oauth_credentials.expired:
+            try:
+                self._oauth_credentials.refresh(Request())
+            except Exception as e:
+                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
+                return None
+        
+        return self._oauth_sheets_service
+    
+    def _get_oauth_docs_service(self):
+        """Получить Docs сервис на основе OAuth"""
+        if not self._oauth_docs_service:
+            return None
+        
+        if self._oauth_credentials and self._oauth_credentials.expired:
+            try:
+                self._oauth_credentials.refresh(Request())
+            except Exception as e:
+                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
+                return None
+        
+        return self._oauth_docs_service
     
     def _rate_limit_check(self, client_index: int):
         """
@@ -386,6 +499,8 @@ class GoogleService:
         """
         Создать папку в Google Drive
         
+        Приоритет: OAuth (квота пользователя) → Service Account
+        
         Args:
             name: Название папки
             parent_folder_id: ID родительской папки (если не указан, используется из настроек)
@@ -404,32 +519,46 @@ class GoogleService:
         if parent_folder_id:
             file_metadata['parents'] = [parent_folder_id]
         
-        # Пробуем создать папку, при ошибке квоты - пробуем следующий credential
-        # Примечание: папки почти не занимают места, но для консистентности тоже добавляем ротацию
-        last_error = None
-        initial_client_index = self._background_client_index if background else self._user_client_index
+        # Сначала пробуем OAuth (квота пользователя)
+        oauth_service = self._get_oauth_drive_service()
+        if oauth_service:
+            try:
+                folder = oauth_service.files().create(
+                    body=file_metadata,
+                    fields='id, name, parents',
+                    supportsAllDrives=True
+                ).execute()
+                
+                folder_id = folder.get('id')
+                
+                if parent_folder_id:
+                    self.invalidate_cache(pattern=f"folder_list:{parent_folder_id}")
+                
+                logger.info(f"✅ Создана папка '{name}' (ID: {folder_id}) через OAuth")
+                return folder_id
+                
+            except HttpError as e:
+                logger.warning(f"⚠️ OAuth ошибка при создании папки '{name}': {e}. Пробуем service account...")
         
+        # Fallback: пробуем сервисные аккаунты
+        last_error = None
         for attempt in range(len(self._clients)):
             try:
                 service = self._get_drive_service(background=background)
                 create_params = {
                     'body': file_metadata,
                     'fields': 'id, name, parents',
-                    'supportsAllDrives': True,  # Обязательно для Shared Drive
+                    'supportsAllDrives': True,
                 }
                 
                 folder = service.files().create(**create_params).execute()
                 folder_id = folder.get('id')
                 
-                # Передаём ownership владельцу папки (если указан), чтобы папка использовала квоту пользователя
                 if settings.GOOGLE_DRIVE_OWNER_EMAIL:
                     ownership_transferred = self._transfer_file_ownership(folder_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
                     if ownership_transferred:
                         logger.info(f"✅ Ownership папки '{name}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
-                    else:
-                        logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к папке '{name}' (ownership не передан)")
                 
-                # Инвалидируем кэш для родительской папки
                 if parent_folder_id:
                     self.invalidate_cache(pattern=f"folder_list:{parent_folder_id}")
                 
@@ -441,7 +570,6 @@ class GoogleService:
                 last_error = e
                 if 'storageQuotaExceeded' in error_str and attempt < len(self._clients) - 1:
                     logger.warning(f"⚠️ Квота превышена для credential #{attempt + 1} при создании папки '{name}'. Пробуем следующий credential...")
-                    # Переключаемся на следующий credential для следующей попытки
                     if background:
                         self._background_client_index = (self._background_client_index + 1) % len(self._clients)
                     else:
@@ -451,7 +579,6 @@ class GoogleService:
                     logger.error(f"❌ Ошибка создания папки '{name}': {e}")
                     raise
         
-        # Если все попытки исчерпаны
         if last_error:
             raise last_error
         raise RuntimeError(f"Не удалось создать папку '{name}' после {len(self._clients)} попыток")
@@ -530,6 +657,8 @@ class GoogleService:
         """
         Загрузить файл в Google Drive
         
+        Приоритет: OAuth (квота пользователя) → Service Account
+        
         Args:
             file_content: Содержимое файла (bytes)
             filename: Имя файла
@@ -542,11 +671,40 @@ class GoogleService:
         """
         folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
         
-        service = self._get_drive_service(background=background)
         file_metadata = {'name': filename}
-        
         if folder_id:
             file_metadata['parents'] = [folder_id]
+        
+        # Сначала пробуем OAuth (квота пользователя)
+        oauth_service = self._get_oauth_drive_service()
+        if oauth_service:
+            try:
+                media = MediaIoBaseUpload(
+                    io.BytesIO(file_content),
+                    mimetype=mime_type,
+                    resumable=True
+                )
+                
+                file = oauth_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id, name, parents',
+                    supportsAllDrives=True
+                ).execute()
+                
+                file_id = file.get('id')
+                
+                if folder_id:
+                    self.invalidate_cache(pattern=f"file_list:{folder_id}")
+                
+                logger.info(f"✅ Файл '{filename}' загружен (ID: {file_id}) через OAuth")
+                return file_id
+                
+            except HttpError as e:
+                logger.warning(f"⚠️ OAuth ошибка при загрузке файла '{filename}': {e}. Пробуем service account...")
+        
+        # Fallback: service account
+        service = self._get_drive_service(background=background)
         
         media = MediaIoBaseUpload(
             io.BytesIO(file_content),
@@ -559,12 +717,11 @@ class GoogleService:
                 body=file_metadata,
                 media_body=media,
                 fields='id, name, parents',
-                supportsAllDrives=True  # Поддержка Shared Drive
+                supportsAllDrives=True
             ).execute()
             
             file_id = file.get('id')
             
-            # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя
             if settings.GOOGLE_DRIVE_OWNER_EMAIL:
                 try:
                     self._transfer_file_ownership(file_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, service)
@@ -572,7 +729,6 @@ class GoogleService:
                 except Exception as e:
                     logger.debug(f"⚠️ Не удалось передать ownership файла '{filename}': {e}")
             
-            # Инвалидируем кэш для папки
             if folder_id:
                 self.invalidate_cache(pattern=f"file_list:{folder_id}")
             
@@ -657,6 +813,8 @@ class GoogleService:
         """
         Создать Google Doc
         
+        Приоритет: OAuth (квота пользователя) → Service Account
+        
         Args:
             title: Название документа
             content: Содержимое документа
@@ -668,27 +826,62 @@ class GoogleService:
         """
         folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
         
+        # Сначала пробуем OAuth (квота пользователя)
+        oauth_docs = self._get_oauth_docs_service()
+        oauth_drive = self._get_oauth_drive_service()
+        
+        if oauth_docs and oauth_drive:
+            try:
+                doc = oauth_docs.documents().create(body={'title': title}).execute()
+                doc_id = doc.get('documentId')
+                
+                if content:
+                    requests = [{
+                        'insertText': {
+                            'location': {'index': 1},
+                            'text': content
+                        }
+                    }]
+                    oauth_docs.documents().batchUpdate(
+                        documentId=doc_id,
+                        body={'requests': requests}
+                    ).execute()
+                
+                if folder_id:
+                    oauth_drive.files().update(
+                        fileId=doc_id,
+                        addParents=folder_id,
+                        removeParents='',
+                        fields='id, parents',
+                        supportsAllDrives=True
+                    ).execute()
+                    self.invalidate_cache(pattern=f"file_list:{folder_id}")
+                
+                logger.info(f"✅ Создан Google Doc '{title}' (ID: {doc_id}) через OAuth")
+                return doc_id
+                
+            except HttpError as e:
+                logger.warning(f"⚠️ OAuth ошибка при создании документа '{title}': {e}. Пробуем service account...")
+        
+        # Fallback: service account
         docs_service = self._get_docs_service(background=background)
         
         try:
-            # Создаём документ
             doc = docs_service.documents().create(body={'title': title}).execute()
             doc_id = doc.get('documentId')
             
-            # Добавляем содержимое
-            requests = [{
-                'insertText': {
-                    'location': {'index': 1},
-                    'text': content
-                }
-            }]
+            if content:
+                requests = [{
+                    'insertText': {
+                        'location': {'index': 1},
+                        'text': content
+                    }
+                }]
+                docs_service.documents().batchUpdate(
+                    documentId=doc_id,
+                    body={'requests': requests}
+                ).execute()
             
-            docs_service.documents().batchUpdate(
-                documentId=doc_id,
-                body={'requests': requests}
-            ).execute()
-            
-            # Перемещаем в нужную папку
             if folder_id:
                 drive_service = self._get_drive_service(background=background)
                 drive_service.files().update(
@@ -697,8 +890,6 @@ class GoogleService:
                     removeParents='',
                     fields='id, parents'
                 ).execute()
-                
-                # Инвалидируем кэш для папки
                 self.invalidate_cache(pattern=f"file_list:{folder_id}")
             
             logger.info(f"✅ Создан Google Doc '{title}' (ID: {doc_id})")
@@ -788,6 +979,8 @@ class GoogleService:
         """
         Создать Google Sheets документ
         
+        Приоритет: OAuth (квота пользователя) → Service Account
+        
         Args:
             title: Название таблицы
             folder_id: ID папки для размещения (если не указан, используется из настроек)
@@ -795,10 +988,6 @@ class GoogleService:
         
         Returns:
             Словарь с информацией о созданной таблице: {"id": "...", "url": "..."}
-        
-        Note:
-            Таблицы занимают место в Google Drive. При ошибке storageQuotaExceeded
-            автоматически пробуем следующий credential из списка.
         """
         folder_id = folder_id or settings.GOOGLE_DRIVE_FOLDER_ID
         
@@ -810,7 +999,34 @@ class GoogleService:
         if folder_id:
             file_metadata['parents'] = [folder_id]
         
-        # Пробуем создать таблицу, при ошибке квоты - пробуем следующий credential
+        # Сначала пробуем OAuth (квота пользователя)
+        oauth_service = self._get_oauth_drive_service()
+        if oauth_service:
+            try:
+                spreadsheet = oauth_service.files().create(
+                    body=file_metadata,
+                    fields='id, name, webViewLink',
+                    supportsAllDrives=True
+                ).execute()
+                
+                spreadsheet_id = spreadsheet.get('id')
+                spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
+                
+                if folder_id:
+                    self.invalidate_cache(pattern=f"file_list:{folder_id}")
+                
+                logger.info(f"✅ Создана Google Sheets таблица '{title}' (ID: {spreadsheet_id}) через OAuth")
+                
+                return {
+                    "id": spreadsheet_id,
+                    "url": spreadsheet_url,
+                    "name": title
+                }
+                
+            except HttpError as e:
+                logger.warning(f"⚠️ OAuth ошибка при создании таблицы '{title}': {e}. Пробуем service account...")
+        
+        # Fallback: пробуем сервисные аккаунты
         last_error = None
         for attempt in range(len(self._clients)):
             try:
@@ -819,21 +1035,17 @@ class GoogleService:
                 spreadsheet = drive_service.files().create(
                     body=file_metadata,
                     fields='id, name, webViewLink',
-                    supportsAllDrives=True  # Поддержка Shared Drive
+                    supportsAllDrives=True
                 ).execute()
                 
                 spreadsheet_id = spreadsheet.get('id')
                 spreadsheet_url = spreadsheet.get('webViewLink', f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}")
                 
-                # Передаём ownership владельцу папки (если указан), чтобы файл использовал квоту пользователя, а не сервисного аккаунта
                 if settings.GOOGLE_DRIVE_OWNER_EMAIL:
                     ownership_transferred = self._transfer_file_ownership(spreadsheet_id, settings.GOOGLE_DRIVE_OWNER_EMAIL, drive_service)
                     if ownership_transferred:
                         logger.info(f"✅ Ownership таблицы '{title}' передан пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL}")
-                    else:
-                        logger.info(f"ℹ️ Пользователю {settings.GOOGLE_DRIVE_OWNER_EMAIL} предоставлен доступ к таблице '{title}' (ownership не передан)")
                 
-                # Инвалидируем кэш для папки
                 if folder_id:
                     self.invalidate_cache(pattern=f"file_list:{folder_id}")
                 
@@ -850,7 +1062,6 @@ class GoogleService:
                 last_error = e
                 if 'storageQuotaExceeded' in error_str and attempt < len(self._clients) - 1:
                     logger.warning(f"⚠️ Квота превышена для credential #{attempt + 1} при создании таблицы '{title}'. Пробуем следующий credential...")
-                    # Переключаемся на следующий credential для следующей попытки
                     if background:
                         self._background_client_index = (self._background_client_index + 1) % len(self._clients)
                     else:
@@ -858,13 +1069,11 @@ class GoogleService:
                     continue
                 elif 'storageQuotaExceeded' in error_str:
                     logger.error(f"❌ Квота превышена для ВСЕХ credentials при создании таблицы '{title}'")
-                    logger.error(f"💡 Все сервисные аккаунты переполнены. Освободите место или добавьте новые credentials.")
                     raise
                 else:
                     logger.error(f"❌ Ошибка создания Google Sheets таблицы '{title}': {e}")
                     raise
         
-        # Если все попытки исчерпаны
         if last_error:
             raise last_error
         raise RuntimeError(f"Не удалось создать таблицу '{title}' после {len(self._clients)} попыток")
