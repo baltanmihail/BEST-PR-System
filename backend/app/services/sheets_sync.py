@@ -643,6 +643,12 @@ class SheetsSyncService:
         # Записываем данные в таблицу через batch_update
         all_data = [headers] + rows
         
+        # Определяем максимальное количество колонок (защита от несоответствия)
+        max_columns = max(len(row) for row in all_data) if all_data else len(headers)
+        
+        # Обрезаем строки до максимального количества колонок (на всякий случай)
+        all_data = [row[:max_columns] for row in all_data]
+        
         # Используем batch_update для записи данных
         requests = [{
             "updateCells": {
@@ -651,7 +657,7 @@ class SheetsSyncService:
                     "startRowIndex": 0,
                     "endRowIndex": len(all_data),
                     "startColumnIndex": 0,
-                    "endColumnIndex": len(headers)
+                    "endColumnIndex": max_columns
                 },
                 "rows": [
                     {
@@ -681,7 +687,7 @@ class SheetsSyncService:
             sorted_tasks,
             task_rows,
             date_columns,
-            len(headers),
+            max_columns,  # Используем реальное количество колонок
             len(rows) + 1,
             first_day,
             last_day
