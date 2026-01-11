@@ -496,7 +496,13 @@ class SheetsSyncService:
                 request_body = {
                     'requests': [{
                         'addSheet': {
-                            'properties': {'title': sheet_name}
+                            'properties': {
+                                'title': sheet_name,
+                                'gridProperties': {
+                                    'rowCount': 200,
+                                    'columnCount': 150  # Достаточно для 5 месяцев + запас
+                                }
+                            }
                         }
                     }]
                 }
@@ -504,7 +510,7 @@ class SheetsSyncService:
                     spreadsheetId=spreadsheet_id,
                     body=request_body
                 ).execute()
-                logger.info(f"✅ Создан лист '{sheet_name}' через OAuth")
+                logger.info(f"✅ Создан лист '{sheet_name}' через OAuth (150 колонок)")
                 return True
             except Exception as e:
                 error_str = str(e)

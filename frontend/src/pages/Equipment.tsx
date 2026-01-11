@@ -1,12 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, ShoppingCart, X } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
 import { UserRole } from '../types/user'
-import Equipment3DCard from '../components/Equipment3DCard'
 
 export default function Equipment() {
   const { theme } = useThemeStore()
@@ -98,78 +97,6 @@ export default function Equipment() {
     quantity: 1,
     specs: {},
   })
-  
-  // Корзина оборудования
-  const [cart, setCart] = useState<Equipment[]>([])
-  const [showCart, setShowCart] = useState(false)
-  const [cartDates, setCartDates] = useState({ start_date: '', end_date: '' })
-  
-  // Добавление в корзину
-  const addToCart = (equipment: Equipment) => {
-    if (!cart.find(e => e.id === equipment.id)) {
-      setCart([...cart, equipment])
-    }
-  }
-  
-  // Удаление из корзины
-  const removeFromCart = (equipmentId: string) => {
-    setCart(cart.filter(e => e.id !== equipmentId))
-  }
-  
-  // Автопредложения аксессуаров
-  const getSuggestedAccessories = (equipment: Equipment): Equipment[] => {
-    if (!equipmentData?.items) return []
-    
-    const suggestions: Equipment[] = []
-    
-    // Для камеры предлагаем объективы и SD карты
-    if (equipment.category === 'camera') {
-      const lenses = equipmentData.items.filter(e => e.category === 'lens' && e.status === 'available')
-      const storage = equipmentData.items.filter(e => e.category === 'storage' && e.status === 'available')
-      suggestions.push(...lenses.slice(0, 2), ...storage.slice(0, 1))
-    }
-    
-    // Для видео предлагаем свет и аудио
-    if (equipment.category === 'lighting' || equipment.name.toLowerCase().includes('видео')) {
-      const audio = equipmentData.items.filter(e => e.category === 'audio' && e.status === 'available')
-      const tripods = equipmentData.items.filter(e => e.category === 'tripod' && e.status === 'available')
-      suggestions.push(...audio.slice(0, 1), ...tripods.slice(0, 1))
-    }
-    
-    // Для объектива предлагаем камеру
-    if (equipment.category === 'lens') {
-      const cameras = equipmentData.items.filter(e => e.category === 'camera' && e.status === 'available')
-      suggestions.push(...cameras.slice(0, 1))
-    }
-    
-    return suggestions.filter(s => s.id !== equipment.id && !cart.find(c => c.id === s.id))
-  }
-  
-  // Оформление заказа из корзины
-  const submitCartMutation = useMutation({
-    mutationFn: async () => {
-      const promises = cart.map(equipment => 
-        equipmentApi.createRequest({
-          equipment_id: equipment.id,
-          start_date: cartDates.start_date,
-          end_date: cartDates.end_date,
-          purpose: `Заявка из корзины: ${cart.map(e => e.name).join(', ')}`,
-        })
-      )
-      return Promise.all(promises)
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] })
-      queryClient.invalidateQueries({ queryKey: ['equipment', 'requests'] })
-      setCart([])
-      setShowCart(false)
-      setCartDates({ start_date: '', end_date: '' })
-      alert('Заявки успешно отправлены!')
-    },
-  })
-  
-  // Подсчёт элементов в корзине
-  const cartCount = cart.length
 
   const getCategoryName = (category: EquipmentCategory): string => {
     const nameMap: Record<EquipmentCategory, string> = {
@@ -394,18 +321,48 @@ export default function Equipment() {
         </div>
       )}
 
-      {/* Список оборудования - 3D карточки */}
+      {/* Список оборудования */}
       {!isLoading && equipmentData && equipmentData.items && Array.isArray(equipmentData.items) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8" data-tour="equipment-list">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" data-tour="equipment-list">
           {equipmentData.items.map((equipment: Equipment) => (
-            <Equipment3DCard
+            <div
               key={equipment.id}
-              equipment={equipment}
-              onSelect={(eq) => handleRequestClick(eq)}
-              onAddToCart={addToCart}
-              isInCart={cart.some(e => e.id === equipment.id)}
-              suggestedAccessories={getSuggestedAccessories(equipment)}
-            />
+              className={`glass-enhanced ${theme} rounded-xl p-6 hover:scale-[1.02] transition-transform`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-best-primary/20 rounded-lg">
+                    {getCategoryIcon(equipment.category)}
+                  </div>
+                  <div>
+                    <h3 className={`text-white font-semibold text-lg text-readable ${theme}`}>
+                      {equipment.name}
+                    </h3>
+                    <span className="text-white/60 text-sm">
+                      {getCategoryName(equipment.category)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              {equipment.description && (
+                <p className={`text-white/70 text-sm mb-4 text-readable ${theme}`}>
+                  {equipment.description}
+                </p>
+              )}
+              <div className="flex items-center justify-between">
+                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(equipment.status)}`}>
+                  {getStatusText(equipment.status)}
+                </span>
+                {isRegistered && equipment.status === 'available' && (
+                  <button
+                    onClick={() => handleRequestClick(equipment)}
+                    className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all text-sm font-medium"
+                  >
+                    Забронировать
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
