@@ -172,21 +172,6 @@ export default function Equipment() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          {/* Кнопка корзины */}
-          {isRegistered && (
-            <button
-              onClick={() => setShowCart(true)}
-              className="relative flex items-center space-x-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
-            >
-              <ShoppingCart className="h-5 w-5" />
-              <span className="hidden md:inline">Корзина</span>
-              {cartCount > 0 && (
-                <span className="absolute -top-2 -right-2 w-6 h-6 bg-best-primary text-white text-xs font-bold rounded-full flex items-center justify-center">
-                  {cartCount}
-                </span>
-              )}
-            </button>
-          )}
           {isCoordinator && (
             <button
               onClick={() => {
@@ -367,111 +352,6 @@ export default function Equipment() {
         </div>
       )}
       
-      {/* Модальное окно корзины */}
-      {showCart && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className={`glass-enhanced ${theme} rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-2xl font-bold text-white text-readable ${theme}`}>
-                <ShoppingCart className="inline h-6 w-6 mr-2" />
-                Корзина ({cart.length})
-              </h2>
-              <button
-                onClick={() => setShowCart(false)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              >
-                <X className="h-6 w-6 text-white" />
-              </button>
-            </div>
-            
-            {cart.length === 0 ? (
-              <p className="text-white/60 text-center py-8">Корзина пуста</p>
-            ) : (
-              <>
-                {/* Список оборудования в корзине */}
-                <div className="space-y-3 mb-6">
-                  {cart.map((equipment) => (
-                    <div
-                      key={equipment.id}
-                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-best-primary/20 rounded-lg">
-                          {getCategoryIcon(equipment.category)}
-                        </div>
-                        <div>
-                          <p className="text-white font-medium">{equipment.name}</p>
-                          <p className="text-white/60 text-sm">{getCategoryName(equipment.category)}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeFromCart(equipment.id)}
-                        className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                      >
-                        <X className="h-5 w-5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                
-                {/* Выбор дат */}
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className={`block text-white mb-2 text-readable ${theme}`}>
-                      Дата взятия *
-                    </label>
-                    <input
-                      type="date"
-                      value={cartDates.start_date}
-                      onChange={(e) => setCartDates({ ...cartDates, start_date: e.target.value })}
-                      min={new Date().toISOString().split('T')[0]}
-                      className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary"
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-white mb-2 text-readable ${theme}`}>
-                      Дата возврата *
-                    </label>
-                    <input
-                      type="date"
-                      value={cartDates.end_date}
-                      onChange={(e) => setCartDates({ ...cartDates, end_date: e.target.value })}
-                      min={cartDates.start_date || new Date().toISOString().split('T')[0]}
-                      className="w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary"
-                    />
-                  </div>
-                </div>
-                
-                {/* Кнопка оформления */}
-                <button
-                  onClick={() => {
-                    if (!cartDates.start_date || !cartDates.end_date) {
-                      alert('Укажите даты аренды')
-                      return
-                    }
-                    submitCartMutation.mutate()
-                  }}
-                  disabled={submitCartMutation.isPending || !cartDates.start_date || !cartDates.end_date}
-                  className="w-full bg-best-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                >
-                  {submitCartMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span>Оформление...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-5 w-5" />
-                      <span>Оформить заявки ({cart.length})</span>
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Мои заявки */}
       {isRegistered && Array.isArray(myRequests) && myRequests.length > 0 && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mt-6`}>
