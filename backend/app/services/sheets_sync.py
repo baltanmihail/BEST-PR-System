@@ -577,17 +577,36 @@ class SheetsSyncService:
             return
         
         # Создаём заголовки (даты месяца)
+        # Google Sheets имеет ограничение на количество колонок
+        # Ограничиваем количество колонок до разумного максимума
+        MAX_COLUMNS = 100
+        
+        # Рассчитываем количество дней в периоде
+        total_days = (last_day - first_day).days + 1
+        max_date_columns = MAX_COLUMNS - 1  # -1 для колонки "Задача"
+        
+        # Ограничиваем last_day если дней слишком много
+        if total_days > max_date_columns:
+            logger.warning(f"⚠️ Период содержит {total_days} дней, ограничиваем до {max_date_columns}")
+            last_day = first_day + timedelta(days=max_date_columns - 1)
+        
         headers = ["Задача"]
-        current_date = first_day
+        date_list = []  # Список дат для гарантии порядка
         date_columns = {}  # {date: column_index}
         col_idx = 1
+        current_date = first_day
         
         while current_date <= last_day:
             date_str = current_date.strftime("%d.%m")
             headers.append(date_str)
+            date_list.append(current_date)
             date_columns[current_date] = col_idx
             col_idx += 1
             current_date += timedelta(days=1)
+        
+        # Количество колонок с датами (без колонки "Задача")
+        num_date_columns = len(date_list)
+        logger.info(f"📊 Создаём таймлайн: {num_date_columns} дней, {len(headers)} колонок всего")
         
         # Сортируем задачи по номеру (если есть) или по дате создания
         sorted_tasks = sorted(
@@ -606,14 +625,13 @@ class SheetsSyncService:
             row = [task_label]
             task_rows[str(task.id)] = row_idx + 1  # +1 потому что первая строка - заголовок
             
-            # Для каждой даты месяца проверяем события
-            current_date = first_day
-            while current_date <= last_day:
+            # Для каждой даты из date_list (гарантирует точное количество ячеек)
+            for current_date in date_list:
                 cell_parts = []
                 
                 # Проверяем дедлайн задачи
                 if task.due_date:
-                    task_date = task.due_date.date()
+                    task_date = task.due_date.date() if hasattr(task.due_date, 'date') else task.due_date
                     if task_date == current_date:
                         cell_parts.append("📅 Дедлайн")
                 
@@ -621,7 +639,7 @@ class SheetsSyncService:
                 if hasattr(task, '_stages_cache') and task._stages_cache:
                     for stage in task._stages_cache:
                         if stage.due_date:
-                            stage_date = stage.due_date.date()
+                            stage_date = stage.due_date.date() if hasattr(stage.due_date, 'date') else stage.due_date
                             if stage_date == current_date:
                                 status_icon = "✅" if stage.status.value == "completed" else "🔄" if stage.status.value == "in_progress" else "⏳"
                                 color_emoji = {"green": "🟢", "yellow": "🟡", "red": "🔴", "purple": "🟣", "blue": "🔵"}.get(stage.status_color, "⚪")
@@ -629,57 +647,28 @@ class SheetsSyncService:
                 
                 # Если задача создана в эту дату
                 if task.created_at:
-                    created_date = task.created_at.date()
+                    created_date = task.created_at.date() if hasattr(task.created_at, 'date') else task.created_at
                     if created_date == current_date:
                         cell_parts.append("🆕 Создана")
                 
                 # Объединяем все части через перенос строки
                 cell_text = "\n".join(cell_parts) if cell_parts else ""
                 row.append(cell_text)
-                current_date += timedelta(days=1)
             
+            # Проверка: строка должна иметь ровно len(headers) ячеек
+            assert len(row) == len(headers), f"Row length {len(row)} != headers length {len(headers)}"
             rows.append(row)
         
         # Записываем данные в таблицу через batch_update
         headers_len = len(headers)
         
-        # Google Sheets имеет ограничение на количество колонок (максимум 256, но обычно используется меньше)
-        # Ограничиваем количество колонок до разумного максимума (например, 100 для календаря)
-        MAX_COLUMNS = 100
-        if headers_len > MAX_COLUMNS:
-            logger.warning(f"⚠️ Заголовков {headers_len}, обрезаем до {MAX_COLUMNS}")
-            headers = headers[:MAX_COLUMNS]
-            headers_len = MAX_COLUMNS
-            # Обрезаем date_columns тоже
-            date_columns = {k: v for k, v in date_columns.items() if v < MAX_COLUMNS}
+        # Все строки уже имеют правильную длину (проверено assert выше)
+        all_data = [headers] + rows
         
-        # Обрезаем/дополняем все строки до длины headers (гарантируем одинаковую длину)
-        all_data = [headers]
-        for row in rows:
-            if len(row) > headers_len:
-                # Обрезаем лишние колонки
-                all_data.append(row[:headers_len])
-                logger.warning(f"⚠️ Строка с задачей имела {len(row)} колонок, обрезано до {headers_len}")
-            elif len(row) < headers_len:
-                # Дополняем пустыми значениями
-                all_data.append(row + [""] * (headers_len - len(row)))
-                logger.warning(f"⚠️ Строка с задачей имела {len(row)} колонок, дополнено до {headers_len}")
-            else:
-                all_data.append(row)
+        # endColumnIndex = количество колонок (не индекс!)
+        end_col_idx = headers_len
         
-        # Убеждаемся что endColumnIndex не превышает headers_len
-        end_col_idx = min(headers_len, MAX_COLUMNS)
-        
-        # Финальная проверка: убеждаемся, что все строки имеют одинаковую длину (end_col_idx)
-        # и обрезаем/дополняем их при необходимости
-        normalized_data = []
-        for row in all_data:
-            if len(row) > end_col_idx:
-                normalized_data.append(row[:end_col_idx])
-            elif len(row) < end_col_idx:
-                normalized_data.append(row + [""] * (end_col_idx - len(row)))
-            else:
-                normalized_data.append(row)
+        logger.info(f"📊 Записываем {len(all_data)} строк x {end_col_idx} колонок")
         
         # Используем batch_update для записи данных
         requests = [{
@@ -687,7 +676,7 @@ class SheetsSyncService:
                 "range": {
                     "sheetId": sheet_id,
                     "startRowIndex": 0,
-                    "endRowIndex": len(normalized_data),
+                    "endRowIndex": len(all_data),
                     "startColumnIndex": 0,
                     "endColumnIndex": end_col_idx
                 },
@@ -698,7 +687,7 @@ class SheetsSyncService:
                             for cell in row
                         ]
                     }
-                    for row in normalized_data
+                    for row in all_data
                 ],
                 "fields": "userEnteredValue"
             }

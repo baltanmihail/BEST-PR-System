@@ -77,24 +77,14 @@ class EquipmentRequestStatus(str, enum.Enum):
 
 
 class EquipmentRequestStatusType(TypeDecorator):
-    """TypeDecorator для правильной конвертации EquipmentRequestStatus в строку"""
-    impl = String
+    """TypeDecorator для правильной конвертации EquipmentRequestStatus в строку.
+    
+    ВАЖНО: Используем String вместо PG_ENUM, чтобы process_bind_param вызывался
+    для всех операций, включая .in_(). PostgreSQL автоматически кастит строки
+    к типу equipment_request_status при вставке/сравнении.
+    """
+    impl = String(50)
     cache_ok = True
-    
-    def __init__(self):
-        super().__init__(length=50)
-    
-    def load_dialect_impl(self, dialect):
-        """Используем PostgreSQL ENUM для PostgreSQL"""
-        if dialect.name == 'postgresql':
-            return dialect.type_descriptor(PG_ENUM(
-                EquipmentRequestStatus, 
-                name='equipment_request_status', 
-                create_type=False, 
-                values_callable=lambda x: [e.value for e in EquipmentRequestStatus]
-            ))
-        else:
-            return dialect.type_descriptor(String(50))
     
     def process_bind_param(self, value, dialect):
         """Конвертируем enum в его значение (строку) - lowercase"""

@@ -661,7 +661,7 @@ async def _get_timeline_view(
             and_(
                 EquipmentRequest.start_date <= end_date,
                 EquipmentRequest.end_date >= start_date,
-                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
+                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
             )
         )
         equipment_result = await db.execute(equipment_query)
@@ -813,7 +813,7 @@ async def _get_gantt_view(
         and_(
             EquipmentRequest.start_date <= end_date,
             EquipmentRequest.end_date >= start_date,
-            EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE])
+            EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
         )
     )
     equipment_result = await db.execute(equipment_query)

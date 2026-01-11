@@ -415,143 +415,237 @@ function TimelineView({
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
-  // Определяем дни в зависимости от периода
-  let days: Date[] = []
+  // Определяем диапазон дат
+  const getDateRange = () => {
+    const start = new Date(currentDate)
+    const end = new Date(currentDate)
+    
+    if (period === 'semester') {
+      start.setDate(1)
+      end.setMonth(end.getMonth() + 6)
+      end.setDate(0)
+    } else if (period === 'month') {
+      start.setDate(1)
+      end.setMonth(end.getMonth() + 1)
+      end.setDate(0)
+    } else {
+      const day = start.getDay()
+      start.setDate(start.getDate() - day)
+      start.setHours(0, 0, 0, 0)
+      end.setTime(start.getTime() + 6 * 24 * 60 * 60 * 1000)
+    }
+    return { start, end }
+  }
   
-  if (period === 'semester') {
-    // Семестр - разбиваем на дни (6 месяцев)
-    const startDate = new Date(currentDate)
-    startDate.setDate(1)
-    const endDate = new Date(startDate)
-    endDate.setMonth(endDate.getMonth() + 6)
-    endDate.setDate(0) // Последний день месяца
+  const { start: startDate, end: endDate } = getDateRange()
+  
+  // Генерируем дни
+  const days: Date[] = []
+  const currentDay = new Date(startDate)
+  while (currentDay <= endDate) {
+    days.push(new Date(currentDay))
+    currentDay.setDate(currentDay.getDate() + 1)
+  }
+  
+  // Ширина одного дня в пикселях
+  const dayWidth = period === 'week' ? 120 : period === 'month' ? 40 : 20
+  const totalWidth = days.length * dayWidth
+  
+  // Функции для расчёта позиции задачи
+  const getTaskPosition = (task: any) => {
+    const taskStart = task.start_date ? new Date(task.start_date) : task.due_date ? new Date(task.due_date) : null
+    const taskEnd = task.end_date ? new Date(task.end_date) : task.due_date ? new Date(task.due_date) : null
     
-    const currentDay = new Date(startDate)
-    while (currentDay <= endDate) {
-      days.push(new Date(currentDay))
-      currentDay.setDate(currentDay.getDate() + 1)
-    }
-  } else if (period === 'month') {
-    // Месяц - разбиваем на дни
-    const startDate = new Date(currentDate)
-    startDate.setDate(1)
-    const endDate = new Date(startDate)
-    endDate.setMonth(endDate.getMonth() + 1)
-    endDate.setDate(0) // Последний день месяца
+    if (!taskStart) return null
     
-    const currentDay = new Date(startDate)
-    while (currentDay <= endDate) {
-      days.push(new Date(currentDay))
-      currentDay.setDate(currentDay.getDate() + 1)
-    }
-  } else if (period === 'week') {
-    // Неделя - 7 дней
-    const weekStart = new Date(currentDate)
-    const day = weekStart.getDay()
-    weekStart.setDate(weekStart.getDate() - day)
-    weekStart.setHours(0, 0, 0, 0)
+    const startIdx = Math.max(0, Math.floor((taskStart.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
+    const endIdx = taskEnd 
+      ? Math.min(days.length - 1, Math.floor((taskEnd.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
+      : startIdx
     
-    for (let i = 0; i < 7; i++) {
-      const day = new Date(weekStart)
-      day.setDate(weekStart.getDate() + i)
-      days.push(day)
+    return {
+      left: startIdx * dayWidth,
+      width: Math.max(dayWidth, (endIdx - startIdx + 1) * dayWidth),
     }
   }
 
   // Функция для проверки, является ли день сегодняшним
   const isToday = (date: Date) => {
-    return date.getTime() === today.getTime()
+    return date.toDateString() === today.toDateString()
   }
+  
+  // Группируем дни по месяцам для семестра
+  const groupedDays = period === 'semester' 
+    ? days.reduce((acc: { month: string; days: Date[] }[], day) => {
+        const monthKey = day.toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' })
+        const lastGroup = acc[acc.length - 1]
+        if (lastGroup && lastGroup.month === monthKey) {
+          lastGroup.days.push(day)
+        } else {
+          acc.push({ month: monthKey, days: [day] })
+        }
+        return acc
+      }, [])
+    : null
 
   return (
     <div className="space-y-4">
       <h3 className={`text-lg md:text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
         Таймлайн {period === 'semester' ? 'на семестр' : period === 'month' ? 'на месяц' : 'на неделю'}
       </h3>
-      {/* На мобильных показываем вертикальный список, на десктопе - горизонтальный таймлайн */}
-      <div className="md:overflow-x-auto">
-        <div className="min-w-full md:min-w-[1200px]">
-        {/* Шкала времени - разбита на дни */}
-        <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4 overflow-x-auto">
-          {days.map((day, idx) => {
-            const dayStr = day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })
-            const isTodayDate = isToday(day)
-            return (
-              <div 
-                key={idx} 
-                className={`flex-shrink-0 text-center px-2 ${isTodayDate ? 'bg-best-primary/30 rounded-lg border-2 border-best-primary' : ''}`}
-                style={{ minWidth: period === 'week' ? '120px' : '80px' }}
-              >
-                <div className={`font-semibold text-sm md:text-base text-readable ${theme} ${isTodayDate ? 'text-best-primary font-bold' : 'text-white'}`}>
-                  {dayStr}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Задачи и события - на мобильных вертикальный список, на десктопе горизонтальный */}
-        <div className="space-y-2 md:space-y-2">
-          {allTasks.map((task, index) => (
+      
+      {/* Мобильный вид - карточки */}
+      <div className="md:hidden space-y-3">
+        {allTasks.map((task, index) => {
+          const isTodayTask = task.due_date && new Date(task.due_date).toDateString() === today.toDateString()
+          return (
             <div
               key={task.id || index}
-              className={`glass-enhanced ${theme} rounded-lg p-3 md:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0`}
+              className={`glass-enhanced ${theme} rounded-lg p-3 ${isTodayTask ? 'border-2 border-best-primary' : ''}`}
             >
-              <div className="flex-1 w-full md:w-auto">
-                <div className="flex items-center space-x-2 mb-1 md:mb-1">
-                  {task.color && (
-                    <div
-                      className="w-3 h-3 rounded flex-shrink-0"
-                      style={{ backgroundColor: task.color }}
-                    />
-                  )}
-                  <h4 className={`text-white font-medium text-sm md:text-base text-readable ${theme} break-words`}>
-                    {task.title}
-                  </h4>
-                </div>
-                <p className="text-white/60 text-sm">
-                  {task.start_date && task.end_date
-                    ? `${new Date(task.start_date).toLocaleDateString('ru-RU')} - ${new Date(task.end_date).toLocaleDateString('ru-RU')}`
-                    : task.due_date
-                    ? `Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}`
-                    : 'Без дедлайна'}
-                </p>
+              <div className="flex items-center space-x-2 mb-1">
+                {task.color && <div className="w-3 h-3 rounded flex-shrink-0" style={{ backgroundColor: task.color }} />}
+                <h4 className={`text-white font-medium text-sm text-readable ${theme}`}>{task.title}</h4>
               </div>
-              <span
-                className={`px-3 py-1 rounded-full text-xs font-medium border ${
-                  task.status === 'completed'
-                    ? 'bg-green-500/20 text-green-400 border-green-500/50'
-                    : task.status === 'in_progress'
-                    ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50'
-                    : 'bg-blue-500/20 text-blue-400 border-blue-500/50'
-                }`}
-              >
-                {task.status || 'open'}
-              </span>
-            </div>
-          ))}
-          {allEvents.map((event, index) => (
-            <div
-              key={event.id || index}
-              className={`glass-enhanced ${theme} rounded-lg p-4 border-2 border-purple-500/50`}
-            >
-              <div className="flex items-center space-x-2">
-                <div className="w-3 h-3 rounded bg-purple-500" />
-                <h4 className={`text-white font-medium text-readable ${theme}`}>
-                  {event.name || event.title}
-                </h4>
-              </div>
-              <p className="text-white/60 text-sm mt-1">
-                {event.date_start || event.start_date
-                  ? `${new Date(event.date_start || event.start_date).toLocaleDateString('ru-RU')}${event.date_end || event.end_date ? ` - ${new Date(event.date_end || event.end_date).toLocaleDateString('ru-RU')}` : ''}`
-                  : 'Без даты'}
+              <p className="text-white/60 text-xs">
+                {task.due_date ? `Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}` : 'Без дедлайна'}
               </p>
             </div>
-          ))}
+          )
+        })}
+        {allTasks.length === 0 && <p className="text-white/60 text-center py-8">Нет задач на выбранный период</p>}
+      </div>
+      
+      {/* Десктопный Gantt-вид */}
+      <div className="hidden md:block overflow-x-auto">
+        <div style={{ minWidth: `${Math.max(800, totalWidth + 200)}px` }}>
+          {/* Заголовок с месяцами (для семестра) */}
+          {period === 'semester' && groupedDays && (
+            <div className="flex border-b border-white/10 mb-1">
+              <div className="w-48 flex-shrink-0 p-2 bg-white/5 font-medium text-white text-sm">Задача</div>
+              {groupedDays.map((group, idx) => (
+                <div 
+                  key={idx} 
+                  className="text-center p-2 bg-white/5 text-white font-medium text-sm border-l border-white/10"
+                  style={{ width: `${group.days.length * dayWidth}px` }}
+                >
+                  {group.month}
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Шкала дней */}
+          <div className="flex border-b-2 border-white/20 sticky top-0 bg-black/50 backdrop-blur z-10">
+            <div className="w-48 flex-shrink-0 p-2 font-medium text-white text-sm">
+              {period !== 'semester' && 'Задача'}
+            </div>
+            {days.map((day, idx) => {
+              const isTodayDate = isToday(day)
+              const isWeekend = day.getDay() === 0 || day.getDay() === 6
+              const showDate = period === 'week' || (period === 'month' && idx % 1 === 0) || (period === 'semester' && day.getDate() === 1)
+              
+              return (
+                <div 
+                  key={idx}
+                  className={`text-center border-l border-white/10 ${isTodayDate ? 'bg-best-primary/30' : isWeekend ? 'bg-white/5' : ''}`}
+                  style={{ width: `${dayWidth}px`, minWidth: `${dayWidth}px` }}
+                >
+                  {showDate && (
+                    <div className={`text-xs py-1 ${isTodayDate ? 'text-best-primary font-bold' : 'text-white/70'}`}>
+                      {period === 'week' 
+                        ? day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })
+                        : day.getDate()
+                      }
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          
+          {/* Линия сегодняшнего дня */}
+          {today >= startDate && today <= endDate && (
+            <div 
+              className="absolute top-0 bottom-0 w-0.5 bg-best-primary z-20 pointer-events-none"
+              style={{ 
+                left: `${200 + Math.floor((today.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) * dayWidth + dayWidth / 2}px`,
+                height: `${100 + allTasks.length * 44}px`
+              }}
+            />
+          )}
+          
+          {/* Задачи как Gantt бары */}
+          <div className="relative">
+            {allTasks.map((task, index) => {
+              const pos = getTaskPosition(task)
+              const statusColor = task.status === 'completed' ? '#22c55e' 
+                : task.status === 'in_progress' ? '#eab308' 
+                : task.color || '#3b82f6'
+              
+              return (
+                <div key={task.id || index} className="flex items-center h-10 border-b border-white/5 hover:bg-white/5">
+                  {/* Название задачи */}
+                  <div className="w-48 flex-shrink-0 px-2 truncate text-white text-sm" title={task.title}>
+                    {task.title}
+                  </div>
+                  {/* Gantt полоса */}
+                  <div className="flex-1 relative h-full">
+                    {pos && (
+                      <div
+                        className="absolute top-1 bottom-1 rounded-md flex items-center px-2 text-xs text-white font-medium shadow-lg cursor-pointer hover:opacity-90 transition-opacity"
+                        style={{
+                          left: `${pos.left}px`,
+                          width: `${pos.width}px`,
+                          backgroundColor: statusColor,
+                        }}
+                        title={`${task.title}${task.due_date ? ` | Дедлайн: ${new Date(task.due_date).toLocaleDateString('ru-RU')}` : ''}`}
+                      >
+                        <span className="truncate">
+                          {period === 'week' ? task.title : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            
+            {/* События */}
+            {allEvents.map((event, index) => {
+              const eventStart = event.date_start || event.start_date
+              const eventEnd = event.date_end || event.end_date
+              const startIdx = eventStart 
+                ? Math.max(0, Math.floor((new Date(eventStart).getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
+                : 0
+              const endIdx = eventEnd
+                ? Math.min(days.length - 1, Math.floor((new Date(eventEnd).getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)))
+                : startIdx
+              
+              return (
+                <div key={event.id || `event-${index}`} className="flex items-center h-10 border-b border-white/5 hover:bg-white/5">
+                  <div className="w-48 flex-shrink-0 px-2 truncate text-purple-400 text-sm" title={event.name || event.title}>
+                    🎉 {event.name || event.title}
+                  </div>
+                  <div className="flex-1 relative h-full">
+                    <div
+                      className="absolute top-1 bottom-1 rounded-md bg-purple-600 flex items-center px-2 text-xs text-white font-medium shadow-lg"
+                      style={{
+                        left: `${startIdx * dayWidth}px`,
+                        width: `${Math.max(dayWidth, (endIdx - startIdx + 1) * dayWidth)}px`,
+                      }}
+                    >
+                      <span className="truncate">{period === 'week' ? (event.name || event.title) : ''}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          
           {allTasks.length === 0 && allEvents.length === 0 && (
             <p className="text-white/60 text-center py-8">Нет данных на выбранный период</p>
           )}
-        </div>
         </div>
       </div>
     </div>
