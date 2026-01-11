@@ -137,6 +137,47 @@ class AssignmentStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class AssignmentStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации AssignmentStatus в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            # Используем правильное имя типа из базы данных: assignment_status (с подчеркиванием)
+            return dialect.type_descriptor(PG_ENUM(
+                AssignmentStatus, 
+                name='assignment_status', 
+                create_type=False, 
+                values_callable=lambda x: [e.value for e in AssignmentStatus]
+            ))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, AssignmentStatus):
+            return value.value
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return AssignmentStatus(value)
+            except ValueError:
+                return AssignmentStatus.ASSIGNED
+        return value
+
+
 class Task(Base):
     """Задача"""
     __tablename__ = "tasks"
@@ -239,7 +280,7 @@ class TaskAssignment(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     role_in_task = Column(String, nullable=False)  # 'executor', 'designer', 'videographer', 'reviewer'
     # Используем существующий в БД ENUM assignment_status (создан в миграции 001)
-    status = Column(PG_ENUM(AssignmentStatus, name="assignment_status", create_type=False), nullable=False, default=AssignmentStatus.ASSIGNED, index=True)
+    status = Column(AssignmentStatusType(), nullable=False, default=AssignmentStatus.ASSIGNED, server_default='assigned', index=True)
     rating = Column(Integer, nullable=True)  # 1-5
     feedback = Column(Text, nullable=True)
     assigned_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

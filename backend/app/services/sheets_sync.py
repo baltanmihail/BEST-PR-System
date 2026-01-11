@@ -641,13 +641,21 @@ class SheetsSyncService:
             rows.append(row)
         
         # Записываем данные в таблицу через batch_update
-        all_data = [headers] + rows
+        headers_len = len(headers)
         
-        # Определяем максимальное количество колонок (защита от несоответствия)
-        max_columns = max(len(row) for row in all_data) if all_data else len(headers)
-        
-        # Обрезаем строки до максимального количества колонок (на всякий случай)
-        all_data = [row[:max_columns] for row in all_data]
+        # Обрезаем/дополняем все строки до длины headers (гарантируем одинаковую длину)
+        all_data = [headers]
+        for row in rows:
+            if len(row) > headers_len:
+                # Обрезаем лишние колонки
+                all_data.append(row[:headers_len])
+                logger.warning(f"⚠️ Строка с задачей имела {len(row)} колонок, обрезано до {headers_len}")
+            elif len(row) < headers_len:
+                # Дополняем пустыми значениями
+                all_data.append(row + [""] * (headers_len - len(row)))
+                logger.warning(f"⚠️ Строка с задачей имела {len(row)} колонок, дополнено до {headers_len}")
+            else:
+                all_data.append(row)
         
         # Используем batch_update для записи данных
         requests = [{
@@ -657,7 +665,7 @@ class SheetsSyncService:
                     "startRowIndex": 0,
                     "endRowIndex": len(all_data),
                     "startColumnIndex": 0,
-                    "endColumnIndex": max_columns
+                    "endColumnIndex": headers_len
                 },
                 "rows": [
                     {
@@ -687,7 +695,7 @@ class SheetsSyncService:
             sorted_tasks,
             task_rows,
             date_columns,
-            max_columns,  # Используем реальное количество колонок
+            headers_len,  # Используем количество колонок из headers
             len(rows) + 1,
             first_day,
             last_day
