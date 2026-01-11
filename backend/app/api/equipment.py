@@ -111,12 +111,12 @@ async def get_available_equipment(
 @router.get("/requests", response_model=List[EquipmentRequestResponse])
 async def get_my_requests(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_allow_inactive())
 ):
     """
     Получить мои заявки на оборудование
     
-    Доступно всем авторизованным пользователям
+    Доступно всем авторизованным пользователям (включая неактивных)
     """
     requests = await EquipmentService.get_user_requests(db, current_user.id)
     return [EquipmentRequestResponse.model_validate(req) for req in requests]

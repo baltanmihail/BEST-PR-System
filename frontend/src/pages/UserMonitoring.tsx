@@ -19,18 +19,32 @@ export default function UserMonitoring() {
   const [pointsDelta, setPointsDelta] = useState(0)
   const [pointsReason, setPointsReason] = useState('')
 
-  // Проверяем роль (роль приходит как строка из API, например "vp4pr", "coordinator_smm")
+  // Проверяем роль (роль приходит как строка из API через Pydantic, например "vp4pr", "coordinator_smm")
+  // Pydantic сериализует enum UserRole в его значение (строку), поэтому user.role - это строка, а не enum
   // VP4PR тоже должен иметь доступ к мониторингу пользователей
   // Используем простую проверку, как в Home.tsx и Sidebar.tsx
-  const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
+  let roleValue = ''
+  if (typeof user?.role === 'string') {
+    roleValue = user.role.toLowerCase().trim()
+  } else if (user?.role && typeof user.role === 'object') {
+    const roleObj = user.role as any
+    if ('value' in roleObj) {
+      roleValue = String(roleObj.value).toLowerCase().trim()
+    } else {
+      roleValue = String(user.role).toLowerCase().trim()
+    }
+  } else {
+    roleValue = String(user?.role || '').toLowerCase().trim()
+  }
+  
   const isCoordinator = user && (
-    roleStr.includes('coordinator') || 
-    roleStr === 'vp4pr' || 
-    user.role === UserRole.VP4PR ||
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR
+    roleValue.includes('coordinator') || 
+    roleValue === 'vp4pr' || 
+    roleValue === UserRole.VP4PR ||
+    roleValue === UserRole.COORDINATOR_SMM ||
+    roleValue === UserRole.COORDINATOR_DESIGN ||
+    roleValue === UserRole.COORDINATOR_CHANNEL ||
+    roleValue === UserRole.COORDINATOR_PRFR
   )
 
   if (!isCoordinator) {
@@ -252,7 +266,7 @@ export default function UserMonitoring() {
                   <TrendingUp className="h-4 w-4" />
                   <span>Баллы</span>
                 </button>
-                {(roleStr === 'vp4pr' || user?.role === UserRole.VP4PR) && (
+                {(roleValue === 'vp4pr' || (typeof user?.role === 'object' && (user.role as any)?.value === UserRole.VP4PR)) && (
                   <button
                     onClick={() => {
                       exportUserDataMutation.mutate(u.id)

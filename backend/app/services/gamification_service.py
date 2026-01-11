@@ -419,6 +419,32 @@ class GamificationService:
         points_log_result = await db.execute(points_log_query)
         recent_points = points_log_result.scalars().all()
         
+        # Вычисляем очки для следующего уровня
+        current_level = user.level
+        current_points = user.points
+        
+        # Находим порог следующего уровня
+        next_level_threshold = None
+        current_level_min = 0
+        for level, (min_points, max_points) in GamificationService.LEVEL_THRESHOLDS.items():
+            if level == current_level:
+                current_level_min = min_points
+                if max_points is not None:
+                    next_level_threshold = max_points + 1
+                else:
+                    # Максимальный уровень
+                    next_level_threshold = None
+                break
+        
+        # Очки от начала текущего уровня
+        current_level_points = current_points - current_level_min
+        
+        # Очки до следующего уровня
+        if next_level_threshold is not None:
+            points_to_next = next_level_threshold - current_points
+        else:
+            points_to_next = 0
+        
         return {
             "user_id": str(user_id),
             "points": user.points,
@@ -427,6 +453,9 @@ class GamificationService:
             "completed_tasks": completed_tasks,
             "active_tasks": active_tasks,
             "achievements_count": achievements_count,
+            "next_level_points": next_level_threshold or 0,
+            "current_level_points": current_level_points,
+            "points_to_next": points_to_next,
             "recent_points": [
                 {
                     "points": log.points,
@@ -477,9 +506,23 @@ class GamificationService:
         
         leaderboard = []
         for rank, row in enumerate(rows, start=1):
+            # Используем username из User, если есть, иначе из telegram_id
+            username = None
+            try:
+                # Пытаемся получить username из User объекта (если он был загружен)
+                user_query = select(User).where(User.id == row.id)
+                user_result = await db.execute(user_query)
+                user_obj = user_result.scalar_one_or_none()
+                if user_obj and user_obj.username:
+                    username = user_obj.username
+            except:
+                pass
+            
             leaderboard.append({
                 "rank": rank,
                 "user_id": str(row.id),
+                "name": row.full_name,  # Для совместимости с фронтендом
+                "username": username,
                 "telegram_id": row.telegram_id,
                 "full_name": row.full_name,
                 "points": row.points,

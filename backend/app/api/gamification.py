@@ -9,7 +9,7 @@ from uuid import UUID
 from app.database import get_db
 from app.models.user import User
 from app.services.gamification_service import GamificationService
-from app.utils.permissions import get_current_user
+from app.utils.permissions import get_current_user, get_current_user_allow_inactive, OptionalUser
 
 router = APIRouter(prefix="/gamification", tags=["gamification"])
 
@@ -17,12 +17,12 @@ router = APIRouter(prefix="/gamification", tags=["gamification"])
 @router.get("/stats", response_model=dict)
 async def get_my_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_allow_inactive())
 ):
     """
     Получить мою статистику (баллы, уровень, ачивки)
     
-    Доступно всем авторизованным пользователям
+    Доступно всем авторизованным пользователям (включая неактивных)
     """
     stats = await GamificationService.get_user_stats(db, current_user.id)
     return stats
@@ -47,14 +47,14 @@ async def get_user_stats(
 async def get_leaderboard(
     limit: int = Query(10, ge=1, le=100, description="Количество участников в рейтинге"),
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user)
+    current_user: Optional[User] = Depends(OptionalUser)
 ):
     """
     Получить рейтинг пользователей (ТОП-N)
     
     Координаторы и VP4PR исключены из рейтинга
     
-    Доступно всем авторизованным пользователям
+    Доступно всем авторизованным пользователям (включая неактивных)
     """
     leaderboard = await GamificationService.get_leaderboard(db, limit=limit)
     return leaderboard

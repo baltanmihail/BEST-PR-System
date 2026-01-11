@@ -31,13 +31,32 @@ async def get_notifications(
     
     Доступно всем авторизованным пользователям
     """
-    notifications, total = await NotificationService.get_user_notifications(
-        db=db,
-        user_id=current_user.id,
-        unread_only=unread_only,
-        skip=skip,
-        limit=limit
-    )
+    try:
+        notifications, total = await NotificationService.get_user_notifications(
+            db=db,
+            user_id=current_user.id,
+            unread_only=unread_only,
+            skip=skip,
+            limit=limit
+        )
+    except Exception as e:
+        # Если таблица notifications не существует, возвращаем пустой список
+        import logging
+        logger = logging.getLogger(__name__)
+        error_str = str(e)
+        if "notifications" in error_str.lower() and ("does not exist" in error_str.lower() or "undefined" in error_str.lower()):
+            logger.warning(f"Таблица notifications не существует, возвращаем пустой список. Ошибка: {e}")
+            return {
+                "items": [],
+                "important": [],
+                "regular": [],
+                "total": 0,
+                "unread_count": 0,
+                "important_count": 0,
+                "skip": skip,
+                "limit": limit
+            }
+        raise
     
     # Фильтр по важности
     important_types = [
@@ -55,6 +74,19 @@ async def get_notifications(
     # Группировка по важности
     important = [n for n in notifications if n.type in important_types]
     regular = [n for n in notifications if n.type not in important_types]
+    
+    # Получаем unread_count с обработкой ошибки
+    try:
+        unread_count = await NotificationService.get_unread_count(db, current_user.id)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        error_str = str(e)
+        if "notifications" in error_str.lower() and ("does not exist" in error_str.lower() or "undefined" in error_str.lower()):
+            logger.warning(f"Таблица notifications не существует при подсчёте unread_count, используем 0. Ошибка: {e}")
+            unread_count = 0
+        else:
+            raise
     
     return {
         "items": [
@@ -95,7 +127,7 @@ async def get_notifications(
             for n in regular
         ],
         "total": total,
-        "unread_count": await NotificationService.get_unread_count(db, current_user.id),
+        "unread_count": unread_count,
         "important_count": len(important),
         "skip": skip,
         "limit": limit
@@ -112,31 +144,44 @@ async def get_unread_count(
     
     Доступно всем авторизованным пользователям
     """
-    count = await NotificationService.get_unread_count(db, current_user.id)
-    
-    # Подсчитываем важные непрочитанные
-    important_types = [
-        NotificationType.MODERATION_REQUEST,
-        NotificationType.SUPPORT_REQUEST,
-        NotificationType.TASK_DEADLINE,
-        NotificationType.MODERATION_APPROVED,
-        NotificationType.MODERATION_REJECTED
-    ]
-    
-    query = select(func.count(Notification.id)).where(
-        and_(
-            Notification.user_id == current_user.id,
-            Notification.is_read == False,
-            Notification.type.in_(important_types)
+    try:
+        count = await NotificationService.get_unread_count(db, current_user.id)
+        
+        # Подсчитываем важные непрочитанные
+        important_types = [
+            NotificationType.MODERATION_REQUEST,
+            NotificationType.SUPPORT_REQUEST,
+            NotificationType.TASK_DEADLINE,
+            NotificationType.MODERATION_APPROVED,
+            NotificationType.MODERATION_REJECTED
+        ]
+        
+        query = select(func.count(Notification.id)).where(
+            and_(
+                Notification.user_id == current_user.id,
+                Notification.is_read == False,
+                Notification.type.in_(important_types)
+            )
         )
-    )
-    result = await db.execute(query)
-    important_count = result.scalar() or 0
-    
-    return {
-        "unread_count": count,
-        "important_unread_count": important_count
-    }
+        result = await db.execute(query)
+        important_count = result.scalar() or 0
+        
+        return {
+            "unread_count": count,
+            "important_unread_count": important_count
+        }
+    except Exception as e:
+        # Если таблица notifications не существует, возвращаем 0
+        import logging
+        logger = logging.getLogger(__name__)
+        error_str = str(e)
+        if "notifications" in error_str.lower() and ("does not exist" in error_str.lower() or "undefined" in error_str.lower()):
+            logger.warning(f"Таблица notifications не существует, возвращаем 0. Ошибка: {e}")
+            return {
+                "unread_count": 0,
+                "important_unread_count": 0
+            }
+        raise
 
 
 @router.patch("/{notification_id}/read", response_model=dict)
