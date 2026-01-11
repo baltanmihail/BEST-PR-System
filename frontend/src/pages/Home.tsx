@@ -79,7 +79,9 @@ export default function Home() {
     initVisitForUnregistered()
   }, [user, fetchUser])
 
-  const isCoordinator = user?.role?.includes('coordinator') || user?.role === 'vp4pr'
+  // Проверяем роль координатора или VP4PR (роль может быть строкой или enum)
+  const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
+  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr')
   const isRegistered = !!(user && user.is_active)
   const isUnregistered = !user || !user.is_active
   
@@ -323,18 +325,15 @@ export default function Home() {
             </a>
           )}
           {isCoordinator && (
-            <button
+            <Link
+              to="/tasks/create"
               data-cursor-action="create-task"
               data-static-cursor-anchor="create-task"
-              onClick={() => {
-                // TODO: Добавить страницу создания задачи или модальное окно
-                alert('Функция создания задачи будет доступна в ближайшее время')
-              }}
               className="flex items-center justify-between p-4 bg-white/20 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30"
             >
               <span className="font-medium text-white">Создать задачу</span>
               <ArrowRight className="h-5 w-5 text-white" />
-            </button>
+            </Link>
           )}
         </div>
       </div>

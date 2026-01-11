@@ -496,6 +496,11 @@ class SheetsSyncService:
             logger.info(f"✅ Создан лист '{sheet_name}'")
             return True
         except Exception as e:
+            error_str = str(e)
+            # Если лист уже существует - это нормально, считаем что лист есть
+            if "already exists" in error_str or "уже существует" in error_str.lower():
+                logger.info(f"✅ Лист '{sheet_name}' уже существует (это нормально)")
+                return True
             logger.warning(f"Не удалось создать лист '{sheet_name}': {e}")
             return False
     

@@ -21,9 +21,17 @@ export default function UserMonitoring() {
 
   // Проверяем роль (роль приходит как строка из API, например "vp4pr", "coordinator_smm")
   // VP4PR тоже должен иметь доступ к мониторингу пользователей
-  // Используем простую проверку, как в Home.tsx
-  const roleStr = typeof user?.role === 'string' ? user.role : String(user?.role || '')
-  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr' || user.role === UserRole.VP4PR)
+  // Используем простую проверку, как в Home.tsx и Sidebar.tsx
+  const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
+  const isCoordinator = user && (
+    roleStr.includes('coordinator') || 
+    roleStr === 'vp4pr' || 
+    user.role === UserRole.VP4PR ||
+    user.role === UserRole.COORDINATOR_SMM ||
+    user.role === UserRole.COORDINATOR_DESIGN ||
+    user.role === UserRole.COORDINATOR_CHANNEL ||
+    user.role === UserRole.COORDINATOR_PRFR
+  )
 
   if (!isCoordinator) {
     return (

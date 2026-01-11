@@ -53,6 +53,13 @@ export interface TaskAssignment {
   completed_at?: string
 }
 
+export interface TaskStageCreate {
+  stage_name: string
+  stage_order: number
+  due_date?: string
+  status_color?: 'green' | 'yellow' | 'red' | 'purple' | 'blue'
+}
+
 export interface TaskCreate {
   title: string
   description?: string
@@ -60,6 +67,17 @@ export interface TaskCreate {
   event_id?: string
   priority?: TaskPriority
   due_date?: string
+  stages?: TaskStageCreate[]
+  equipment_available?: boolean
+  thumbnail_image_url?: string
+  role_specific_requirements?: {
+    smm?: string
+    design?: string
+    channel?: string
+    prfr?: string
+  }
+  questions?: string[]
+  example_project_ids?: string[]
 }
 
 export interface TaskUpdate {

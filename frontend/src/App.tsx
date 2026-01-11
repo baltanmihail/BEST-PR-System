@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Layout from './components/layout/Layout'
 import Home from './pages/Home'
 import Tasks from './pages/Tasks'
+import CreateTask from './pages/CreateTask'
 import Stats from './pages/Stats'
 import Leaderboard from './pages/Leaderboard'
 import Support from './pages/Support'
@@ -141,6 +142,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/tasks" element={<Tasks />} />
+            <Route path="/tasks/create" element={<CreateTask />} />
             <Route path="/stats" element={<Stats />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/support" element={<Support />} />
