@@ -65,6 +65,14 @@ class UserProfileResponse(UserResponse):
         from_attributes = True
 
 
+class UserListResponse(BaseModel):
+    """Схема ответа со списком пользователей"""
+    items: List[UserProfileResponse]
+    total: int
+    skip: int
+    limit: int
+
+
 class UserStats(BaseModel):
     """Статистика пользователя"""
     id: UUID

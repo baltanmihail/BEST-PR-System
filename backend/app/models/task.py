@@ -223,7 +223,7 @@ class Task(Base):
     # Поля для карточки задачи
     thumbnail_image_url = Column(String, nullable=True)  # URL превью изображения (из Google Drive)
     role_specific_requirements = Column(JSON, nullable=True)  # JSON с ТЗ для каждой роли: {"smm": "...", "design": "...", "channel": "...", "prfr": "..."}
-    questions = Column(JSON, nullable=True)  # JSON список вопросов по задаче: ["вопрос1", "вопрос2", ...]
+    # ПРИМЕЧАНИЕ: questions теперь через relationship к TaskQuestion, старое JSON поле удалено
     example_project_ids = Column(JSON, nullable=True)  # JSON список ID примеров прошлых работ (как строки UUID): ["task_id1", "task_id2", ...]
     
     # Google Drive интеграция
@@ -233,8 +233,8 @@ class Task(Base):
     # Relationships
     stages = relationship("TaskStage", back_populates="task", cascade="all, delete-orphan", order_by="TaskStage.stage_order")
     assignments = relationship("TaskAssignment", back_populates="task", cascade="all, delete-orphan")
-    # Файлы (материалы задачи) - связь будет определена в модели File через back_populates
-    files = None  # Будет динамически загружаться через TaskService
+    questions = relationship("TaskQuestion", back_populates="task", cascade="all, delete-orphan", order_by="TaskQuestion.asked_at.desc()")
+    # Файлы (материалы задачи) - связь будет определена через file_uploads
     
     __table_args__ = (
         CheckConstraint("LENGTH(TRIM(title)) > 0", name="tasks_title_not_empty"),

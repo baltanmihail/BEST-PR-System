@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2, Filter, ChevronDown, ChevronUp } from 'lucide-react'
+import { Calendar as CalendarIcon, CalendarDays, BarChart3, ArrowLeft, ArrowRight, RefreshCw, Loader2, Filter, ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
@@ -143,10 +143,21 @@ export default function Calendar() {
             </p>
           </div>
         </div>
-        {isCoordinator && (
-          <button
-            onClick={() => syncToSheetsMutation.mutate()}
-            disabled={syncToSheetsMutation.isPending}
+        <div className="flex items-center gap-3">
+          {isCoordinator && (
+            <Link
+              to="/tasks/create"
+              className="flex items-center space-x-2 bg-best-primary text-white px-4 py-2.5 md:py-2 rounded-lg hover:bg-best-primary/80 transition-all card-3d border border-best-primary/50 touch-manipulation"
+              data-tour="create-task-calendar"
+            >
+              <Plus className="h-5 w-5" />
+              <span>Создать задачу</span>
+            </Link>
+          )}
+          {isCoordinator && (
+            <button
+              onClick={() => syncToSheetsMutation.mutate()}
+              disabled={syncToSheetsMutation.isPending}
             className="hidden md:flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 touch-manipulation"
             data-tour="calendar-sync"
           >

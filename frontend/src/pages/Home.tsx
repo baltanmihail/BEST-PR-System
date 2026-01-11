@@ -154,7 +154,9 @@ export default function Home() {
         <div className="flex items-center space-x-2 md:space-x-3 mb-3 md:mb-4">
           <Sparkles className="h-6 w-6 md:h-8 md:w-8 flex-shrink-0" />
           <h1 className={`text-2xl md:text-4xl font-bold text-readable ${theme}`}>
-            {isCoordinator
+            {roleStr === 'vp4pr'
+              ? 'Панель главы PR-отдела'
+              : isCoordinator
               ? 'Панель координатора'
               : isRegistered
               ? `Добро пожаловать, ${user?.full_name || 'участник'}!`
@@ -162,7 +164,9 @@ export default function Home() {
           </h1>
         </div>
         <p className={`text-base md:text-xl text-white text-readable ${theme} mb-4 md:mb-6`}>
-          {isCoordinator
+          {roleStr === 'vp4pr'
+            ? 'Управляйте задачами, модерацией и командой'
+            : isCoordinator
             ? 'Управляйте задачами, модерацией и командой'
             : isRegistered
             ? 'Система управления задачами PR-отдела с геймификацией'

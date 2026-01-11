@@ -6,13 +6,13 @@
 import logging
 from typing import Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import UploadFile, HTTPException
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.file_upload import FileUpload, FileUploadStatus, FileUploadCategory
 from app.services.google_service import GoogleService
 from app.config import settings
@@ -81,16 +81,33 @@ class FileUploadService:
                 detail=f"Файл слишком большой. Максимум: {MAX_FILE_SIZE_MB} МБ"
             )
         
-        # Получаем или создаём папку для временных файлов
-        temp_folder_id = await self._get_or_create_temp_folder()
+        # Проверяем, является ли пользователь координатором/VP4PR
+        is_coordinator = user.role in [
+            UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        ]
+        
+        # Для координаторов - загружаем сразу в постоянную папку
+        # Для обычных пользователей - во временную папку
+        if is_coordinator:
+            # Загружаем сразу в постоянную папку для категории
+            final_folder_id = await self._get_category_folder(category)
+            folder_id = final_folder_id
+            filename = file.filename
+            initial_status = FileUploadStatus.APPROVED
+        else:
+            # Загружаем во временную папку
+            folder_id = await self._get_or_create_temp_folder()
+            filename = f"pending_{user.id}_{file.filename}"
+            initial_status = FileUploadStatus.PENDING
         
         # Загружаем на Google Drive
         try:
             drive_file_id = self.google_service.upload_file(
                 file_content=content,
-                filename=f"pending_{user.id}_{file.filename}",
+                filename=filename,
                 mime_type=file.content_type,
-                folder_id=temp_folder_id
+                folder_id=folder_id
             )
             
             drive_url = f"https://drive.google.com/file/d/{drive_file_id}/view"
@@ -108,19 +125,25 @@ class FileUploadService:
             original_filename=file.filename,
             mime_type=file.content_type,
             file_size=file_size,
-            temp_drive_id=drive_file_id,
+            temp_drive_id=drive_file_id if not is_coordinator else None,
+            final_drive_id=drive_file_id if is_coordinator else None,
             drive_url=drive_url,
             category=category,
             task_id=task_id,
             description=description,
-            status=FileUploadStatus.PENDING
+            status=initial_status,
+            moderated_by_id=user.id if is_coordinator else None,
+            moderated_at=datetime.now(timezone.utc) if is_coordinator else None
         )
         
         self.db.add(upload)
         await self.db.commit()
         await self.db.refresh(upload)
         
-        logger.info(f"✅ Файл '{file.filename}' загружен на модерацию (ID: {upload.id})")
+        if is_coordinator:
+            logger.info(f"✅ Файл '{file.filename}' загружен и автоматически одобрен для координатора (ID: {upload.id})")
+        else:
+            logger.info(f"✅ Файл '{file.filename}' загружен на модерацию (ID: {upload.id})")
         
         return upload
     
@@ -178,7 +201,7 @@ class FileUploadService:
         # Обновляем статус
         upload.status = FileUploadStatus.APPROVED
         upload.moderated_by_id = moderator.id
-        upload.moderated_at = datetime.utcnow()
+        upload.moderated_at = datetime.now(timezone.utc)
         
         await self.db.commit()
         await self.db.refresh(upload)
@@ -214,7 +237,7 @@ class FileUploadService:
         # Обновляем статус
         upload.status = FileUploadStatus.REJECTED
         upload.moderated_by_id = moderator.id
-        upload.moderated_at = datetime.utcnow()
+        upload.moderated_at = datetime.now(timezone.utc)
         upload.rejection_reason = reason
         upload.temp_drive_id = None  # Файл удалён
         upload.drive_url = None

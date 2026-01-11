@@ -3,7 +3,7 @@ API endpoints для задач
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional, List, List
 from uuid import UUID
 from datetime import timedelta
 import json
@@ -16,9 +16,10 @@ from app.models.task import TaskType, TaskStatus, TaskPriority
 from app.schemas.task import (
     TaskResponse, TaskDetailResponse, TaskCreate, TaskUpdate, TaskFileResponse
 )
+from app.schemas.task_question import TaskQuestionCreate, TaskQuestionAnswer, TaskQuestionResponse
 from pydantic import BaseModel, Field
 from app.services.task_service import TaskService
-from app.utils.permissions import get_current_user, require_coordinator
+from app.utils.permissions import get_current_user, OptionalUser, require_coordinator
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -875,3 +876,244 @@ async def complete_task(
     await db.refresh(task)
     
     return TaskResponse.model_validate(task)
+
+
+# ============================================
+# Вопросы к задачам
+# ============================================
+
+@router.post("/{task_id}/questions", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def create_task_question(
+    task_id: UUID,
+    question_data: TaskQuestionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Задать вопрос по задаче
+    
+    Доступно всем авторизованным пользователям
+    """
+    from app.models.task_question import TaskQuestion
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    
+    # Проверяем, что задача существует
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Создаём вопрос
+    question = TaskQuestion(
+        task_id=task_id,
+        asked_by_id=current_user.id,
+        question=question_data.question,
+        is_answered=False,
+        asked_at=datetime.now(timezone.utc)
+    )
+    
+    db.add(question)
+    await db.commit()
+    await db.refresh(question)
+    
+    # Загружаем имя пользователя
+    user_query = select(User).where(User.id == current_user.id)
+    user_result = await db.execute(user_query)
+    user = user_result.scalar_one_or_none()
+    asked_by_name = user.full_name if user else None
+    
+    return {
+        "id": str(question.id),
+        "task_id": str(question.task_id),
+        "asked_by_id": str(question.asked_by_id),
+        "question": question.question,
+        "is_answered": question.is_answered,
+        "asked_at": question.asked_at.isoformat(),
+        "asked_by_name": asked_by_name,
+        "message": "Вопрос успешно создан"
+    }
+
+
+@router.get("/{task_id}/questions", response_model=List[TaskQuestionResponse])
+async def get_task_questions(
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(OptionalUser)
+):
+    """
+    Получить список вопросов по задаче
+    
+    Доступно всем (включая неавторизованных пользователей)
+    """
+    from app.models.task_question import TaskQuestion
+    from sqlalchemy import select
+    
+    # Проверяем, что задача существует
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Получаем вопросы
+    query = select(TaskQuestion).where(
+        TaskQuestion.task_id == task_id
+    ).order_by(TaskQuestion.asked_at.desc())
+    
+    result = await db.execute(query)
+    questions = result.scalars().all()
+    
+    # Загружаем имена пользователей
+    question_responses = []
+    for q in questions:
+        asked_by_query = select(User).where(User.id == q.asked_by_id)
+        asked_by_result = await db.execute(asked_by_query)
+        asked_by = asked_by_result.scalar_one_or_none()
+        
+        answered_by = None
+        if q.answered_by_id:
+            answered_by_query = select(User).where(User.id == q.answered_by_id)
+            answered_by_result = await db.execute(answered_by_query)
+            answered_by = answered_by_result.scalar_one_or_none()
+        
+        question_responses.append(TaskQuestionResponse(
+            id=q.id,
+            task_id=q.task_id,
+            asked_by_id=q.asked_by_id,
+            answered_by_id=q.answered_by_id,
+            question=q.question,
+            answer=q.answer,
+            is_answered=q.is_answered,
+            asked_at=q.asked_at,
+            answered_at=q.answered_at,
+            asked_by_name=asked_by.full_name if asked_by else None,
+            answered_by_name=answered_by.full_name if answered_by else None
+        ))
+    
+    return question_responses
+
+
+@router.post("/{task_id}/questions/{question_id}/answer", response_model=dict)
+async def answer_task_question(
+    task_id: UUID,
+    question_id: UUID,
+    answer_data: TaskQuestionAnswer,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Ответить на вопрос по задаче
+    
+    Доступно только координаторам и VP4PR
+    """
+    from app.models.task_question import TaskQuestion
+    from app.models.user import UserRole
+    from sqlalchemy import select
+    from datetime import datetime, timezone
+    
+    # Проверяем права
+    if current_user.role not in [
+        UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only coordinators and VP4PR can answer questions"
+        )
+    
+    # Проверяем, что задача существует
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Получаем вопрос
+    query = select(TaskQuestion).where(
+        TaskQuestion.id == question_id,
+        TaskQuestion.task_id == task_id
+    )
+    result = await db.execute(query)
+    question = result.scalar_one_or_none()
+    
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Question not found"
+        )
+    
+    # Обновляем вопрос
+    question.answer = answer_data.answer
+    question.is_answered = True
+    question.answered_by_id = current_user.id
+    question.answered_at = datetime.now(timezone.utc)
+    
+    await db.commit()
+    await db.refresh(question)
+    
+    return {
+        "id": str(question.id),
+        "answer": question.answer,
+        "is_answered": question.is_answered,
+        "answered_at": question.answered_at.isoformat(),
+        "message": "Ответ успешно сохранён"
+    }
+
+
+# ============================================
+# Файлы задач
+# ============================================
+
+@router.get("/{task_id}/files", response_model=List[dict])
+async def get_task_files(
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(OptionalUser)
+):
+    """
+    Получить список файлов задачи (только одобренные)
+    
+    Доступно всем (включая неавторизованных пользователей)
+    """
+    from app.models.file_upload import FileUpload, FileUploadStatus, FileUploadCategory
+    from sqlalchemy import select
+    
+    # Проверяем, что задача существует
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found"
+        )
+    
+    # Получаем только одобренные файлы задачи
+    query = select(FileUpload).where(
+        FileUpload.task_id == task_id,
+        FileUpload.status == FileUploadStatus.APPROVED.value,
+        FileUpload.category == FileUploadCategory.TASK_MATERIAL.value
+    ).order_by(FileUpload.created_at.asc())
+    
+    result = await db.execute(query)
+    files = result.scalars().all()
+    
+    # Формируем ответ
+    file_list = []
+    for f in files:
+        file_list.append({
+            "id": str(f.id),
+            "filename": f.original_filename,
+            "mime_type": f.mime_type,
+            "file_size": f.file_size,
+            "drive_url": f.drive_url,
+            "drive_id": f.final_drive_id or f.temp_drive_id,
+            "description": f.description,
+            "uploaded_at": f.created_at.isoformat(),
+            "uploaded_by_id": str(f.uploaded_by_id)
+        })
+    
+    return file_list

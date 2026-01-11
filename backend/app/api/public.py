@@ -200,22 +200,14 @@ async def get_public_leaderboard(
     """
     Получить публичный рейтинг пользователей (без авторизации)
     
-    Показывает топ пользователей, исключая координаторов и VP4PR
+    Показывает топ пользователей, включая координаторов и VP4PR.
+    Это мотивирует координаторов и VP4PR также участвовать в выполнении задач и зарабатывать баллы.
     """
-    # Исключаем координаторов и VP4PR
-    excluded_roles = [
-        UserRole.COORDINATOR_SMM,
-        UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL,
-        UserRole.COORDINATOR_PRFR,
-        UserRole.VP4PR
-    ]
-    
+    # Включаем всех пользователей, включая координаторов и VP4PR
     query = select(User).where(
         and_(
             User.is_active == True,
-            User.deleted_at.is_(None),  # Исключаем удалённых пользователей
-            ~User.role.in_(excluded_roles)
+            User.deleted_at.is_(None)  # Исключаем только удалённых пользователей
         )
     ).order_by(
         User.points.desc(),
@@ -240,12 +232,16 @@ async def get_public_leaderboard(
         completed_result = await db.execute(completed_query)
         tasks_count = completed_result.scalar() or 0
         
+        # Получаем роль пользователя (может быть enum или строка)
+        role_value = user.role.value if hasattr(user.role, 'value') else str(user.role)
+        
         leaderboard.append({
             "rank": len(leaderboard) + 1,
             "name": user.full_name,
             "username": user.username,
             "level": user.level,
             "points": user.points,
+            "role": role_value,  # Добавляем роль для отображения
             "completed_tasks": tasks_count,
             # Скрываем: telegram_id, детальную статистику
         })

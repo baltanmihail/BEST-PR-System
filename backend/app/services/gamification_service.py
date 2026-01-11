@@ -476,15 +476,14 @@ class GamificationService:
         limit: int = 10,
         exclude_roles: Optional[List[UserRole]] = None
     ) -> List[Dict]:
-        """Получить рейтинг пользователей"""
+        """Получить рейтинг пользователей
+        
+        Включает всех пользователей, включая координаторов и VP4PR для мотивации.
+        Можно исключить роли через параметр exclude_roles.
+        """
+        # По умолчанию не исключаем никого - все участвуют в рейтинге
         if exclude_roles is None:
-            exclude_roles = [
-                UserRole.COORDINATOR_SMM,
-                UserRole.COORDINATOR_DESIGN,
-                UserRole.COORDINATOR_CHANNEL,
-                UserRole.COORDINATOR_PRFR,
-                UserRole.VP4PR
-            ]
+            exclude_roles = []
         
         query = select(
             User.id,
@@ -492,14 +491,23 @@ class GamificationService:
             User.full_name,
             User.points,
             User.level,
+            User.role,
             func.count(TaskAssignment.id).filter(
                 TaskAssignment.status == AssignmentStatus.COMPLETED.value
             ).label("completed_tasks")
         ).outerjoin(
             TaskAssignment, User.id == TaskAssignment.user_id
-        ).where(
-            ~User.role.in_(exclude_roles)
-        ).group_by(
+        )
+        
+        # Исключаем роли только если они указаны
+        if exclude_roles:
+            # Конвертируем роли в значения для сравнения
+            exclude_role_values = [role.value if isinstance(role, UserRole) else role for role in exclude_roles]
+            query = query.where(
+                ~User.role.in_(exclude_role_values)
+            )
+        
+        query = query.group_by(
             User.id
         ).order_by(
             User.points.desc()
@@ -522,6 +530,9 @@ class GamificationService:
             except:
                 pass
             
+            # Получаем роль пользователя (может быть enum или строка)
+            role_value = row.role.value if hasattr(row.role, 'value') else str(row.role)
+            
             leaderboard.append({
                 "rank": rank,
                 "user_id": str(row.id),
@@ -531,6 +542,7 @@ class GamificationService:
                 "full_name": row.full_name,
                 "points": row.points,
                 "level": row.level,
+                "role": role_value,  # Добавляем роль для отображения
                 "completed_tasks": row.completed_tasks or 0
             })
         

@@ -3,6 +3,7 @@ SQLAlchemy модели
 """
 from app.models.user import User
 from app.models.task import Task, TaskStage, TaskAssignment
+from app.models.task_question import TaskQuestion
 from app.models.equipment import Equipment, EquipmentRequest
 from app.models.event import Event
 from app.models.gamification import PointsLog, Achievement
@@ -22,6 +23,7 @@ __all__ = [
     "Task",
     "TaskStage",
     "TaskAssignment",
+    "TaskQuestion",
     "Equipment",
     "EquipmentRequest",
     "Event",

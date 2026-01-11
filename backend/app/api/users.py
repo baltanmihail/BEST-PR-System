@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.schemas.user import (
-    UserResponse, UserProfileResponse, UserUpdate, ProfileUpdate, UserStats
+    UserResponse, UserProfileResponse, UserUpdate, ProfileUpdate, UserStats, UserListResponse
 )
 from app.utils.permissions import get_current_user, require_coordinator
 from app.services.gallery_service import GalleryService
@@ -228,7 +228,7 @@ async def get_user_stats(
     return stats
 
 
-@router.get("", response_model=List[UserResponse])
+@router.get("", response_model=UserListResponse)
 async def get_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
@@ -243,14 +243,17 @@ async def get_users(
     
     Доступно всем авторизованным пользователям
     """
-    from sqlalchemy import select, or_, and_
+    from sqlalchemy import select, or_, and_, func
     
-    query = select(User).where(User.deleted_at.is_(None))
+    # Базовая выборка для подсчёта общего количества
+    base_query = select(User).where(User.deleted_at.is_(None))
     
     conditions = []
     
     if role:
-        conditions.append(User.role == role)
+        # Конвертируем роль в значение для сравнения
+        role_value = role.value if hasattr(role, 'value') else role
+        conditions.append(User.role == role_value)
     if is_active is not None:
         conditions.append(User.is_active == is_active)
     if search:
@@ -263,14 +266,28 @@ async def get_users(
         )
     
     if conditions:
-        query = query.where(and_(*conditions))
+        base_query = base_query.where(and_(*conditions))
     
-    query = query.order_by(User.points.desc(), User.created_at.desc()).offset(skip).limit(limit)
+    # Подсчитываем общее количество - используем тот же запрос без пагинации
+    count_query = select(func.count(User.id))
+    if conditions:
+        count_query = count_query.where(and_(*conditions))
+    count_query = count_query.where(User.deleted_at.is_(None))
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # Получаем пользователей с пагинацией
+    query = base_query.order_by(User.points.desc(), User.created_at.desc()).offset(skip).limit(limit)
     
     result = await db.execute(query)
     users = result.scalars().all()
     
-    return [UserResponse.model_validate(user) for user in users]
+    return UserListResponse(
+        items=[UserProfileResponse.model_validate(user) for user in users],
+        total=total,
+        skip=skip,
+        limit=limit
+    )
 
 
 @router.put("/{user_id}", response_model=UserResponse)

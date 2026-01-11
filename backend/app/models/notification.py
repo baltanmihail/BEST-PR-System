@@ -1,7 +1,7 @@
 """
 Модель уведомлений
 """
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean, Text, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 import uuid
@@ -28,14 +28,55 @@ class NotificationType(str, enum.Enum):
     SYSTEM = "system"  # Системные уведомления
 
 
+class NotificationTypeType(TypeDecorator):
+    """TypeDecorator для правильной конвертации NotificationType в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            # Используем правильное имя типа из базы данных: notification_type (с подчеркиванием)
+            return dialect.type_descriptor(PG_ENUM(
+                NotificationType, 
+                name='notification_type', 
+                create_type=False, 
+                values_callable=lambda x: [e.value for e in NotificationType]
+            ))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку)"""
+        if value is None:
+            return None
+        if isinstance(value, NotificationType):
+            return value.value
+        return str(value) if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return NotificationType(value)
+            except ValueError:
+                return NotificationType.SYSTEM
+        return value
+
+
 class Notification(Base):
     """Уведомление"""
     __tablename__ = "notifications"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    # Используем PostgreSQL ENUM с правильным именем типа из миграции
-    type = Column(PG_ENUM(NotificationType, name='notification_type', create_type=False), nullable=False, index=True)
+    # Используем существующий в БД ENUM notification_type (создан в миграции 001)
+    type = Column(NotificationTypeType(), nullable=False, index=True)
     title = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     data = Column(String, nullable=True)  # JSON строка с дополнительными данными (task_id, etc.)

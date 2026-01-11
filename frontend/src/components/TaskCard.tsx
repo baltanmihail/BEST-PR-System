@@ -7,6 +7,8 @@ import { useAuthStore } from '../store/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { telegramChatsApi, TaskChatResponse } from '../services/telegramChats'
 import { galleryApi } from '../services/gallery'
+import TaskQuestions from './TaskQuestions'
+import TaskFiles from './TaskFiles'
 
 const typeLabels = {
   smm: 'SMM',
@@ -211,23 +213,11 @@ export default function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      {/* Вопросы */}
-      {task.questions && task.questions.length > 0 && (
-        <div className="mb-4">
-          <h4 className={`text-white font-semibold mb-2 flex items-center space-x-2 text-readable ${theme}`}>
-            <HelpCircle className="h-4 w-4" />
-            <span>Вопросы по задаче:</span>
-          </h4>
-          <ul className="space-y-1">
-            {task.questions.map((question, index) => (
-              <li key={index} className={`text-white/80 text-sm flex items-start space-x-2 text-readable ${theme}`}>
-                <span className="text-best-primary">•</span>
-                <span>{question}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Вопросы к задаче */}
+      <TaskQuestions taskId={task.id} />
+
+      {/* Файлы задачи */}
+      <TaskFiles taskId={task.id} />
 
       {/* Примеры прошлых работ */}
       {exampleProjects && exampleProjects.length > 0 && (

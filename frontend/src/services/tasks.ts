@@ -1,5 +1,6 @@
 import api from './api'
 import { Task, TaskCreate, TaskUpdate, TasksResponse } from '../types/task'
+import { TaskQuestion } from '../types/task_question'
 
 export const tasksApi = {
   // Получить список задач
@@ -35,5 +36,27 @@ export const tasksApi = {
   // Удалить задачу
   deleteTask: async (id: string): Promise<void> => {
     await api.delete(`/tasks/${id}`)
+  },
+
+  // Вопросы к задачам
+  getTaskQuestions: async (taskId: string): Promise<TaskQuestion[]> => {
+    const response = await api.get<TaskQuestion[]>(`/tasks/${taskId}/questions`)
+    return response.data
+  },
+
+  createTaskQuestion: async (taskId: string, question: string): Promise<TaskQuestion> => {
+    const response = await api.post<TaskQuestion>(`/tasks/${taskId}/questions`, { question })
+    return response.data
+  },
+
+  answerTaskQuestion: async (taskId: string, questionId: string, answer: string): Promise<TaskQuestion> => {
+    const response = await api.post<TaskQuestion>(`/tasks/${taskId}/questions/${questionId}/answer`, { answer })
+    return response.data
+  },
+
+  // Файлы задач
+  getTaskFiles: async (taskId: string) => {
+    const response = await api.get(`/tasks/${taskId}/files`)
+    return response.data
   },
 }

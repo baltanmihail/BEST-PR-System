@@ -1,17 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckSquare, AlertCircle, Filter, Loader2, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { CheckSquare, AlertCircle, Filter, Loader2, X, ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { tasksApi } from '../services/tasks'
 import { publicApi } from '../services/public'
 import TaskCard from '../components/TaskCard'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { Task } from '../types/task'
+import { UserRole } from '../types/user'
 import { useState, useMemo } from 'react'
 
 export default function Tasks() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const isRegistered = user && user.is_active
+  
+  // Проверяем роль координатора или VP4PR
+  const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
+  const isCoordinator = user && (
+    roleStr.includes('coordinator') || 
+    roleStr === 'vp4pr' || 
+    roleStr === UserRole.VP4PR
+  )
+  
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [filters, setFilters] = useState<{
     type?: string
@@ -85,7 +96,18 @@ export default function Tasks() {
           </h1>
           <p className={`text-white mt-1 text-sm md:text-base text-readable ${theme}`}>Управление задачами PR-отдела</p>
         </div>
-        <button 
+        <div className="flex items-center gap-3">
+          {isCoordinator && (
+            <Link
+              to="/tasks/create"
+              className="flex items-center space-x-2 bg-best-primary text-white px-4 py-2.5 md:py-2 rounded-lg hover:bg-best-primary/80 transition-all card-3d border border-best-primary/50 touch-manipulation"
+              data-tour="create-task"
+            >
+              <Plus className="h-5 w-5" />
+              <span>Создать задачу</span>
+            </Link>
+          )}
+          <button 
           onClick={() => setIsFiltersOpen(!isFiltersOpen)}
           className="flex items-center justify-between md:justify-center space-x-2 bg-white/20 text-white px-4 py-2.5 md:py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30 touch-manipulation w-full md:w-auto"
           data-tour="task-filters"
