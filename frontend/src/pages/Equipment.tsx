@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, Edit, Trash2, ShoppingCart, X } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, ShoppingCart, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
@@ -170,20 +170,6 @@ export default function Equipment() {
   
   // Подсчёт элементов в корзине
   const cartCount = cart.length
-
-  const getCategoryEmoji = (category: EquipmentCategory): string => {
-    const emojiMap: Record<EquipmentCategory, string> = {
-      camera: '📷',
-      lens: '🔍',
-      lighting: '💡',
-      audio: '🎤',
-      tripod: '📐',
-      accessories: '🔧',
-      storage: '💾',
-      other: '📦'
-    }
-    return emojiMap[category] || '📦'
-  }
 
   const getCategoryName = (category: EquipmentCategory): string => {
     const nameMap: Record<EquipmentCategory, string> = {

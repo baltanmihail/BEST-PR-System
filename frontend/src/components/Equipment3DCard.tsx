@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Camera, Video, Mic, Calendar, ShoppingCart, Plus, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useThemeStore } from '../store/themeStore'
 import type { Equipment, EquipmentCategory } from '../services/equipment'
@@ -45,6 +45,9 @@ export default function Equipment3DCard({
     ],
     storage: [
       'https://images.unsplash.com/photo-1597872200969-2b65d56bd16b?w=400&h=300&fit=crop',
+    ],
+    accessories: [
+      'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&h=300&fit=crop',
     ],
     other: [
       'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400&h=300&fit=crop',
@@ -93,6 +96,7 @@ export default function Equipment3DCard({
       audio: 'Аудио',
       tripod: 'Штатив',
       storage: 'Накопитель',
+      accessories: 'Аксессуары',
       other: 'Другое',
     }
     return names[category] || category
