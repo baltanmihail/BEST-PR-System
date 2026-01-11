@@ -25,30 +25,23 @@ def upgrade():
     op.create_index('ix_tasks_task_number', 'tasks', ['task_number'], unique=True)
     
     # Заполняем существующие задачи номерами (начиная с 1)
-    # Используем PostgreSQL sequence для автоинкремента
+    # Сначала создаём последовательность
+    op.execute("CREATE SEQUENCE IF NOT EXISTS task_number_seq START 1")
+    
+    # Обновляем существующие задачи номерами используя ROW_NUMBER
     op.execute("""
-        DO $$
-        DECLARE
-            rec RECORD;
-            num INTEGER := 1;
-        BEGIN
-            -- Создаём временную последовательность
-            CREATE SEQUENCE IF NOT EXISTS temp_task_number_seq START 1;
-            
-            -- Обновляем все существующие задачи
-            FOR rec IN SELECT id FROM tasks ORDER BY created_at ASC
-            LOOP
-                UPDATE tasks SET task_number = num WHERE id = rec.id;
-                num := num + 1;
-            END LOOP;
-            
-            -- Создаём постоянную последовательность для будущих задач
-            DROP SEQUENCE IF EXISTS task_number_seq;
-            CREATE SEQUENCE task_number_seq START WITH num;
-            
-            -- Удаляем временную последовательность
-            DROP SEQUENCE IF EXISTS temp_task_number_seq;
-        END $$;
+        UPDATE tasks
+        SET task_number = subquery.row_num
+        FROM (
+            SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC) as row_num
+            FROM tasks
+        ) AS subquery
+        WHERE tasks.id = subquery.id
+    """)
+    
+    # Устанавливаем последовательность на следующий номер после максимального
+    op.execute("""
+        SELECT setval('task_number_seq', COALESCE((SELECT MAX(task_number) FROM tasks), 0) + 1, false)
     """)
     
     # Создаём функцию для автоматического присвоения номера при создании задачи
