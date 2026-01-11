@@ -76,6 +76,49 @@ class EquipmentRequestStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class EquipmentRequestStatusType(TypeDecorator):
+    """TypeDecorator для правильной конвертации EquipmentRequestStatus в строку"""
+    impl = String
+    cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL"""
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_ENUM(
+                EquipmentRequestStatus, 
+                name='equipment_request_status', 
+                create_type=False, 
+                values_callable=lambda x: [e.value for e in EquipmentRequestStatus]
+            ))
+        else:
+            return dialect.type_descriptor(String(50))
+    
+    def process_bind_param(self, value, dialect):
+        """Конвертируем enum в его значение (строку) - lowercase"""
+        if value is None:
+            return None
+        if isinstance(value, EquipmentRequestStatus):
+            return value.value  # Возвращает 'approved', 'active' и т.д.
+        # Если передана строка, конвертируем в lowercase
+        if isinstance(value, str):
+            return value.lower()
+        return str(value).lower() if value else None
+    
+    def process_result_value(self, value, dialect):
+        """Конвертируем строку обратно в enum при чтении из БД"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return EquipmentRequestStatus(value.lower())
+            except ValueError:
+                return EquipmentRequestStatus.PENDING
+        return value
+
+
 class Equipment(Base):
     """Оборудование"""
     __tablename__ = "equipment"
@@ -109,7 +152,7 @@ class EquipmentRequest(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
-    status = Column(PG_ENUM(EquipmentRequestStatus, name='equipment_request_status', create_type=False), nullable=False, default=EquipmentRequestStatus.PENDING, index=True)
+    status = Column(EquipmentRequestStatusType(), nullable=False, default=EquipmentRequestStatus.PENDING, index=True)
     rejection_reason = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

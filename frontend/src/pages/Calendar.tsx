@@ -411,30 +411,56 @@ function TimelineView({
     allEvents.push(...calendarData.items.filter((i: any) => i.type === 'event'))
   }
 
-  // Определяем количество месяцев/недель в зависимости от периода
-  let months: Date[] = []
-  let weeks: Date[] = []
+  // Получаем сегодняшнюю дату для выделения
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  // Определяем дни в зависимости от периода
+  let days: Date[] = []
   
   if (period === 'semester') {
-    // Семестр - 6 месяцев
-    const startMonth = new Date(currentDate)
-    startMonth.setDate(1)
-    for (let i = 0; i < 6; i++) {
-      const month = new Date(startMonth)
-      month.setMonth(startMonth.getMonth() + i)
-      months.push(month)
+    // Семестр - разбиваем на дни (6 месяцев)
+    const startDate = new Date(currentDate)
+    startDate.setDate(1)
+    const endDate = new Date(startDate)
+    endDate.setMonth(endDate.getMonth() + 6)
+    endDate.setDate(0) // Последний день месяца
+    
+    const currentDay = new Date(startDate)
+    while (currentDay <= endDate) {
+      days.push(new Date(currentDay))
+      currentDay.setDate(currentDay.getDate() + 1)
     }
   } else if (period === 'month') {
-    // Месяц - 1 месяц
-    const startMonth = new Date(currentDate)
-    startMonth.setDate(1)
-    months.push(startMonth)
+    // Месяц - разбиваем на дни
+    const startDate = new Date(currentDate)
+    startDate.setDate(1)
+    const endDate = new Date(startDate)
+    endDate.setMonth(endDate.getMonth() + 1)
+    endDate.setDate(0) // Последний день месяца
+    
+    const currentDay = new Date(startDate)
+    while (currentDay <= endDate) {
+      days.push(new Date(currentDay))
+      currentDay.setDate(currentDay.getDate() + 1)
+    }
   } else if (period === 'week') {
-    // Неделя - 1 неделя
+    // Неделя - 7 дней
     const weekStart = new Date(currentDate)
     const day = weekStart.getDay()
     weekStart.setDate(weekStart.getDate() - day)
-    weeks.push(weekStart)
+    weekStart.setHours(0, 0, 0, 0)
+    
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(weekStart)
+      day.setDate(weekStart.getDate() + i)
+      days.push(day)
+    }
+  }
+
+  // Функция для проверки, является ли день сегодняшним
+  const isToday = (date: Date) => {
+    return date.getTime() === today.getTime()
   }
 
   return (
@@ -445,36 +471,24 @@ function TimelineView({
       {/* На мобильных показываем вертикальный список, на десктопе - горизонтальный таймлайн */}
       <div className="md:overflow-x-auto">
         <div className="min-w-full md:min-w-[1200px]">
-        {/* Шкала времени - на мобильных скрыта, на десктопе видна */}
-        {period === 'week' ? (
-          <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4">
-            {weeks.map((weekStart, idx) => {
-              const days = []
-              for (let i = 0; i < 7; i++) {
-                const day = new Date(weekStart)
-                day.setDate(weekStart.getDate() + i)
-                days.push(day)
-              }
-              return days.map((day, dayIdx) => (
-                <div key={`${idx}-${dayIdx}`} className="flex-1 text-center">
-                  <div className={`text-white font-semibold text-sm md:text-base text-readable ${theme}`}>
-                    {day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })}
-                  </div>
-                </div>
-              ))
-            })}
-          </div>
-        ) : (
-          <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4">
-            {months.map((month, idx) => (
-              <div key={idx} className="flex-1 text-center">
-                <div className={`text-white font-semibold text-sm md:text-base text-readable ${theme}`}>
-                  {month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+        {/* Шкала времени - разбита на дни */}
+        <div className="hidden md:flex border-b-2 border-white/20 pb-2 mb-4 overflow-x-auto">
+          {days.map((day, idx) => {
+            const dayStr = day.toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric' })
+            const isTodayDate = isToday(day)
+            return (
+              <div 
+                key={idx} 
+                className={`flex-shrink-0 text-center px-2 ${isTodayDate ? 'bg-best-primary/30 rounded-lg border-2 border-best-primary' : ''}`}
+                style={{ minWidth: period === 'week' ? '120px' : '80px' }}
+              >
+                <div className={`font-semibold text-sm md:text-base text-readable ${theme} ${isTodayDate ? 'text-best-primary font-bold' : 'text-white'}`}>
+                  {dayStr}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
+            )
+          })}
+        </div>
 
         {/* Задачи и события - на мобильных вертикальный список, на десктопе горизонтальный */}
         <div className="space-y-2 md:space-y-2">
