@@ -485,8 +485,35 @@ class SheetsSyncService:
     def _ensure_sheet_exists(self, spreadsheet_id: str, sheet_name: str) -> bool:
         """Убедиться, что лист существует, если нет - создать"""
         sheet_id = self._get_sheet_id(spreadsheet_id, sheet_name)
-        if sheet_id != 0:
+        if sheet_id is not None:
+            logger.debug(f"✅ Лист '{sheet_name}' существует (ID: {sheet_id})")
             return True
+        
+        # Лист не найден, пытаемся создать через OAuth (если доступен)
+        oauth_sheets = self.google_service._get_oauth_sheets_service()
+        if oauth_sheets:
+            try:
+                request_body = {
+                    'requests': [{
+                        'addSheet': {
+                            'properties': {'title': sheet_name}
+                        }
+                    }]
+                }
+                oauth_sheets.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body=request_body
+                ).execute()
+                logger.info(f"✅ Создан лист '{sheet_name}' через OAuth")
+                return True
+            except Exception as e:
+                error_str = str(e)
+                if "already exists" in error_str:
+                    logger.info(f"✅ Лист '{sheet_name}' уже существует")
+                    return True
+                logger.warning(f"⚠️ OAuth не смог создать лист: {e}")
+        
+        # Fallback: Service Account
         try:
             self.google_service.create_sheet_tab(
                 spreadsheet_id,
@@ -497,11 +524,10 @@ class SheetsSyncService:
             return True
         except Exception as e:
             error_str = str(e)
-            # Если лист уже существует - это нормально, считаем что лист есть
             if "already exists" in error_str or "уже существует" in error_str.lower():
-                logger.info(f"✅ Лист '{sheet_name}' уже существует (это нормально)")
+                logger.info(f"✅ Лист '{sheet_name}' уже существует")
                 return True
-            logger.warning(f"Не удалось создать лист '{sheet_name}': {e}")
+            logger.warning(f"❌ Не удалось создать лист '{sheet_name}': {e}")
             return False
     
     def _format_task_number(self, task: Task) -> str:
@@ -1148,25 +1174,60 @@ class SheetsSyncService:
         
         return requests
     
-    def _get_sheet_id(self, spreadsheet_id: str, sheet_name: str) -> int:
-        """Получить ID листа по имени"""
+    def _get_sheet_id(self, spreadsheet_id: str, sheet_name: str) -> Optional[int]:
+        """
+        Получить ID листа по имени
+        
+        Приоритет: OAuth (если доступен) → Service Account
+        
+        Returns:
+            ID листа или None если не найден
+        """
+        # Сначала пробуем OAuth (т.к. таблица могла быть создана пользователем)
+        oauth_service = self.google_service._get_oauth_sheets_service()
+        if oauth_service:
+            try:
+                spreadsheet = oauth_service.spreadsheets().get(
+                    spreadsheetId=spreadsheet_id,
+                    fields='sheets.properties'
+                ).execute()
+                
+                sheets_list = spreadsheet.get('sheets', [])
+                logger.debug(f"📋 [OAuth] Листы в таблице: {[s['properties']['title'] for s in sheets_list]}")
+                
+                for sheet in sheets_list:
+                    if sheet['properties']['title'] == sheet_name:
+                        sheet_id = sheet['properties']['sheetId']
+                        logger.debug(f"✅ [OAuth] Найден лист '{sheet_name}' с ID {sheet_id}")
+                        return sheet_id
+                
+                logger.debug(f"⚠️ [OAuth] Лист '{sheet_name}' не найден")
+            except Exception as oauth_e:
+                logger.debug(f"⚠️ OAuth не смог получить листы: {oauth_e}")
+        
+        # Fallback: Service Account
         try:
-            # Используем GoogleService для получения sheets_service
-            # Получаем sheets_service через внутренний метод
             sheets_service = self.google_service._get_sheets_service(background=True)
             
             spreadsheet = sheets_service.spreadsheets().get(
-                spreadsheetId=spreadsheet_id
+                spreadsheetId=spreadsheet_id,
+                fields='sheets.properties'
             ).execute()
             
-            for sheet in spreadsheet.get('sheets', []):
-                if sheet['properties']['title'] == sheet_name:
-                    return sheet['properties']['sheetId']
+            sheets_list = spreadsheet.get('sheets', [])
+            logger.debug(f"📋 [SA] Листы в таблице: {[s['properties']['title'] for s in sheets_list]}")
             
-            return 0
+            for sheet in sheets_list:
+                if sheet['properties']['title'] == sheet_name:
+                    sheet_id = sheet['properties']['sheetId']
+                    logger.debug(f"✅ [SA] Найден лист '{sheet_name}' с ID {sheet_id}")
+                    return sheet_id
+            
+            logger.warning(f"⚠️ Лист '{sheet_name}' не найден")
+            return None
         except Exception as e:
-            logger.warning(f"Ошибка получения ID листа {sheet_name}: {e}")
-            return 0
+            logger.error(f"❌ Ошибка получения ID листа '{sheet_name}': {e}")
+            return None
     
     async def sync_sheets_changes_to_db(
         self,

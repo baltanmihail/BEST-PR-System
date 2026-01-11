@@ -40,8 +40,8 @@ class EquipmentReminders:
             # Получаем все одобренные и активные заявки
             requests_query = select(EquipmentRequest).where(
                 EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
+                    EquipmentRequestStatus.APPROVED.value,
+                    EquipmentRequestStatus.ACTIVE.value
                 ])
             )
             result = await db.execute(requests_query)

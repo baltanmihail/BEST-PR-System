@@ -523,7 +523,7 @@ async def assign_task(
         task_id=task_id,
         user_id=current_user.id,
         role_in_task="executor",
-        status=AssignmentStatus.ASSIGNED
+        status=AssignmentStatus.ASSIGNED.value  # .value для PostgreSQL ENUM
     )
     
     db.add(assignment)
@@ -780,7 +780,7 @@ async def complete_task(
     # Обновляем назначение
     completed_at = None
     if assignment:
-        assignment.status = AssignmentStatus.COMPLETED
+        assignment.status = AssignmentStatus.COMPLETED.value  # .value для PostgreSQL ENUM
         from datetime import datetime, timezone
         completed_at = datetime.now(timezone.utc)
         assignment.completed_at = completed_at

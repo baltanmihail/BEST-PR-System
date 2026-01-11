@@ -27,7 +27,8 @@ class NotificationService:
         """Создать уведомление"""
         notification = Notification(
             user_id=user_id,
-            type=notification_type,
+            # Используем .value для PostgreSQL ENUM (lowercase)
+            type=notification_type.value if isinstance(notification_type, NotificationType) else notification_type,
             title=title,
             message=message,
             data=json.dumps(data) if data else None,

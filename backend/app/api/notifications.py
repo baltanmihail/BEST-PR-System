@@ -156,11 +156,12 @@ async def get_unread_count(
             NotificationType.MODERATION_REJECTED
         ]
         
+        # Используем .value для сравнения с PostgreSQL ENUM (lowercase)
         query = select(func.count(Notification.id)).where(
             and_(
                 Notification.user_id == current_user.id,
                 Notification.is_read == False,
-                Notification.type.in_(important_types)
+                Notification.type.in_([t.value for t in important_types])
             )
         )
         result = await db.execute(query)

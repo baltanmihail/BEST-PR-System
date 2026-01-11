@@ -139,7 +139,7 @@ class EquipmentService:
             task_id=task_id,
             start_date=start_date,
             end_date=end_date,
-            status=EquipmentRequestStatus.PENDING
+            status=EquipmentRequestStatus.PENDING.value  # .value для PostgreSQL ENUM
         )
         
         db.add(request)
@@ -243,7 +243,7 @@ class EquipmentService:
         if not request:
             return None
         
-        if request.status != EquipmentRequestStatus.PENDING:
+        if request.status != EquipmentRequestStatus.PENDING.value:
             raise ValueError("Request is not pending")
         
         # Проверяем, что оборудование всё ещё доступно
@@ -256,7 +256,7 @@ class EquipmentService:
             raise ValueError("Equipment is no longer available")
         
         old_status = request.status
-        request.status = EquipmentRequestStatus.APPROVED
+        request.status = EquipmentRequestStatus.APPROVED.value
         await db.commit()
         await db.refresh(request)
         
@@ -319,11 +319,11 @@ class EquipmentService:
         if not request:
             return None
         
-        if request.status != EquipmentRequestStatus.PENDING:
+        if request.status != EquipmentRequestStatus.PENDING.value:
             raise ValueError("Request is not pending")
         
         old_status = request.status
-        request.status = EquipmentRequestStatus.REJECTED
+        request.status = EquipmentRequestStatus.REJECTED.value
         request.rejection_reason = reason
         await db.commit()
         await db.refresh(request)

@@ -54,8 +54,8 @@ class EquipmentStatusSync:
             # Получаем все одобренные заявки из БД
             approved_requests_query = select(EquipmentRequest).where(
                 EquipmentRequest.status.in_([
-                    EquipmentRequestStatus.APPROVED,
-                    EquipmentRequestStatus.ACTIVE
+                    EquipmentRequestStatus.APPROVED.value,
+                    EquipmentRequestStatus.ACTIVE.value
                 ])
             )
             result = await db.execute(approved_requests_query)

@@ -550,7 +550,7 @@ async def get_equipment_timeline(
                         "equipment_id": str(req.equipment_id),
                         "user_name": req.user.full_name if req.user else "Неизвестно",
                         "status": req.status.value,
-                        "is_overdue": req.end_date < date.today() and req.status not in [EquipmentRequestStatus.COMPLETED, EquipmentRequestStatus.CANCELLED]
+                        "is_overdue": req.end_date < date.today() and req.status not in [EquipmentRequestStatus.COMPLETED.value, EquipmentRequestStatus.CANCELLED.value]
                     })
             
             timeline_data.append({
