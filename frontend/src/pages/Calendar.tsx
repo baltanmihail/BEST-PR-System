@@ -564,17 +564,6 @@ function TimelineView({
             })}
           </div>
           
-          {/* Линия сегодняшнего дня */}
-          {today >= startDate && today <= endDate && (
-            <div 
-              className="absolute top-0 bottom-0 w-0.5 bg-best-primary z-20 pointer-events-none"
-              style={{ 
-                left: `${200 + Math.floor((today.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)) * dayWidth + dayWidth / 2}px`,
-                height: `${100 + allTasks.length * 44}px`
-              }}
-            />
-          )}
-          
           {/* Задачи как Gantt бары */}
           <div className="relative">
             {allTasks.map((task, index) => {
