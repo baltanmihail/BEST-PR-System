@@ -279,10 +279,12 @@ class TaskService:
                     if folders:
                         if folders.get('task_folder_id'):
                             task.drive_folder_id = folders['task_folder_id']
-                        # TODO: добавить поле drive_file_id в модель Task, если нужно
+                        if folders.get('task_doc_id'):
+                            task.drive_file_id = folders['task_doc_id']
+                        
                         await db.commit()
                         await db.refresh(task)
-                        logger.info(f"✅ Сохранён drive_folder_id для задачи {task.id}: {folders.get('task_folder_id')}")
+                        logger.info(f"✅ Сохранены drive_folder_id и drive_file_id для задачи {task.id}")
                     
                     return folders
                 except Exception as e:

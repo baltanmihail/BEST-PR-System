@@ -205,6 +205,7 @@ class OnboardingService:
             int: Количество отправленных напоминаний
         """
         from datetime import datetime, timezone, timedelta
+        from app.models.user import User  # Импортируем модель User
         
         now = datetime.now(timezone.utc)
         
@@ -221,6 +222,18 @@ class OnboardingService:
         logger.debug(f"Checking {len(reminders)} reminders for pending notifications")
         
         for reminder in reminders:
+            # 1. Сначала проверяем, не зарегистрировался ли пользователь уже (есть ли он в таблице users)
+            user_result = await db.execute(
+                select(User).where(User.telegram_id == int(reminder.telegram_id))
+            )
+            existing_user = user_result.scalar_one_or_none()
+            
+            if existing_user:
+                logger.info(f"User {reminder.telegram_id} is already registered. Marking reminder as registered.")
+                reminder.registered = True
+                await db.commit()
+                continue
+
             if not reminder.first_visit_at:
                 logger.debug(f"Skipping reminder for {reminder.telegram_id}: no first_visit_at")
                 continue

@@ -2,7 +2,7 @@
 Сервис для работы с оборудованием
 """
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, cast, String
 from typing import List, Optional
 from uuid import UUID
 from datetime import date
@@ -94,7 +94,7 @@ class EquipmentService:
             booked_count_query = select(func.count(EquipmentRequest.id)).where(
                 and_(
                     EquipmentRequest.equipment_id == equipment.id,
-                    EquipmentRequest.status.in_([
+                    cast(EquipmentRequest.status, String).in_([
                         EquipmentRequestStatus.PENDING.value,
                         EquipmentRequestStatus.APPROVED.value,
                         EquipmentRequestStatus.ACTIVE.value
@@ -451,7 +451,7 @@ class EquipmentService:
         active_requests_query = select(func.count(EquipmentRequest.id)).where(
             and_(
                 EquipmentRequest.equipment_id == equipment_id,
-                EquipmentRequest.status.in_([
+                cast(EquipmentRequest.status, String).in_([
                     EquipmentRequestStatus.PENDING.value,
                     EquipmentRequestStatus.APPROVED.value,
                     EquipmentRequestStatus.ACTIVE.value

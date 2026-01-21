@@ -39,6 +39,7 @@ async def upload_file(
     category: FileUploadCategory = Form(FileUploadCategory.OTHER),
     description: Optional[str] = Form(None),
     task_id: Optional[UUID] = Form(None),
+    stage_id: Optional[UUID] = Form(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -55,7 +56,8 @@ async def upload_file(
             file=file,
             category=category,
             description=description,
-            task_id=task_id
+            task_id=task_id,
+            stage_id=stage_id
         )
         return upload
     except Exception as e:

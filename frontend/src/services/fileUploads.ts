@@ -13,12 +13,15 @@ export interface FileUploadResponse {
 }
 
 export const fileUploadsApi = {
-  // Загрузить файл к задаче
-  uploadTaskFile: async (taskId: string, file: File, description?: string) => {
+  // Загрузить файл к задаче (опционально к этапу)
+  uploadTaskFile: async (taskId: string, file: File, description?: string, stageId?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('category', 'task_material')
     formData.append('task_id', taskId)
+    if (stageId) {
+      formData.append('stage_id', stageId)
+    }
     if (description) {
       formData.append('description', description)
     }

@@ -9,6 +9,7 @@ import { telegramChatsApi, TaskChatResponse } from '../services/telegramChats'
 import { galleryApi } from '../services/gallery'
 import TaskQuestions from './TaskQuestions'
 import TaskFiles from './TaskFiles'
+import StageFileUpload from './StageFileUpload'
 
 const typeLabels = {
   smm: 'SMM',
@@ -197,6 +198,14 @@ export default function TaskCard({ task }: TaskCardProps) {
                       <span className="text-white/60 text-xs">
                         {new Date(stage.due_date).toLocaleDateString('ru-RU')}
                       </span>
+                    )}
+                    {/* Кнопка загрузки файла для этапа */}
+                    {isRegistered && (
+                      <StageFileUpload 
+                        taskId={task.id} 
+                        stageId={stage.id} 
+                        stageName={stage.stage_name} 
+                      />
                     )}
                   </div>
                   <span

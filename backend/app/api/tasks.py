@@ -1113,7 +1113,8 @@ async def get_task_files(
             "drive_id": f.final_drive_id or f.temp_drive_id,
             "description": f.description,
             "uploaded_at": f.created_at.isoformat(),
-            "uploaded_by_id": str(f.uploaded_by_id)
+            "uploaded_by_id": str(f.uploaded_by_id),
+            "stage_id": str(f.stage_id) if f.stage_id else None
         })
     
     return file_list

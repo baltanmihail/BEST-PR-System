@@ -59,6 +59,8 @@ class TaskResponse(TaskBase):
     created_by: UUID
     created_at: datetime
     updated_at: datetime
+    drive_folder_id: Optional[str] = None
+    drive_file_id: Optional[str] = None
     
     class Config:
         from_attributes = True

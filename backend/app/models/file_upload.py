@@ -60,6 +60,7 @@ class FileUpload(Base):
         default=FileUploadCategory.OTHER
     )
     task_id = Column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    stage_id = Column(UUID(as_uuid=True), ForeignKey("task_stages.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Описание от загрузившего
     description = Column(Text, nullable=True)
@@ -84,7 +85,8 @@ class FileUpload(Base):
     # Relationships
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id], backref="uploaded_files")
     moderated_by = relationship("User", foreign_keys=[moderated_by_id])
-    task = relationship("Task", foreign_keys=[task_id])
+    task = relationship("Task", foreign_keys=[task_id], back_populates="files")
+    stage = relationship("TaskStage", foreign_keys=[stage_id], back_populates="files")
     
     def __repr__(self):
         return f"<FileUpload {self.original_filename} ({self.status.value})>"

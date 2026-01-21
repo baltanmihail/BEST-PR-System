@@ -13,7 +13,7 @@ from app.models.task import Task, TaskStage, TaskType
 from app.models.event import Event
 from app.models.equipment import EquipmentRequest
 from app.utils.permissions import get_current_user, OptionalUser, require_coordinator
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, cast, String
 from sqlalchemy.orm import selectinload
 from dateutil.relativedelta import relativedelta
 import calendar as cal_lib
@@ -402,7 +402,7 @@ async def _get_month_view(
             and_(
                 EquipmentRequest.start_date <= last_day,
                 EquipmentRequest.end_date >= first_day,
-                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
+                cast(EquipmentRequest.status, String).in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
             )
         )
         equipment_result = await db.execute(equipment_query)
@@ -515,7 +515,7 @@ async def _get_week_view(
                 and_(
                     EquipmentRequest.start_date <= current_date,
                     EquipmentRequest.end_date >= current_date,
-                    EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
+                    cast(EquipmentRequest.status, String).in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
                 )
             )
             equipment_result = await db.execute(equipment_query)
@@ -661,7 +661,7 @@ async def _get_timeline_view(
             and_(
                 EquipmentRequest.start_date <= end_date,
                 EquipmentRequest.end_date >= start_date,
-                EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
+                cast(EquipmentRequest.status, String).in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
             )
         )
         equipment_result = await db.execute(equipment_query)
@@ -813,7 +813,7 @@ async def _get_gantt_view(
         and_(
             EquipmentRequest.start_date <= end_date,
             EquipmentRequest.end_date >= start_date,
-            EquipmentRequest.status.in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
+            cast(EquipmentRequest.status, String).in_([EquipmentRequestStatus.APPROVED.value, EquipmentRequestStatus.ACTIVE.value])
         )
     )
     equipment_result = await db.execute(equipment_query)

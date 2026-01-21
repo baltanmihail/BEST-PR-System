@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, cast, String
 import calendar as cal_lib
 import re
 
@@ -101,7 +101,7 @@ class EquipmentCalendarSync:
             
             # Получаем все заявки из БД
             requests_query = select(EquipmentRequest).where(
-                EquipmentRequest.status.in_([
+                cast(EquipmentRequest.status, String).in_([
                     EquipmentRequestStatus.PENDING.value,
                     EquipmentRequestStatus.APPROVED.value,
                     EquipmentRequestStatus.ACTIVE.value

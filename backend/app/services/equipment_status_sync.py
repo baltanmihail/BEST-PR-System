@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional, Dict
 from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, cast, String
 import re
 
 from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus, EquipmentStatus
@@ -52,8 +52,9 @@ class EquipmentStatusSync:
             sheets_id = self._get_equipment_sheets_id()
             
             # Получаем все одобренные заявки из БД
+            # Используем cast для совместимости с PostgreSQL ENUM
             approved_requests_query = select(EquipmentRequest).where(
-                EquipmentRequest.status.in_([
+                cast(EquipmentRequest.status, String).in_([
                     EquipmentRequestStatus.APPROVED.value,
                     EquipmentRequestStatus.ACTIVE.value
                 ])

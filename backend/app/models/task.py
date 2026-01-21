@@ -127,6 +127,7 @@ class StageStatus(str, enum.Enum):
     """Статусы этапов"""
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    REVIEW = "review"
     COMPLETED = "completed"
 
 
@@ -229,13 +230,16 @@ class Task(Base):
     
     # Google Drive интеграция
     drive_folder_id = Column(String, nullable=True, index=True)  # ID папки задачи в Google Drive
+    drive_file_id = Column(String, nullable=True)  # ID Google Doc файла с описанием задачи
     drive_last_sync = Column(DateTime(timezone=True), nullable=True)  # Время последней синхронизации с Drive
     
     # Relationships
     stages = relationship("TaskStage", back_populates="task", cascade="all, delete-orphan", order_by="TaskStage.stage_order")
     assignments = relationship("TaskAssignment", back_populates="task", cascade="all, delete-orphan")
     questions = relationship("TaskQuestion", back_populates="task", cascade="all, delete-orphan", order_by="TaskQuestion.asked_at.desc()")
-    # Файлы (материалы задачи) - связь будет определена через file_uploads
+    # Файлы (материалы задачи)
+    files = relationship("FileUpload", back_populates="task", cascade="all, delete-orphan")
+    
     
     __table_args__ = (
         CheckConstraint("LENGTH(TRIM(title)) > 0", name="tasks_title_not_empty"),
@@ -262,6 +266,7 @@ class TaskStage(Base):
     
     # Relationships
     task = relationship("Task", back_populates="stages")
+    files = relationship("FileUpload", back_populates="stage", cascade="all, delete-orphan")
     
     __table_args__ = (
         CheckConstraint("stage_order > 0", name="task_stages_order_check"),

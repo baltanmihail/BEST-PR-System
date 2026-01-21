@@ -551,7 +551,7 @@ class DriveStructureService:
     
     def _generate_task_doc_content(self, task_name: str, task_description: str = None, task_data: dict = None) -> str:
         """
-        Генерировать содержимое Google Doc файла задачи
+        Генерировать содержимое Google Doc файла задачи (в текстовом формате)
         
         Args:
             task_name: Название задачи
@@ -559,48 +559,38 @@ class DriveStructureService:
             task_data: Полные данные задачи (для более детального описания)
         
         Returns:
-            HTML-содержимое документа
+            Текстовое содержимое документа
         """
         from app.config import settings
         
-        content = f"""<h1>{task_name}</h1>
+        content = f"{task_name}\n{'=' * len(task_name)}\n\n"
         
-<h2>Описание задачи</h2>
-<p>{task_description or 'Описание отсутствует'}</p>
-"""
+        content += f"ОПИСАНИЕ ЗАДАЧИ\n{'-' * 15}\n"
+        content += f"{task_description or 'Описание отсутствует'}\n\n"
         
         if task_data:
-            content += f"""
-<h2>Детали задачи</h2>
-<ul>
-"""
+            content += f"ДЕТАЛИ ЗАДАЧИ\n{'-' * 13}\n"
             if task_data.get('type'):
-                content += f"<li><strong>Тип:</strong> {task_data['type']}</li>\n"
+                content += f"• Тип: {task_data['type']}\n"
             if task_data.get('priority'):
-                content += f"<li><strong>Приоритет:</strong> {task_data['priority']}</li>\n"
+                content += f"• Приоритет: {task_data['priority']}\n"
             if task_data.get('due_date'):
-                content += f"<li><strong>Дедлайн:</strong> {task_data['due_date']}</li>\n"
+                content += f"• Дедлайн: {task_data['due_date']}\n"
             if task_data.get('status'):
-                content += f"<li><strong>Статус:</strong> {task_data['status']}</li>\n"
-            
-            content += "</ul>\n"
+                content += f"• Статус: {task_data['status']}\n"
+            content += "\n"
         
-        content += f"""
-<h2>Ссылки</h2>
-<ul>
-    <li><a href="{settings.FRONTEND_URL}/tasks/{task_data.get('id', '') if task_data else ''}">Открыть карточку задачи в системе</a></li>
-</ul>
-
-<h2>Материалы</h2>
-<p>Материалы задачи находятся в подпапках:</p>
-<ul>
-    <li><strong>materials/</strong> - исходные материалы, референсы, брифы</li>
-    <li><strong>drafts/</strong> - черновики, промежуточные версии</li>
-    <li><strong>final/</strong> - финальные работы</li>
-</ul>
-
-<p><em>Создано автоматически системой BEST PR System</em></p>
-"""
+        content += f"ССЫЛКИ\n{'-' * 6}\n"
+        content += f"• Карточка задачи в системе: {settings.FRONTEND_URL}/tasks/{task_data.get('id', '') if task_data else ''}\n\n"
+        
+        content += f"МАТЕРИАЛЫ\n{'-' * 9}\n"
+        content += "Материалы задачи находятся в подпапках:\n"
+        content += "• materials/ - исходные материалы, референсы, брифы\n"
+        content += "• drafts/ - черновики, промежуточные версии\n"
+        content += "• final/ - финальные работы\n\n"
+        
+        content += "Создано автоматически системой BEST PR System"
+        
         return content
 
 

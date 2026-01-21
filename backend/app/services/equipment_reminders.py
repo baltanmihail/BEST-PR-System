@@ -6,7 +6,7 @@ import logging
 from typing import List, Dict, Optional
 from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, cast, String
 
 from app.models.equipment import EquipmentRequest, EquipmentRequestStatus
 from app.models.user import User, UserRole
@@ -38,8 +38,9 @@ class EquipmentReminders:
         """
         try:
             # Получаем все одобренные и активные заявки
+            # Используем cast для совместимости с PostgreSQL ENUM
             requests_query = select(EquipmentRequest).where(
-                EquipmentRequest.status.in_([
+                cast(EquipmentRequest.status, String).in_([
                     EquipmentRequestStatus.APPROVED.value,
                     EquipmentRequestStatus.ACTIVE.value
                 ])

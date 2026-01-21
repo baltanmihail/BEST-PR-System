@@ -6,8 +6,11 @@ import { fileUploadsApi } from '../services/fileUploads'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 
+import { TaskStage } from '../types/task'
+
 interface TaskFilesProps {
   taskId: string
+  stages?: TaskStage[]
 }
 
 interface TaskFile {
@@ -20,9 +23,10 @@ interface TaskFile {
   description?: string
   uploaded_at: string
   uploaded_by_id: string
+  stage_id?: string
 }
 
-export default function TaskFiles({ taskId }: TaskFilesProps) {
+export default function TaskFiles({ taskId, stages = [] }: TaskFilesProps) {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()

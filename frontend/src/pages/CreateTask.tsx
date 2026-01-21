@@ -31,6 +31,8 @@ export default function CreateTask() {
   const [uploadedFiles, setUploadedFiles] = useState<FilePreview[]>([])
   const [questions, setQuestions] = useState<string[]>([''])
   const [error, setError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
 
   // Проверяем, является ли пользователь координатором
   const roleStr = typeof user?.role === 'string' ? user.role : String(user?.role || '')
@@ -93,34 +95,7 @@ export default function CreateTask() {
     }
   }
 
-  const createTaskMutation = useMutation({
-    mutationFn: (data: TaskCreate) => tasksApi.createTask(data),
-    onSuccess: async (task) => {
-      // Загружаем файлы после создания задачи
-      if (uploadedFiles.length > 0) {
-        try {
-          await Promise.all(
-            uploadedFiles.map(filePreview =>
-              fileUploadsApi.uploadTaskFile(task.id, filePreview.file)
-            )
-          )
-        } catch (err) {
-          console.error('Ошибка загрузки файлов:', err)
-          // Не прерываем процесс, просто логируем ошибку
-        }
-      }
-      
-      // Инвалидируем кэш задач
-      queryClient.invalidateQueries({ queryKey: ['tasks'] })
-      // Перенаправляем на страницу задачи или список задач
-      navigate(`/tasks`)
-    },
-    onError: (err: any) => {
-      setError(err?.response?.data?.detail || err?.message || 'Ошибка при создании задачи')
-    },
-  })
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
 
@@ -133,6 +108,8 @@ export default function CreateTask() {
       setError('Пожалуйста, выберите тип задачи')
       return
     }
+
+    setIsSubmitting(true)
 
     // Подготовка этапов
     const validStages = stages
@@ -174,7 +151,36 @@ export default function CreateTask() {
       questions: validQuestions.length > 0 ? validQuestions : undefined,
     }
 
-    createTaskMutation.mutate(taskData)
+    try {
+      // 1. Создаем задачу
+      const task = await tasksApi.createTask(taskData)
+
+      // 2. Загружаем файлы (если есть)
+      if (uploadedFiles.length > 0) {
+        setUploadProgress({ current: 0, total: uploadedFiles.length })
+        
+        // Загружаем файлы последовательно, чтобы обновлять прогресс
+        for (let i = 0; i < uploadedFiles.length; i++) {
+          try {
+            await fileUploadsApi.uploadTaskFile(task.id, uploadedFiles[i].file)
+            setUploadProgress({ current: i + 1, total: uploadedFiles.length })
+          } catch (err) {
+            console.error(`Ошибка загрузки файла ${uploadedFiles[i].file.name}:`, err)
+            // Не прерываем процесс из-за одного файла, но можно собрать ошибки
+          }
+        }
+      }
+
+      // 3. Успех и редирект
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      navigate('/tasks')
+      
+    } catch (err: any) {
+      console.error('Ошибка при создании задачи:', err)
+      setError(err?.response?.data?.detail || err?.message || 'Ошибка при создании задачи')
+      setIsSubmitting(false)
+      setUploadProgress(null)
+    }
   }
 
   // Если пользователь не координатор, показываем сообщение об ошибке
@@ -257,7 +263,7 @@ export default function CreateTask() {
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border ${
                 error && !title.trim() ? 'border-red-500' : 'border-white/20'
               } focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -284,7 +290,7 @@ export default function CreateTask() {
               }}
               required
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white touch-manipulation`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
             >
               <option value="smm">SMM</option>
               <option value="design">Design</option>
@@ -305,7 +311,7 @@ export default function CreateTask() {
               placeholder="Описание задачи (опционально)"
               rows={6}
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -318,7 +324,7 @@ export default function CreateTask() {
               value={priority}
               onChange={(e) => setPriority(e.target.value as TaskPriority)}
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white touch-manipulation`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
             >
               <option value="low">Низкий</option>
               <option value="medium">Средний</option>
@@ -337,7 +343,7 @@ export default function CreateTask() {
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
             />
           </div>
 
@@ -350,7 +356,7 @@ export default function CreateTask() {
                   checked={equipmentAvailable}
                   onChange={(e) => setEquipmentAvailable(e.target.checked)}
                   className="w-5 h-5 rounded border-white/20 bg-white/10 text-best-primary focus:ring-2 focus:ring-best-primary cursor-pointer"
-                  disabled={createTaskMutation.isPending}
+                  disabled={isSubmitting}
                 />
                 <span className="text-white text-sm font-medium">
                   Оборудование доступно для этой задачи
@@ -395,7 +401,7 @@ export default function CreateTask() {
               onFilesChange={setUploadedFiles}
               maxFiles={10}
               maxSizeMB={100}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
               acceptedTypes={['image/*', 'video/*']}
             />
             <p className={`text-white/60 text-xs mt-2 text-readable ${theme}`}>
@@ -419,7 +425,7 @@ export default function CreateTask() {
                     placeholder="ТЗ для SMM (опционально)"
                     rows={3}
                     className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                    disabled={createTaskMutation.isPending}
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div>
@@ -430,7 +436,7 @@ export default function CreateTask() {
                     placeholder="ТЗ для Design (опционально)"
                     rows={3}
                     className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                    disabled={createTaskMutation.isPending}
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div>
@@ -441,7 +447,7 @@ export default function CreateTask() {
                     placeholder="ТЗ для Channel (опционально)"
                     rows={3}
                     className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                    disabled={createTaskMutation.isPending}
+                    disabled={isSubmitting}
                   />
                 </div>
                 <div>
@@ -452,7 +458,7 @@ export default function CreateTask() {
                     placeholder="ТЗ для PR-FR (опционально)"
                     rows={3}
                     className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y text-sm`}
-                    disabled={createTaskMutation.isPending}
+                    disabled={isSubmitting}
                   />
                 </div>
               </div>
@@ -471,7 +477,7 @@ export default function CreateTask() {
                   placeholder={`ТЗ для ${taskType === 'smm' ? 'SMM' : taskType === 'design' ? 'Design' : taskType === 'channel' ? 'Channel' : taskType === 'prfr' ? 'PR-FR' : taskType} (опционально)`}
                   rows={6}
                   className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 resize-y`}
-                  disabled={createTaskMutation.isPending}
+                  disabled={isSubmitting}
                 />
               </div>
             )}
@@ -489,7 +495,7 @@ export default function CreateTask() {
                   setStages([...stages, { stage_name: '', stage_order: stages.length + 1, status_color: 'green' }])
                 }}
                 className="flex items-center space-x-1 text-best-primary hover:text-best-primary/80 text-sm font-medium"
-                disabled={createTaskMutation.isPending}
+                disabled={isSubmitting}
               >
                 <Plus className="h-4 w-4" />
                 <span>Добавить этап</span>
@@ -507,7 +513,7 @@ export default function CreateTask() {
                         setStages(newStages.map((s, i) => ({ ...s, stage_order: i + 1 })))
                       }}
                       className="text-red-400 hover:text-red-300"
-                      disabled={createTaskMutation.isPending}
+                      disabled={isSubmitting}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -525,7 +531,7 @@ export default function CreateTask() {
                         }}
                         placeholder="Название этапа"
                         className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 text-sm`}
-                        disabled={createTaskMutation.isPending}
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div>
@@ -539,7 +545,7 @@ export default function CreateTask() {
                           setStages(newStages)
                         }}
                         className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert`}
-                        disabled={createTaskMutation.isPending}
+                        disabled={isSubmitting}
                       />
                     </div>
                     <div>
@@ -552,7 +558,7 @@ export default function CreateTask() {
                           setStages(newStages)
                         }}
                         className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white text-sm`}
-                        disabled={createTaskMutation.isPending}
+                        disabled={isSubmitting}
                       >
                         <option value="green">Зелёный</option>
                         <option value="yellow">Жёлтый</option>
@@ -585,7 +591,7 @@ export default function CreateTask() {
                 setExampleProjectIds(selected)
               }}
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white min-h-[120px]`}
-              disabled={createTaskMutation.isPending}
+              disabled={isSubmitting}
               size={5}
             >
               {galleryData?.items.map((item) => (
@@ -609,7 +615,7 @@ export default function CreateTask() {
                 type="button"
                 onClick={() => setQuestions([...questions, ''])}
                 className="flex items-center space-x-1 text-best-primary hover:text-best-primary/80 text-sm font-medium"
-                disabled={createTaskMutation.isPending}
+                disabled={isSubmitting}
               >
                 <Plus className="h-4 w-4" />
                 <span>Добавить вопрос</span>
@@ -628,7 +634,7 @@ export default function CreateTask() {
                     }}
                     placeholder={`Вопрос ${index + 1}`}
                     className={`flex-1 bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} placeholder-white/40 text-sm`}
-                    disabled={createTaskMutation.isPending}
+                    disabled={isSubmitting}
                   />
                   {questions.length > 1 && (
                     <button
@@ -638,7 +644,7 @@ export default function CreateTask() {
                         setQuestions(newQuestions.length > 0 ? newQuestions : [''])
                       }}
                       className="text-red-400 hover:text-red-300 p-2"
-                      disabled={createTaskMutation.isPending}
+                      disabled={isSubmitting}
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -652,13 +658,17 @@ export default function CreateTask() {
           <div className="flex flex-col sm:flex-row gap-4 pt-4">
             <button
               type="submit"
-              disabled={createTaskMutation.isPending || !title.trim()}
+              disabled={isSubmitting || !title.trim()}
               className="flex-1 bg-best-primary hover:bg-best-primary/90 text-white font-medium py-3 px-6 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
-              {createTaskMutation.isPending ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  <span>Создание...</span>
+                  {uploadProgress ? (
+                    <span>Загрузка файлов ({uploadProgress.current}/{uploadProgress.total})...</span>
+                  ) : (
+                    <span>Создание задачи...</span>
+                  )}
                 </>
               ) : (
                 <>
@@ -669,7 +679,7 @@ export default function CreateTask() {
             </button>
             <Link
               to="/tasks"
-              className="flex-1 sm:flex-none bg-white/10 hover:bg-white/20 text-white font-medium py-3 px-6 rounded-lg transition-all text-center"
+              className={`flex-1 sm:flex-none bg-white/10 hover:bg-white/20 text-white font-medium py-3 px-6 rounded-lg transition-all text-center ${isSubmitting ? 'opacity-50 pointer-events-none' : ''}`}
             >
               Отмена
             </Link>

@@ -60,7 +60,8 @@ class FileUploadService:
         file: UploadFile,
         category: FileUploadCategory,
         description: Optional[str] = None,
-        task_id: Optional[UUID] = None
+        task_id: Optional[UUID] = None,
+        stage_id: Optional[UUID] = None
     ) -> FileUpload:
         """
         Загрузить файл во временную папку на модерацию
@@ -145,6 +146,7 @@ class FileUploadService:
             drive_url=drive_url,
             category=category,
             task_id=task_id,
+            stage_id=stage_id,
             description=description,
             status=initial_status,
             moderated_by_id=user.id if is_approved_immediately else None,
@@ -152,6 +154,17 @@ class FileUploadService:
         )
         
         self.db.add(upload)
+        
+        # Если передан stage_id, обновляем статус этапа на REVIEW
+        if stage_id:
+            from app.models.task import TaskStage, StageStatus
+            stage_result = await self.db.execute(select(TaskStage).where(TaskStage.id == stage_id))
+            stage = stage_result.scalar_one_or_none()
+            if stage and stage.status != StageStatus.COMPLETED:
+                stage.status = StageStatus.REVIEW
+                # Обновляем цвет статуса на фиолетовый (для review)
+                stage.status_color = "purple"
+        
         await self.db.commit()
         await self.db.refresh(upload)
         

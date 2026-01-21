@@ -6,7 +6,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, cast, String
 from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus, EquipmentStatus
 from app.services.google_service import GoogleService
 from app.services.drive_structure import DriveStructureService
@@ -152,7 +152,7 @@ class EquipmentTimelineSyncService:
                 try:
                     status_enums = [EquipmentRequestStatus(s) for s in statuses if s in [st.value for st in EquipmentRequestStatus]]
                     if status_enums:
-                        requests_query = requests_query.where(EquipmentRequest.status.in_(status_enums))
+                        requests_query = requests_query.where(cast(EquipmentRequest.status, String).in_([s.value for s in status_enums]))
                 except ValueError:
                     logger.warning(f"Некорректные статусы в фильтре: {statuses}")
             

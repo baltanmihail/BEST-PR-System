@@ -101,6 +101,16 @@ class ModerationService:
         application.decision_by = moderator_id
         application.decision_at = datetime.now(timezone.utc)
         
+        # Удаляем напоминания о регистрации, так как пользователь одобрен
+        if user.telegram_id:
+            from app.models.onboarding import OnboardingReminder
+            from sqlalchemy import delete
+            await db.execute(
+                delete(OnboardingReminder).where(
+                    OnboardingReminder.telegram_id == str(user.telegram_id)
+                )
+            )
+        
         await db.commit()
         await db.refresh(application)
         
@@ -129,6 +139,20 @@ class ModerationService:
         # Сохраняем причину в application_data
         if isinstance(application.application_data, dict):
             application.application_data["rejection_reason"] = reason
+            
+        # Удаляем напоминания о регистрации, чтобы не беспокоить отклоненного пользователя
+        telegram_id = None
+        if isinstance(application.application_data, dict):
+            telegram_id = application.application_data.get("telegram_id")
+        
+        if telegram_id:
+            from app.models.onboarding import OnboardingReminder
+            from sqlalchemy import delete
+            await db.execute(
+                delete(OnboardingReminder).where(
+                    OnboardingReminder.telegram_id == str(telegram_id)
+                )
+            )
         
         await db.commit()
         await db.refresh(application)

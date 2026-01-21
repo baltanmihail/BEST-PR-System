@@ -492,7 +492,7 @@ async def get_equipment_timeline(
     Доступно всем авторизованным пользователям
     """
     try:
-        from sqlalchemy import select, and_, or_
+        from sqlalchemy import select, and_, or_, cast, String
         from datetime import date, datetime
         import calendar as cal_lib
         from app.models.equipment import EquipmentRequest, EquipmentRequestStatus
@@ -516,7 +516,7 @@ async def get_equipment_timeline(
             try:
                 status_enums = [EquipmentRequestStatus(s) for s in statuses if s in [st.value for st in EquipmentRequestStatus]]
                 if status_enums:
-                    requests_query = requests_query.where(EquipmentRequest.status.in_(status_enums))
+                    requests_query = requests_query.where(cast(EquipmentRequest.status, String).in_([s.value for s in status_enums]))
             except ValueError:
                 pass
         
@@ -604,13 +604,13 @@ async def get_equipment_booked_dates(
             equipment_number = equipment.name
         
         # Получаем забронированные даты из БД
-        from sqlalchemy import select, and_, or_
+        from sqlalchemy import select, and_, or_, cast, String
         from app.models.equipment import EquipmentRequestStatus
         
         booked_requests_query = select(EquipmentRequest).where(
             and_(
                 EquipmentRequest.equipment_id == equipment_id,
-                EquipmentRequest.status.in_([
+                cast(EquipmentRequest.status, String).in_([
                     EquipmentRequestStatus.PENDING.value,
                     EquipmentRequestStatus.APPROVED.value,
                     EquipmentRequestStatus.ACTIVE.value
