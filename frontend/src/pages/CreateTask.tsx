@@ -239,14 +239,14 @@ export default function CreateTask() {
         )}
 
         {/* Успех */}
-        {/* {createTaskMutation.isSuccess && (
-          <div className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg flex items-start space-x-3">
-            <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-            <p className={`text-green-400 text-sm text-readable ${theme}`}>
-              Задача успешно создана!
-            </p>
-          </div>
-        )} */}
+        {/*
+        <div className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg flex items-start space-x-3">
+          <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+          <p className={`text-green-400 text-sm text-readable ${theme}`}>
+            Задача успешно создана!
+          </p>
+        </div>
+        */}
 
         <div className="space-y-6">
           {/* Название задачи */}

@@ -1,6 +1,6 @@
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, CalendarDays, RefreshCw, Loader2, Filter, ChevronLeft, ChevronRight, Search, ZoomIn, ZoomOut, Layers, Info } from 'lucide-react'
+import { Calendar as CalendarIcon, RefreshCw, Loader2, ChevronLeft, ChevronRight, Search } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'

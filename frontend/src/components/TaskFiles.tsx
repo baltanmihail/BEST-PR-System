@@ -10,7 +10,6 @@ import { TaskStage } from '../types/task'
 
 interface TaskFilesProps {
   taskId: string
-  stages?: TaskStage[]
 }
 
 interface TaskFile {
