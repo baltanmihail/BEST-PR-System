@@ -1,7 +1,8 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
-import { Award, Trophy, Medal, ArrowLeft, Loader2, AlertCircle } from 'lucide-react'
+import { Award, Trophy, Medal, ArrowLeft, Loader2, AlertCircle, Users, Shield } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { publicApi } from '../services/public'
 import { gamificationApi } from '../services/gamification'
@@ -9,6 +10,7 @@ import { gamificationApi } from '../services/gamification'
 export default function Leaderboard() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
+  const [showAdmins, setShowAdmins] = useState(true)
   const isRegistered = user && user.is_active
 
   // Используем публичный API для всех, защищённый для зарегистрированных
@@ -29,16 +31,24 @@ export default function Leaderboard() {
     retry: 2,
   })
 
-  // Преобразуем данные из API в нужный формат
-  const topUsers = leaderboardData?.map((user, index) => ({
+  // Фильтруем и преобразуем данные
+  const filteredUsers = leaderboardData?.filter(u => {
+    if (showAdmins) return true
+    // Скрываем VP4PR и координаторов
+    const role = (u.role || '').toLowerCase()
+    return !role.includes('vp4pr') && !role.includes('coordinator')
+  }) || []
+
+  const topUsers = filteredUsers.map((user, index) => ({
     id: index + 1,
     name: user.name,
     username: user.username,
     points: user.points,
     level: user.level,
-    position: user.rank || index + 1,
+    position: index + 1, // Пересчитываем позицию после фильтрации
     completed_tasks: user.completed_tasks || 0,
-  })) || []
+    role: user.role
+  }))
 
   const getMedalIcon = (position: number) => {
     if (position === 1) return <Trophy className="h-8 w-8 text-yellow-400" />
@@ -71,6 +81,24 @@ export default function Leaderboard() {
             <h1 className={`text-2xl md:text-3xl lg:text-4xl font-bold text-readable ${theme}`}>Топ пользователей</h1>
           </div>
         </div>
+        
+        {/* Переключатель отображения админов (только для авторизованных) */}
+        {isRegistered && (
+          <button
+            onClick={() => setShowAdmins(!showAdmins)}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all ${
+              showAdmins 
+                ? 'bg-best-primary/20 text-best-primary border border-best-primary/50' 
+                : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+            }`}
+            title={showAdmins ? "Скрыть администраторов" : "Показать администраторов"}
+          >
+            {showAdmins ? <Shield className="h-4 w-4" /> : <Users className="h-4 w-4" />}
+            <span className="text-sm font-medium">
+              {showAdmins ? "Админы видны" : "Админы скрыты"}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Загрузка */}

@@ -184,6 +184,114 @@ class TelegramChatService:
             return None
     
     @staticmethod
+    async def get_or_create_coordinators_topic(db: AsyncSession) -> Optional[TelegramChat]:
+        """
+        Получить или создать топик для координаторов в общем чате
+        """
+        # Получаем общий чат
+        general_chat = await TelegramChatService.get_or_create_general_chat(db)
+        if not general_chat:
+            return None
+        
+        # Ищем топик "Координаторы"
+        topic_name = "🔒 Координаторская"
+        result = await db.execute(
+            select(TelegramChat).where(
+                and_(
+                    TelegramChat.chat_id == general_chat.chat_id,
+                    TelegramChat.topic_name == topic_name,
+                    TelegramChat.is_active == True
+                )
+            )
+        )
+        topic = result.scalar_one_or_none()
+        
+        if topic:
+            return topic
+            
+        # Если топика нет, создаём его
+        try:
+            bot = await get_bot()
+            if not bot:
+                return None
+            
+            # Создаём тему (иконка 👑 = purple/violet?)
+            # icon_color RGB integer. Red = 0xFF5454, Blue = 0x6FB9F0, etc.
+            # Пусть будет фиолетовый для VP4PR/Coords
+            forum_topic = await bot.create_forum_topic(
+                chat_id=general_chat.chat_id,
+                name=topic_name,
+                icon_color=0x93679A  # Фиолетовый
+            )
+            
+            if forum_topic and hasattr(forum_topic, 'message_thread_id'):
+                topic_id = forum_topic.message_thread_id
+                
+                # Создаём запись в БД
+                new_topic = TelegramChat(
+                    chat_id=general_chat.chat_id,
+                    topic_id=topic_id,
+                    topic_name=topic_name,
+                    is_open_topic=False,
+                    chat_type="supergroup",
+                    is_active=True
+                )
+                
+                db.add(new_topic)
+                await db.commit()
+                await db.refresh(new_topic)
+                
+                # Отправляем закрепленное сообщение
+                await bot.send_message(
+                    chat_id=general_chat.chat_id,
+                    message_thread_id=topic_id,
+                    text="👑 <b>Координаторская</b>\n\nЗдесь обсуждаются вопросы управления отделом. Доступ только для координаторов и VP4PR.",
+                    parse_mode="HTML"
+                )
+                
+                return new_topic
+                
+        except Exception as e:
+            logger.error(f"Error creating coordinators topic: {e}")
+            return None
+
+    @staticmethod
+    async def add_user_to_coordinators_topic(db: AsyncSession, user: User) -> bool:
+        """
+        Добавить пользователя в топик координаторов (отправить приветствие)
+        """
+        topic = await TelegramChatService.get_or_create_coordinators_topic(db)
+        if not topic:
+            return False
+            
+        try:
+            bot = await get_bot()
+            if not bot:
+                return False
+            
+            # Формируем упоминание
+            mention = f"@{user.username}" if user.username else f"<a href='tg://user?id={user.telegram_id}'>{user.full_name}</a>"
+            role_name = user.role.value.replace('coordinator_', '').upper() if 'coordinator' in str(user.role) else str(user.role).upper()
+            
+            message = (
+                f"👋 Приветствуем нового координатора!\n\n"
+                f"{mention} теперь с нами как <b>{role_name}</b> 🎉\n"
+                f"Добро пожаловать в команду управления!"
+            )
+            
+            await bot.send_message(
+                chat_id=topic.chat_id,
+                message_thread_id=topic.topic_id,
+                text=message,
+                parse_mode="HTML"
+            )
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error adding user to coordinators topic: {e}")
+            return False
+
+    @staticmethod
     async def create_task_chat(
         db: AsyncSession,
         task_id: UUID,

@@ -340,9 +340,17 @@ async def update_user(
                 new_role=new_role,
                 changed_by=current_user.id
             )
+            
+            # Если новая роль - координатор или VP4PR, добавляем в чат координаторов
+            if "coordinator" in new_role or new_role == "vp4pr":
+                from app.services.telegram_chat_service import TelegramChatService
+                # Запускаем в фоне, чтобы не блокировать ответ
+                import asyncio
+                asyncio.create_task(TelegramChatService.add_user_to_coordinators_topic(db, user))
+                
         except Exception as e:
             import logging
-            logging.warning(f"Failed to log role change: {e}")
+            logging.warning(f"Failed to log role change or add to chat: {e}")
     
     await db.commit()
     await db.refresh(user)

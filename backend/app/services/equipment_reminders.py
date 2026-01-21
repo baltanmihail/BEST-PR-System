@@ -28,14 +28,19 @@ class EquipmentReminders:
     ) -> dict:
         """
         Проверяет даты выдачи и возврата и отправляет напоминания за день до события
-        
-        Args:
-            db: Сессия БД
-            bot: Экземпляр Telegram бота (опционально)
-        
-        Returns:
-            Словарь с результатами отправки напоминаний
         """
+        # Если бот не передан, пытаемся получить его через get_bot
+        if not bot:
+            from app.utils.telegram_sender import get_bot
+            bot = await get_bot()
+            
+        if not bot:
+            logger.warning("Bot instance not available for reminders")
+            return {
+                "status": "skipped",
+                "reason": "bot_not_available"
+            }
+
         try:
             # Получаем все одобренные и активные заявки
             # Используем cast для совместимости с PostgreSQL ENUM

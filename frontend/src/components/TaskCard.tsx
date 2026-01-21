@@ -68,6 +68,7 @@ export default function TaskCard({ task }: TaskCardProps) {
   })
   
   const isRegistered = !!user?.is_active
+  const isCoordinator = user?.role === 'vp4pr' || (typeof user?.role === 'string' && user.role.includes('coordinator'))
 
   const getRoleName = (role: string) => {
     const names: Record<string, string> = {
@@ -270,6 +271,21 @@ export default function TaskCard({ task }: TaskCardProps) {
           </div>
         </div>
         <div className="flex items-center space-x-2">
+          {/* Ссылка на Google Drive (только для координаторов) */}
+          {isCoordinator && task.drive_folder_id && (
+            <a
+              href={`https://drive.google.com/drive/folders/${task.drive_folder_id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all text-white/70 hover:text-white"
+              title="Открыть папку в Google Drive"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12.01 1.485c-2.082 0-3.754.02-5.143.123-1.404.104-2.536.37-3.46 1.293-.924.923-1.19 2.055-1.293 3.459-.104 1.39-.124 3.062-.124 5.144 0 2.082.02 3.754.123 5.143.104 1.404.37 2.536 1.293 3.46.923.924 2.055 1.19 3.459 1.293 1.39.104 3.062.124 5.144.124 2.082 0 3.754-.02 5.143-.123 1.404-.104 2.536-.37 3.46-1.293.924-.923 1.19-2.055 1.293-3.459.104-1.39.124-3.062.124-5.144 0-2.082-.02-3.754-.123-5.143-.104-1.404-.37-2.536-1.293-3.46-.923-.924-2.055-1.19-3.459-1.293-1.39-.104-3.062-.124-5.144-.124zm-1.14 5.162h5.535c.87 0 1.58.71 1.58 1.58v1.58h-7.115v-3.16zm-1.58 0v3.16h-3.16v-1.58c0-.87.71-1.58 1.58-1.58h1.58zm-3.16 4.74h11.855v6.32c0 .87-.71 1.58-1.58 1.58h-8.695c-.87 0-1.58-.71-1.58-1.58v-6.32z"/>
+              </svg>
+            </a>
+          )}
+          
           <button
             onClick={() => setExpanded(!expanded)}
             className="p-2 rounded-lg hover:bg-white/10 transition-all"

@@ -17,6 +17,7 @@ import Equipment from './pages/Equipment'
 import Settings from './pages/Settings'
 import UserMonitoring from './pages/UserMonitoring'
 import Calendar from './pages/Calendar'
+import Timeline from './pages/Timeline'
 import { useAuthStore } from './store/authStore'
 import { useThemeStore } from './store/themeStore'
 import { authApi } from './services/auth'
@@ -155,6 +156,7 @@ function AppContent() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/users" element={<UserMonitoring />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/timeline" element={<Timeline />} />
           </Routes>
         </Layout>
   )

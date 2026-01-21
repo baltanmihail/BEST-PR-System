@@ -18,6 +18,7 @@ export interface LeaderboardUser {
   level: number
   points: number
   completed_tasks: number
+  role?: string
 }
 
 export interface Achievement {

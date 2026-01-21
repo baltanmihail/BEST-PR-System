@@ -26,6 +26,8 @@ export interface Task {
   questions?: string[]
   example_project_ids?: string[]
   equipment_available?: boolean
+  drive_folder_id?: string
+  drive_file_id?: string
 }
 
 export interface TaskStage {

@@ -93,6 +93,7 @@ async def get_public_tasks(
             "priority": task.priority.value,
             "status": task.status.value,
             "due_date_relative": due_date_info,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
             "participants_count": participants_count,
             "stages_count": stages_count,
             "created_at": task.created_at.isoformat() if task.created_at else None,

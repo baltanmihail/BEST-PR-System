@@ -7,6 +7,7 @@ export interface PublicTask {
   priority: string
   status: string
   due_date_relative: string
+  due_date?: string | null
   participants_count: number
   stages_count: number
   coordinator_name: string
@@ -20,6 +21,7 @@ export interface PublicLeaderboardUser {
   level: number
   points: number
   completed_tasks: number
+  role?: string
 }
 
 export interface PublicStats {
