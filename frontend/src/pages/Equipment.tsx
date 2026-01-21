@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
@@ -214,88 +214,96 @@ export default function Equipment() {
         </div>
       )}
 
-      {/* Форма заявки */}
+      {/* Модальное окно заявки */}
       {showRequestForm && selectedEquipment && (
-        <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-best-primary/50`} data-tour="equipment-request">
-          <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
-            Заявка на аренду: {selectedEquipment.name}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className={`block text-white mb-2 text-readable ${theme}`}>
-                Дата выдачи *
-              </label>
-              <input
-                type="date"
-                value={requestData.start_date}
-                onChange={(e) =>
-                  setRequestData({ ...requestData, start_date: e.target.value })
-                }
-                min={new Date().toISOString().split('T')[0]}
-                required
-                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
-              />
-            </div>
-            <div>
-              <label className={`block text-white mb-2 text-readable ${theme}`}>
-                Дата возврата *
-              </label>
-              <input
-                type="date"
-                value={requestData.end_date}
-                onChange={(e) =>
-                  setRequestData({ ...requestData, end_date: e.target.value })
-                }
-                min={requestData.start_date || new Date().toISOString().split('T')[0]}
-                required
-                className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
-              />
-            </div>
-            <div>
-              <label className={`block text-white mb-2 text-readable ${theme}`}>
-                Цель использования *
-              </label>
-              <textarea
-                value={requestData.purpose}
-                onChange={(e) =>
-                  setRequestData({ ...requestData, purpose: e.target.value })
-                }
-                required
-                placeholder="Опишите, для какой задачи нужно оборудование..."
-                rows={3}
-                className={`w-full bg-white/10 text-white placeholder-white/50 rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-none text-readable ${theme}`}
-              />
-            </div>
-            <div className="flex space-x-3">
-              <button
-                type="submit"
-                disabled={createRequestMutation.isPending}
-                className={`flex-1 bg-best-primary text-white py-2 px-4 rounded-lg font-semibold hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2`}
-              >
-                {createRequestMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Отправка...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Отправить заявку</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRequestForm(false)
-                  setSelectedEquipment(null)
-                }}
-                className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
-              >
-                Отмена
-              </button>
-            </div>
-          </form>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className={`glass-enhanced ${theme} rounded-xl p-6 w-full max-w-md border-2 border-best-primary/50 shadow-2xl relative animate-in zoom-in-95 duration-200`} 
+            data-tour="equipment-request"
+          >
+            <button
+              onClick={() => {
+                setShowRequestForm(false)
+                setSelectedEquipment(null)
+              }}
+              className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2 className={`text-xl font-bold text-white mb-1 text-readable ${theme}`}>
+              Бронирование
+            </h2>
+            <p className="text-white/60 text-sm mb-6">{selectedEquipment.name}</p>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                  Дата выдачи
+                </label>
+                <input
+                  type="date"
+                  value={requestData.start_date}
+                  onChange={(e) =>
+                    setRequestData({ ...requestData, start_date: e.target.value })
+                  }
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                />
+              </div>
+              <div>
+                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                  Дата возврата
+                </label>
+                <input
+                  type="date"
+                  value={requestData.end_date}
+                  onChange={(e) =>
+                    setRequestData({ ...requestData, end_date: e.target.value })
+                  }
+                  min={requestData.start_date || new Date().toISOString().split('T')[0]}
+                  required
+                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                />
+              </div>
+              <div>
+                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                  Цель использования
+                </label>
+                <textarea
+                  value={requestData.purpose}
+                  onChange={(e) =>
+                    setRequestData({ ...requestData, purpose: e.target.value })
+                  }
+                  required
+                  placeholder="Для какой задачи нужно оборудование?"
+                  rows={3}
+                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-none text-readable ${theme} text-sm`}
+                />
+              </div>
+              
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={createRequestMutation.isPending}
+                  className={`w-full bg-best-primary text-white py-3 px-4 rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-best-primary/20`}
+                >
+                  {createRequestMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Отправка...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4" />
+                      <span>Подтвердить бронь</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -312,40 +320,62 @@ export default function Equipment() {
           {equipmentData.items.map((equipment: Equipment) => (
             <div
               key={equipment.id}
-              className={`glass-enhanced ${theme} rounded-xl p-6 hover:scale-[1.02] transition-transform`}
+              className={`glass-enhanced ${theme} rounded-xl p-6 hover:scale-[1.02] transition-transform relative overflow-hidden group`}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2 bg-best-primary/20 rounded-lg">
-                    {getCategoryIcon(equipment.category)}
+              {/* Фоновое свечение при наведении */}
+              <div className="absolute inset-0 bg-gradient-to-br from-best-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+              
+              <div className="relative z-10">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
+                      {getCategoryIcon(equipment.category)}
+                    </div>
+                    <div>
+                      <h3 className={`text-white font-bold text-lg text-readable ${theme} leading-tight`}>
+                        {equipment.name}
+                      </h3>
+                      <span className="text-white/50 text-xs uppercase tracking-wider font-medium">
+                        {getCategoryName(equipment.category)}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className={`text-white font-semibold text-lg text-readable ${theme}`}>
-                      {equipment.name}
-                    </h3>
-                    <span className="text-white/60 text-sm">
-                      {getCategoryName(equipment.category)}
-                    </span>
-                  </div>
+                  
+                  {/* Статус (Badge) */}
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wide border shadow-sm ${getStatusColor(equipment.status)}`}>
+                    {getStatusText(equipment.status)}
+                  </span>
                 </div>
-              </div>
-              {equipment.description && (
-                <p className={`text-white/70 text-sm mb-4 text-readable ${theme}`}>
-                  {equipment.description}
-                </p>
-              )}
-              <div className="flex items-center justify-between">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(equipment.status)}`}>
-                  {getStatusText(equipment.status)}
-                </span>
-                {isRegistered && equipment.status === 'available' && (
-                  <button
-                    onClick={() => handleRequestClick(equipment)}
-                    className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all text-sm font-medium"
-                  >
-                    Забронировать
-                  </button>
+
+                {equipment.description && (
+                  <p className={`text-white/70 text-sm mb-6 line-clamp-2 min-h-[2.5em] text-readable ${theme}`}>
+                    {equipment.description}
+                  </p>
                 )}
+
+                <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/10">
+                  <div className="flex items-center space-x-2 text-white/50 text-xs">
+                    <span className="font-medium text-white">{equipment.quantity} шт.</span>
+                    <span>в наличии</span>
+                  </div>
+
+                  {isRegistered && equipment.status === 'available' ? (
+                    <button
+                      onClick={() => handleRequestClick(equipment)}
+                      className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 active:scale-95 transition-all text-sm font-semibold shadow-lg shadow-best-primary/20 flex items-center space-x-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>В корзину</span>
+                    </button>
+                  ) : (
+                    <button
+                      disabled
+                      className="px-4 py-2 bg-white/5 text-white/30 rounded-lg cursor-not-allowed text-sm font-medium border border-white/5"
+                    >
+                      Недоступно
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

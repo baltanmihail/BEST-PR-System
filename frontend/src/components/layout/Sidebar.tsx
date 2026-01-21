@@ -7,11 +7,10 @@ import { useEffect } from 'react'
 
 const navigation = [
   { name: 'Главная', href: '/', icon: Home },
-  { name: 'Задачи', href: '/tasks', icon: CheckSquare },
+  { name: 'Задачи', href: '/tasks', icon: CheckSquare, requiresAuth: true },
   { name: 'Календарь', href: '/calendar', icon: Calendar },
-  { name: 'Таймлайн', href: '/timeline', icon: Activity },
   { name: 'Рейтинг', href: '/leaderboard', icon: Trophy },
-  { name: 'Статистика', href: '/stats', icon: Star },
+  { name: 'Статистика', href: '/stats', icon: Star, requiresAuth: true },
   { name: 'Оборудование', href: '/equipment', icon: Camera, requiresAuth: true },
   { name: 'Моя Активность', href: '/activity', icon: Activity, requiresAuth: true },
   { name: 'Галерея', href: '/gallery', icon: Image },

@@ -7,7 +7,7 @@
 import json
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# OAuth credentials - ЗАМЕНИ НА СВОИ из Google Cloud Console
+# OAuth credentials
 # https://console.cloud.google.com/apis/credentials
 CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"
 CLIENT_SECRET = "YOUR_CLIENT_SECRET"
