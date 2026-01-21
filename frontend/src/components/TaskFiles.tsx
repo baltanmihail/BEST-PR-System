@@ -26,7 +26,7 @@ interface TaskFile {
   stage_id?: string
 }
 
-export default function TaskFiles({ taskId, stages = [] }: TaskFilesProps) {
+export default function TaskFiles({ taskId }: TaskFilesProps) {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()

@@ -4,7 +4,7 @@ import { useThemeStore } from '../store/themeStore'
 import { publicApi } from '../services/public'
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, isWithinInterval, parseISO, startOfMonth, endOfMonth } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Filter, Search, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Search } from 'lucide-react'
 import { PublicTask } from '../services/public'
 
 type ViewMode = 'week' | 'month' | 'quarter'
@@ -17,7 +17,7 @@ export default function Timeline() {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   // Загружаем задачи (публичные, чтобы видели все)
-  const { data: tasks, isLoading } = useQuery({
+  const { data: tasks } = useQuery({
     queryKey: ['public-tasks'],
     queryFn: () => publicApi.getTasks({ limit: 100 }),
   })

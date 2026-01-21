@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react'
-import { Upload, Loader2, Check, AlertCircle, Paperclip } from 'lucide-react'
+import { Loader2, Check, AlertCircle, Paperclip } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fileUploadsApi } from '../services/fileUploads'
-import { useThemeStore } from '../store/themeStore'
 
 interface StageFileUploadProps {
   taskId: string
@@ -12,7 +11,6 @@ interface StageFileUploadProps {
 }
 
 export default function StageFileUpload({ taskId, stageId, stageName, onUploadSuccess }: StageFileUploadProps) {
-  const { theme } = useThemeStore()
   const queryClient = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)

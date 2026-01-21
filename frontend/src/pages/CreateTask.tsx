@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Loader2, AlertCircle, CheckCircle2, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Loader2, AlertCircle, X, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { tasksApi } from '../services/tasks'
@@ -239,14 +239,14 @@ export default function CreateTask() {
         )}
 
         {/* Успех */}
-        {createTaskMutation.isSuccess && (
+        {/* {createTaskMutation.isSuccess && (
           <div className="mb-6 p-4 bg-green-500/20 border border-green-500/50 rounded-lg flex items-start space-x-3">
             <CheckCircle2 className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
             <p className={`text-green-400 text-sm text-readable ${theme}`}>
               Задача успешно создана!
             </p>
           </div>
-        )}
+        )} */}
 
         <div className="space-y-6">
           {/* Название задачи */}
@@ -377,7 +377,7 @@ export default function CreateTask() {
               value={selectedTemplateId}
               onChange={(e) => handleTemplateChange(e.target.value)}
               className={`w-full bg-white/10 text-white rounded-lg px-4 py-3 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 [&>option]:text-white touch-manipulation`}
-              disabled={createTaskMutation.isPending || templatesLoading}
+              disabled={isSubmitting || templatesLoading}
             >
               <option value="">Не использовать шаблон</option>
               {templates?.map((template) => (
