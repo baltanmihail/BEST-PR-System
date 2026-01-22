@@ -62,7 +62,7 @@ export default function Gallery() {
       alert('Задача успешно привязана!')
     },
     onError: (error: any) => {
-      alert('Ошибка привязки задачи')
+      alert(error.response?.data?.detail || 'Ошибка привязки задачи')
     }
   })
 

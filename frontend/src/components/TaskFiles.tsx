@@ -6,8 +6,6 @@ import { fileUploadsApi } from '../services/fileUploads'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 
-import { TaskStage } from '../types/task'
-
 interface TaskFilesProps {
   taskId: string
 }
