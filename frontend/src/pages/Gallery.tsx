@@ -31,6 +31,7 @@ export default function Gallery() {
       alert(data.message || `Синхронизировано ${data.added} новых файлов`)
     },
     onError: (error: any) => {
+      console.error(error)
       alert(error.response?.data?.detail || 'Ошибка синхронизации')
     }
   })

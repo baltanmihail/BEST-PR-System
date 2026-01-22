@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 async def run_api():
     """Запуск FastAPI сервера"""
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8080))
     host = os.getenv("HOST", "0.0.0.0")
     
     config = uvicorn.Config(
@@ -50,11 +50,13 @@ async def run_api():
         raise
 
 
-async def wait_for_api(max_attempts=30, delay=2):
+async def wait_for_api(max_attempts=60, delay=2):
     """Ждём, пока API станет доступен"""
     import httpx
     port = int(os.getenv("PORT", 8080))
-    url = f"http://localhost:{port}/health"
+    url = f"http://127.0.0.1:{port}/health"
+    
+    logger.info(f"⏳ Waiting for API at {url}...")
     
     for attempt in range(max_attempts):
         try:
@@ -63,11 +65,13 @@ async def wait_for_api(max_attempts=30, delay=2):
                 if response.status_code == 200:
                     logger.info("✅ API готов к работе")
                     return True
-        except Exception:
+        except Exception as e:
+            # logger.debug(f"API check failed: {e}")
             pass
         
         if attempt < max_attempts - 1:
-            logger.info(f"⏳ Ожидание запуска API... (попытка {attempt + 1}/{max_attempts})")
+            if attempt % 5 == 0:
+                logger.info(f"⏳ Ожидание запуска API... (попытка {attempt + 1}/{max_attempts})")
             await asyncio.sleep(delay)
     
     logger.warning("⚠️ API не ответил, но продолжаем запуск бота...")
@@ -86,7 +90,7 @@ async def run_reminders_scheduler():
     await wait_for_api()
     
     # Небольшая задержка для полной инициализации API
-    await asyncio.sleep(5)
+    await asyncio.sleep(10)
     
     logger.info("⏰ Starting reminders scheduler (checking every 2 minutes)...")
     
@@ -96,7 +100,8 @@ async def run_reminders_scheduler():
             from app.config import settings
             
             port = int(os.getenv("PORT", 8080))
-            url = f"http://localhost:{port}{settings.API_V1_PREFIX}/onboarding/reminders/process"
+            # Используем 127.0.0.1 вместо localhost для надежности
+            url = f"http://127.0.0.1:{port}{settings.API_V1_PREFIX}/onboarding/reminders/process"
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(url)
