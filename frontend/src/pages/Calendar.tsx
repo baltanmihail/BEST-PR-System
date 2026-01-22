@@ -216,7 +216,7 @@ export default function Calendar() {
               onChange={(e) => setSelectedRole(e.target.value as any)}
               className={`flex-1 sm:flex-none bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 text-sm`}
             >
-              <option value="all">Все роли</option>
+              <option value="all">Все типы</option>
               <option value="smm">SMM</option>
               <option value="design">Design</option>
               <option value="channel">Channel</option>
@@ -262,90 +262,92 @@ export default function Calendar() {
       </div>
 
       {/* Таймлайн */}
-      <div className={`glass-enhanced ${theme} flex-1 rounded-xl overflow-hidden flex flex-col relative`}>
+      <div className={`glass-enhanced ${theme} flex-1 rounded-xl overflow-hidden relative border border-white/10`}>
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="h-8 w-8 animate-spin text-best-primary" />
           </div>
         ) : (
-          <>
-            {/* Шапка календаря (Sticky) */}
-            <div className="flex border-b border-white/10 bg-white/5 sticky top-0 z-20">
-              <div className="w-48 sm:w-64 p-4 border-r border-white/10 flex-shrink-0 font-bold text-white bg-white/5 backdrop-blur-md z-30 sticky left-0">
-                Задача
-              </div>
-              <div ref={scrollContainerRef} className="flex-1 overflow-x-auto hide-scrollbar flex">
-                {dateRange.days.map((day) => {
-                  const isTodayDate = isSameDay(day, new Date())
-                  const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                  const dayWidth = viewMode === 'semester' ? 'min-w-[30px]' : 'min-w-[40px]'
-                  
-                  return (
-                    <div 
-                      key={day.toISOString()} 
-                      className={`flex-1 ${dayWidth} text-center border-r border-white/5 py-2 flex flex-col items-center justify-center ${
-                        isTodayDate ? 'bg-best-primary/20' : isWeekend ? 'bg-white/5' : ''
-                      }`}
-                    >
-                      <span className="text-[10px] text-white/50 uppercase">{format(day, 'EEEEEE', { locale: ru })}</span>
-                      <span className={`text-sm font-bold ${isTodayDate ? 'text-best-primary' : 'text-white'}`}>
-                        {format(day, 'd')}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* Тело таймлайна */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden relative">
-              {filteredItems.map((item: any) => (
-                <div key={item.id} className="flex border-b border-white/5 hover:bg-white/5 transition-colors group relative">
-                  {/* Название задачи (Sticky Left) */}
-                  <div className="w-48 sm:w-64 p-3 border-r border-white/10 flex-shrink-0 flex items-center bg-inherit sticky left-0 z-10 backdrop-blur-sm">
-                    <div className="truncate text-white text-sm font-medium" title={item.title}>
-                      {item.title}
-                    </div>
+          <div className="absolute inset-0 overflow-auto" ref={scrollContainerRef}>
+            <div className="min-w-fit">
+                {/* Шапка календаря (Sticky) */}
+                <div className="sticky top-0 z-20 flex bg-[#1a1a2e] border-b border-white/10">
+                  <div className="sticky left-0 z-30 w-48 sm:w-64 p-4 border-r border-white/10 flex-shrink-0 font-bold text-white bg-[#1a1a2e]">
+                    Задача
                   </div>
-                  
-                  {/* Полоска задачи */}
-                  <div className="flex-1 relative h-12">
-                    {/* Сетка дней (фон) */}
-                    <div className="absolute inset-0 flex pointer-events-none">
-                      {dateRange.days.map((day) => (
+                  <div className="flex">
+                    {dateRange.days.map((day) => {
+                      const isTodayDate = isSameDay(day, new Date())
+                      const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                      const dayWidth = viewMode === 'semester' ? 'w-[30px] min-w-[30px]' : 'w-[40px] min-w-[40px]'
+                      
+                      return (
                         <div 
                           key={day.toISOString()} 
-                          className={`flex-1 ${viewMode === 'semester' ? 'min-w-[30px]' : 'min-w-[40px]'} border-r border-white/5 ${
-                            isSameDay(day, new Date()) ? 'bg-best-primary/5' : ''
+                          className={`${dayWidth} text-center border-r border-white/5 py-2 flex flex-col items-center justify-center ${
+                            isTodayDate ? 'bg-best-primary/20' : isWeekend ? 'bg-white/5' : ''
                           }`}
-                        />
-                      ))}
-                    </div>
-
-                    {/* Сама задача */}
-                    <div 
-                      className={`absolute top-2 bottom-2 rounded-md border backdrop-blur-sm flex items-center px-2 cursor-pointer hover:brightness-110 transition-all shadow-lg ${getTaskColor(item.type_task || item.type, item.status)}`}
-                      style={getTaskStyle(item)}
-                      onMouseEnter={(e) => handleMouseEnter(e, item)}
-                      onMouseLeave={handleMouseLeave}
-                    >
-                      {detailLevel !== 'compact' && (
-                        <span className="text-xs font-bold truncate text-white drop-shadow-md">
-                          {item.title}
-                        </span>
-                      )}
-                    </div>
+                        >
+                          <span className="text-[10px] text-white/50 uppercase">{format(day, 'EEEEEE', { locale: ru })}</span>
+                          <span className={`text-sm font-bold ${isTodayDate ? 'text-best-primary' : 'text-white'}`}>
+                            {format(day, 'd')}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              ))}
-              
-              {filteredItems.length === 0 && (
-                <div className="p-8 text-center text-white/50">
-                  Нет задач в выбранном периоде
+
+                {/* Тело таймлайна */}
+                <div>
+                  {filteredItems.map((item: any) => (
+                    <div key={item.id} className="flex border-b border-white/5 hover:bg-white/5 transition-colors group relative h-12">
+                      {/* Название задачи (Sticky Left) */}
+                      <div className="sticky left-0 z-10 w-48 sm:w-64 p-3 border-r border-white/10 flex-shrink-0 flex items-center bg-[#1a1a2e] group-hover:bg-[#252540] transition-colors">
+                        <div className="truncate text-white text-sm font-medium" title={item.title}>
+                          {item.title}
+                        </div>
+                      </div>
+                      
+                      {/* Полоска задачи */}
+                      <div className="relative flex">
+                        {/* Сетка дней (фон) */}
+                        <div className="flex pointer-events-none">
+                          {dateRange.days.map((day) => (
+                            <div 
+                              key={day.toISOString()} 
+                              className={`${viewMode === 'semester' ? 'w-[30px] min-w-[30px]' : 'w-[40px] min-w-[40px]'} border-r border-white/5 ${
+                                isSameDay(day, new Date()) ? 'bg-best-primary/5' : ''
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        {/* Сама задача */}
+                        <div 
+                          className={`absolute top-2 bottom-2 rounded-md border backdrop-blur-sm flex items-center px-2 cursor-pointer hover:brightness-110 transition-all shadow-lg ${getTaskColor(item.type_task || item.type, item.status)}`}
+                          style={getTaskStyle(item)}
+                          onMouseEnter={(e) => handleMouseEnter(e, item)}
+                          onMouseLeave={handleMouseLeave}
+                        >
+                          {detailLevel !== 'compact' && (
+                            <span className="text-xs font-bold truncate text-white drop-shadow-md">
+                              {item.title}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {filteredItems.length === 0 && (
+                    <div className="p-8 text-center text-white/50 sticky left-0">
+                      Нет задач в выбранном периоде
+                    </div>
+                  )}
                 </div>
-              )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
