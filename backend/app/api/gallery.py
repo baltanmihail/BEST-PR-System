@@ -341,6 +341,10 @@ async def sync_gallery_from_drive(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при синхронизации с Google Drive: {str(e)}"
         )
+
+
+@router.post("/reorder", response_model=dict)
+async def reorder_gallery_items(
     request: GalleryReorderRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Check, AlertCircle, Paperclip } from 'lucide-react'
+import { Check, AlertCircle, Paperclip, Loader2 } from 'lucide-react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { fileUploadsApi } from '../services/fileUploads'
 
