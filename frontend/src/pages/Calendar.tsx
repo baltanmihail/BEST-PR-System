@@ -6,7 +6,7 @@ import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { calendarApi, type CalendarRole, type DetailLevel } from '../services/calendar'
 import { UserRole } from '../types/user'
-import { format, addDays, startOfWeek, endOfWeek, isSameDay, isWithinInterval, parseISO, startOfMonth, endOfMonth, addMonths, startOfYear, endOfYear } from 'date-fns'
+import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 type ViewMode = 'week' | 'month' | 'semester'

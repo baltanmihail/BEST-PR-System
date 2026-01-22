@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Plus, Loader2, AlertCircle, X, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Loader2, AlertCircle, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useQueryClient, useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../store/themeStore'

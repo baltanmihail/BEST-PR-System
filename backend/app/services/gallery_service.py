@@ -123,6 +123,114 @@ class GalleryService:
         
         return list(items), total
     
+    async def sync_gallery_from_drive(
+        self,
+        db: AsyncSession,
+        created_by: UUID
+    ) -> Dict:
+        """
+        Синхронизировать галерею с Google Drive
+        
+        Сканирует папку Gallery и добавляет отсутствующие файлы в БД.
+        """
+        from app.models.gallery import GalleryItem, GalleryCategory
+        import mimetypes
+        
+        google_service = self._get_google_service()
+        drive_structure = self._get_drive_structure()
+        
+        # Получаем ID папки Gallery
+        gallery_folder_id = drive_structure.get_gallery_folder_id()
+        if not gallery_folder_id:
+            return {"status": "error", "message": "Gallery folder not found"}
+            
+        # Получаем список файлов в папке
+        drive_files = google_service.list_files(folder_id=gallery_folder_id, background=False)
+        if not drive_files:
+            return {"status": "success", "added": 0, "message": "No files in Gallery folder"}
+            
+        # Получаем список существующих drive_id из БД
+        # Это не очень эффективно, но для начала сойдет. 
+        # Лучше было бы хранить drive_id в отдельной колонке или индексе, но у нас JSON
+        query = select(GalleryItem)
+        result = await db.execute(query)
+        existing_items = result.scalars().all()
+        
+        existing_drive_ids = set()
+        for item in existing_items:
+            if item.files:
+                for f in item.files:
+                    if f.get("drive_id"):
+                        existing_drive_ids.add(f.get("drive_id"))
+        
+        added_count = 0
+        
+        for file in drive_files:
+            file_id = file.get("id")
+            if not file_id or file_id in existing_drive_ids:
+                continue
+                
+            # Игнорируем папки
+            if file.get("mimeType") == "application/vnd.google-apps.folder":
+                continue
+                
+            # Создаем новый элемент
+            name = file.get("name", "Untitled")
+            mime_type = file.get("mimeType", "application/octet-stream")
+            
+            # Опредлеляем категорию
+            category = GalleryCategory.FINAL
+            if mime_type.startswith("image/"):
+                category = GalleryCategory.PHOTO
+            elif mime_type.startswith("video/"):
+                category = GalleryCategory.VIDEO
+                
+            # Формируем инфо о файле
+            # Получаем публичную ссылку
+            try:
+                drive_url = google_service.get_shareable_link(file_id, background=False)
+            except:
+                drive_url = google_service.get_file_url(file_id)
+                
+            # Превью
+            thumbnail_url = None
+            if category == GalleryCategory.PHOTO:
+                thumbnail_url = drive_url
+                
+            files_info = [{
+                "drive_id": file_id,
+                "file_name": name,
+                "file_type": "image" if category == GalleryCategory.PHOTO else "video" if category == GalleryCategory.VIDEO else "document",
+                "thumbnail_url": thumbnail_url,
+                "drive_url": drive_url,
+                "mime_type": mime_type,
+                "file_size": int(file.get("size", 0))
+            }]
+            
+            # Создаем элемент в БД
+            new_item = GalleryItem(
+                title=name, # Используем имя файла как заголовок
+                description="Автоматически загружено из Google Drive",
+                category=category,
+                created_by=created_by,
+                files=files_info,
+                thumbnail_url=thumbnail_url,
+                tags=["Google Drive"]
+            )
+            
+            db.add(new_item)
+            added_count += 1
+            
+        if added_count > 0:
+            await db.commit()
+            
+        return {
+            "status": "success",
+            "added": added_count,
+            "total_scanned": len(drive_files),
+            "message": f"Added {added_count} new items from Google Drive"
+        }
+
     @staticmethod
     async def get_gallery_item_by_id(
         db: AsyncSession,

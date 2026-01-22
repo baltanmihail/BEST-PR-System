@@ -7,6 +7,20 @@ from uuid import UUID
 from datetime import datetime
 
 from app.models.gallery import GalleryCategory
+from app.models.task import TaskStatus
+
+
+class GalleryTaskInfo(BaseModel):
+    """Краткая информация о связанной задаче"""
+    id: UUID
+    title: str
+    description: Optional[str] = None
+    status: TaskStatus
+    due_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 
 class GalleryFileInfo(BaseModel):
@@ -56,6 +70,7 @@ class GalleryItemResponse(GalleryItemBase):
     files: List[GalleryFileInfo] = Field(default_factory=list)
     created_by: UUID
     creator_name: Optional[str] = Field(None, description="Имя создателя")
+    task: Optional[GalleryTaskInfo] = Field(None, description="Информация о связанной задаче")
     sort_order: Optional[int] = None
     created_at: datetime
     updated_at: datetime

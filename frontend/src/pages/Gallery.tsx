@@ -1,13 +1,39 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar, RefreshCw, CheckSquare, Link as LinkIcon, Save, X } from 'lucide-react'
 import { galleryApi, type GalleryItem } from '../services/gallery'
+import { tasksApi } from '../services/tasks'
 import { useThemeStore } from '../store/themeStore'
+import { useAuthStore } from '../store/authStore'
+import { UserRole } from '../types/user'
 
 export default function Gallery() {
   const { theme } = useThemeStore()
+  const { user } = useAuthStore()
+  const queryClient = useQueryClient()
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null)
+  const [isLinkingTask, setIsLinkingTask] = useState(false)
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+
+  const isCoordinator = user && (
+    user.role === UserRole.COORDINATOR_SMM ||
+    user.role === UserRole.COORDINATOR_DESIGN ||
+    user.role === UserRole.COORDINATOR_CHANNEL ||
+    user.role === UserRole.COORDINATOR_PRFR ||
+    user.role === UserRole.VP4PR
+  )
+
+  const syncMutation = useMutation({
+    mutationFn: () => galleryApi.syncFromDrive(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      alert(data.message || `Синхронизировано ${data.added} новых файлов`)
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка синхронизации')
+    }
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['gallery', selectedCategory],
@@ -16,6 +42,28 @@ export default function Gallery() {
         limit: 50,
         category: selectedCategory !== 'all' ? (selectedCategory as 'photo' | 'video' | 'final' | 'wip') : undefined,
       }),
+  })
+
+  const { data: tasksData } = useQuery({
+    queryKey: ['tasks', 'completed'],
+    queryFn: () => tasksApi.getTasks({ status: 'completed', limit: 20 }),
+    enabled: isLinkingTask
+  })
+
+  const linkTaskMutation = useMutation({
+    mutationFn: ({ itemId, taskId }: { itemId: string, taskId: string }) => 
+      galleryApi.updateGalleryItem(itemId, { task_id: taskId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      setSelectedItem(prev => prev ? { ...prev, task_id: selectedTaskId } : null) // Optimistic updateish
+      setIsLinkingTask(false)
+      // Закрываем и открываем заново, чтобы обновить данные (или можно сделать refetch)
+      setSelectedItem(null) 
+      alert('Задача успешно привязана!')
+    },
+    onError: (error: any) => {
+      alert('Ошибка привязки задачи')
+    }
   })
 
   const items = data?.items || []
@@ -63,6 +111,21 @@ export default function Gallery() {
               Выполненные работы команды PR-отдела
             </p>
           </div>
+          
+          {isCoordinator && (
+            <button
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 shadow-lg shadow-best-primary/20"
+            >
+              {syncMutation.isPending ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-5 w-5" />
+              )}
+              <span>Синхронизировать с Drive</span>
+            </button>
+          )}
         </div>
 
         {/* Фильтры */}
@@ -227,6 +290,74 @@ export default function Gallery() {
                   {selectedItem.description}
                 </p>
               </div>
+            )}
+
+            {/* Связанная задача */}
+            {selectedItem.task ? (
+              <div className="mb-4 p-4 bg-white/5 rounded-lg border border-white/10">
+                <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
+                  <CheckSquare className="h-4 w-4 text-green-400" />
+                  Связанная задача
+                </h3>
+                <p className="font-medium text-white mb-1">{selectedItem.task.title}</p>
+                {selectedItem.task.description && (
+                  <p className="text-white/60 text-sm mb-2 line-clamp-3">{selectedItem.task.description}</p>
+                )}
+                <div className="flex flex-wrap gap-4 text-xs text-white/50">
+                  {selectedItem.task.due_date && (
+                    <span>Дедлайн: {new Date(selectedItem.task.due_date).toLocaleDateString('ru-RU')}</span>
+                  )}
+                  {selectedItem.task.completed_at && (
+                    <span>Завершено: {new Date(selectedItem.task.completed_at).toLocaleDateString('ru-RU')}</span>
+                  )}
+                  <span className={`px-2 py-0.5 rounded-full border ${getStatusColor(selectedItem.task.status)}`}>
+                    {getStatusName(selectedItem.task.status)}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              isCoordinator && (
+                <div className="mb-4 p-4 bg-white/5 rounded-lg border border-dashed border-white/20">
+                  {!isLinkingTask ? (
+                    <button 
+                      onClick={() => setIsLinkingTask(true)}
+                      className="flex items-center gap-2 text-best-primary hover:text-best-primary/80 transition-colors text-sm font-medium"
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                      Привязать к задаче
+                    </button>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-sm font-medium text-white">Выберите задачу</h4>
+                        <button onClick={() => setIsLinkingTask(false)} className="text-white/50 hover:text-white">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <select 
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-sm text-white focus:outline-none focus:border-best-primary"
+                        value={selectedTaskId}
+                        onChange={(e) => setSelectedTaskId(e.target.value)}
+                      >
+                        <option value="">Выберите задачу...</option>
+                        {tasksData?.items?.map((task: any) => (
+                          <option key={task.id} value={task.id}>
+                            {task.title} ({new Date(task.created_at).toLocaleDateString()})
+                          </option>
+                        ))}
+                      </select>
+                      <button 
+                        onClick={() => linkTaskMutation.mutate({ itemId: selectedItem.id, taskId: selectedTaskId })}
+                        disabled={!selectedTaskId || linkTaskMutation.isPending}
+                        className="w-full flex items-center justify-center gap-2 bg-best-primary text-white py-2 rounded-lg hover:bg-best-primary/80 disabled:opacity-50 text-sm"
+                      >
+                        {linkTaskMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Сохранить
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
             )}
 
             <div className="grid grid-cols-2 gap-4 mb-4">

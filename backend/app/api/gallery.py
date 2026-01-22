@@ -299,8 +299,48 @@ async def update_gallery_item(
     )
 
 
-@router.post("/reorder", response_model=dict)
-async def reorder_gallery_items(
+@router.post("/sync/drive", response_model=dict)
+async def sync_gallery_from_drive(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """
+    Синхронизировать галерею с Google Drive
+    
+    Сканирует папку "BEST PR System/Gallery" и автоматически добавляет новые файлы в базу данных.
+    Доступно только координаторам и VP4PR.
+    """
+    from app.services.gallery_service import GalleryService
+    
+    gallery_service = GalleryService()
+    try:
+        # Находим пользователя VP4PR для привязки созданных элементов
+        from app.models.user import UserRole
+        from sqlalchemy import select
+        
+        # Сначала ищем VP4PR
+        vp4pr_query = select(User).where(User.role == UserRole.VP4PR).limit(1)
+        result = await db.execute(vp4pr_query)
+        vp4pr_user = result.scalar_one_or_none()
+        
+        # Если VP4PR нет, используем текущего пользователя (координатора)
+        creator_id = vp4pr_user.id if vp4pr_user else current_user.id
+        
+        result = await gallery_service.sync_gallery_from_drive(
+            db=db,
+            created_by=creator_id
+        )
+        
+        return result
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to sync gallery from Drive: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при синхронизации с Google Drive: {str(e)}"
+        )
     request: GalleryReorderRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
