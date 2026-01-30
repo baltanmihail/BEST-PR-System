@@ -2,7 +2,7 @@
 Модели оборудования
 """
 from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum, CheckConstraint, Integer, TypeDecorator
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM as PG_ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -32,9 +32,20 @@ class EquipmentCategory(str, enum.Enum):
 
 
 class EquipmentCategoryType(TypeDecorator):
-    """TypeDecorator для сохранения EquipmentCategory как строки в БД"""
-    impl = String(50)
+    """TypeDecorator для правильной конвертации EquipmentCategory"""
+    impl = String
     cache_ok = True
+    
+    def __init__(self):
+        super().__init__(length=50)
+    
+    def load_dialect_impl(self, dialect):
+        """Используем PostgreSQL ENUM для PostgreSQL, если он уже существует"""
+        if dialect.name == 'postgresql':
+            # create_type=False означает, что мы ожидаем, что тип уже создан в БД
+            return dialect.type_descriptor(PG_ENUM(EquipmentCategory, name='equipmentcategory', create_type=False))
+        else:
+            return dialect.type_descriptor(String(50))
     
     def process_bind_param(self, value, dialect):
         """Конвертируем enum в его значение (строку)"""
@@ -67,12 +78,7 @@ class EquipmentRequestStatus(str, enum.Enum):
 
 
 class EquipmentRequestStatusType(TypeDecorator):
-    """TypeDecorator для правильной конвертации EquipmentRequestStatus в строку.
-    
-    ВАЖНО: Используем String вместо PG_ENUM, чтобы process_bind_param вызывался
-    для всех операций, включая .in_(). PostgreSQL автоматически кастит строки
-    к типу equipment_request_status при вставке/сравнении.
-    """
+    """TypeDecorator для правильной конвертации EquipmentRequestStatus в строку."""
     impl = String(50)
     cache_ok = True
     
@@ -81,8 +87,7 @@ class EquipmentRequestStatusType(TypeDecorator):
         if value is None:
             return None
         if isinstance(value, EquipmentRequestStatus):
-            return value.value  # Возвращает 'approved', 'active' и т.д.
-        # Если передана строка, конвертируем в lowercase
+            return value.value
         if isinstance(value, str):
             return value.lower()
         return str(value).lower() if value else None
@@ -105,10 +110,11 @@ class Equipment(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False, index=True)
-    category = Column(EquipmentCategoryType(), nullable=False, index=True)  # Категория оборудования
-    quantity = Column(Integer, nullable=False, default=1)  # Количество экземпляров (по умолчанию 1)
-    specs = Column(JSONB, nullable=True)  # Дополнительные характеристики
-    # Используем native_enum=False для совместимости и избежания проблем с типами в Postgres
+    # Используем EquipmentCategoryType с PG_ENUM, так как база этого требует
+    category = Column(EquipmentCategoryType(), nullable=False, index=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    specs = Column(JSONB, nullable=True)
+    # Используем native_enum=False (VARCHAR) для status, так как типа equipmentstatus в БД нет/проблемный
     status = Column(Enum(EquipmentStatus, native_enum=False), nullable=False, default=EquipmentStatus.AVAILABLE, index=True)
     current_holder_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -120,7 +126,7 @@ class Equipment(Base):
     )
     
     def __repr__(self):
-        return f"<Equipment {self.name} ({self.category.value}, qty: {self.quantity})>"
+        return f"<Equipment {self.name} ({self.category.value if hasattr(self.category, 'value') else self.category}, qty: {self.quantity})>"
 
 
 class EquipmentRequest(Base):
