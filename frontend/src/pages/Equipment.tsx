@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, RefreshCw } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
@@ -35,6 +35,18 @@ export default function Equipment() {
     queryKey: ['equipment', 'requests', 'my'],
     queryFn: () => equipmentApi.getMyRequests(),
     enabled: !!isRegistered,
+  })
+
+  // Синхронизация с Google Sheets (для админов)
+  const syncMutation = useMutation({
+    mutationFn: () => equipmentApi.syncFromSheets(),
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+      alert(data.message || `Синхронизация завершена: создано ${data.created || 0}, обновлено ${data.updated || 0}`)
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка синхронизации')
+    }
   })
 
   const createRequestMutation = useMutation({
@@ -88,14 +100,14 @@ export default function Equipment() {
     user.role === UserRole.VP4PR
   )
 
-  const syncMutation = useMutation({
-    mutationFn: () => equipmentApi.syncFromSheets(),
-    onSuccess: (data) => {
-      alert(data.message || 'Синхронизация запущена')
+  // Мутация удаления оборудования
+  const deleteEquipmentMutation = useMutation({
+    mutationFn: (id: string) => equipmentApi.deleteEquipment(id),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
     },
     onError: (error: any) => {
-      alert(error.response?.data?.detail || 'Ошибка синхронизации')
+      alert(error.response?.data?.detail || 'Ошибка удаления оборудования')
     }
   })
 
@@ -188,7 +200,7 @@ export default function Equipment() {
               <button
                 onClick={() => syncMutation.mutate()}
                 disabled={syncMutation.isPending}
-                className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all disabled:opacity-50"
+                className="flex items-center space-x-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all border border-white/10 disabled:opacity-50"
                 title="Синхронизировать с Google Sheets"
               >
                 {syncMutation.isPending ? (
@@ -196,7 +208,9 @@ export default function Equipment() {
                 ) : (
                   <RefreshCw className="h-5 w-5" />
                 )}
+                <span className="hidden md:inline">Обновить</span>
               </button>
+              
               <button
                 onClick={() => {
                   setShowCreateForm(true)
@@ -212,7 +226,7 @@ export default function Equipment() {
                 className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
               >
                 <Plus className="h-5 w-5" />
-                <span className="hidden md:inline">Добавить оборудование</span>
+                <span className="hidden md:inline">Добавить</span>
               </button>
             </>
           )}
@@ -384,22 +398,57 @@ export default function Equipment() {
                     <span>в наличии</span>
                   </div>
 
-                  {isRegistered && equipment.status === 'available' ? (
-                    <button
-                      onClick={() => handleRequestClick(equipment)}
-                      className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 active:scale-95 transition-all text-sm font-semibold shadow-lg shadow-best-primary/20 flex items-center space-x-2"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>В корзину</span>
-                    </button>
-                  ) : (
-                    <button
-                      disabled
-                      className="px-4 py-2 bg-white/5 text-white/30 rounded-lg cursor-not-allowed text-sm font-medium border border-white/5"
-                    >
-                      Недоступно
-                    </button>
-                  )}
+                  <div className="flex items-center space-x-2">
+                    {isCoordinator && (
+                      <>
+                        <button
+                          onClick={() => {
+                            setEditingEquipment(equipment)
+                            setEquipmentFormData({
+                              name: equipment.name,
+                              category: equipment.category,
+                              quantity: equipment.quantity,
+                              specs: equipment.specs || {},
+                            })
+                            setShowEditForm(true)
+                            setShowCreateForm(false)
+                          }}
+                          className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all"
+                          title="Редактировать"
+                        >
+                          <Edit2 className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm('Вы уверены, что хотите удалить это оборудование?')) {
+                              deleteEquipmentMutation.mutate(equipment.id)
+                            }
+                          }}
+                          className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all"
+                          title="Удалить"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+
+                    {isRegistered && equipment.status === 'available' ? (
+                      <button
+                        onClick={() => handleRequestClick(equipment)}
+                        className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 active:scale-95 transition-all text-sm font-semibold shadow-lg shadow-best-primary/20 flex items-center space-x-2"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>В корзину</span>
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="px-4 py-2 bg-white/5 text-white/30 rounded-lg cursor-not-allowed text-sm font-medium border border-white/5"
+                      >
+                        Недоступно
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -413,25 +462,36 @@ export default function Equipment() {
           <Camera className="h-16 w-16 mx-auto mb-4 text-white/20" />
           <h3 className="text-xl font-bold text-white mb-2">Оборудование пока не добавлено</h3>
           <p className="text-white/60 mb-6">
-            В данный момент список оборудования пуст.
+            В данный момент список оборудования пуст. Вы можете синхронизировать его с таблицей или добавить вручную.
           </p>
           {isCoordinator && (
-            <button
-              onClick={() => {
-                setShowCreateForm(true)
-                setShowEditForm(false)
-                setEditingEquipment(null)
-                setEquipmentFormData({
-                  name: '',
-                  category: 'other',
-                  quantity: 1,
-                  specs: {},
-                })
-              }}
-              className="px-6 py-3 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all font-semibold"
-            >
-              Добавить первое оборудование
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <button
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+                className="px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all font-semibold flex items-center space-x-2"
+              >
+                {syncMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+                <span>Синхронизировать</span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateForm(true)
+                  setShowEditForm(false)
+                  setEditingEquipment(null)
+                  setEquipmentFormData({
+                    name: '',
+                    category: 'other',
+                    quantity: 1,
+                    specs: {},
+                  })
+                }}
+                className="px-6 py-3 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all font-semibold flex items-center space-x-2"
+              >
+                <Plus className="h-5 w-5" />
+                <span>Добавить вручную</span>
+              </button>
+            </div>
           )}
         </div>
       )}

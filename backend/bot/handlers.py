@@ -188,6 +188,10 @@ def format_role_title(role: str) -> str:
 @router.message(Command("start"))
 async def cmd_start(message: Message, state: FSMContext, command: Command = None):
     """Команда /start - регистрация/авторизация пользователя"""
+    # Игнорируем ботов, чтобы не создавать пользователей-ботов в БД
+    if message.from_user.is_bot:
+        return
+
     user = message.from_user
     
     # Проверяем, есть ли параметр в команде (например, /start qr_TOKEN или /start qr_TOKEN_TELEGRAM_ID)

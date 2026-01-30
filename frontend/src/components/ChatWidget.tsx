@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { MessageSquare, X, Send, Loader2, Bell, AlertCircle } from 'lucide-react'
+import { MessageSquare, X, Send, Loader2, Bell, ChevronDown } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { supportApi } from '../services/support'
 import { notificationsApi } from '../services/notifications'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AnimatePresence, motion } from 'framer-motion'
 
 interface Message {
   id: string
@@ -19,268 +20,282 @@ export default function ChatWidget() {
   const { user } = useAuthStore()
   const { theme } = useThemeStore()
   const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabType>('notifications') 
+  const [activeTab, setActiveTab] = useState<TabType>('notifications')
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: '1',
-      text: 'Привет! 👋 Чем могу помочь?',
+      id: 'welcome',
+      text: 'Привет! 👋 Я бот BEST PR System. Если у тебя есть вопрос или предложение, напиши его здесь, и мы передадим его команде.',
       isBot: true,
       timestamp: new Date(),
     },
   ])
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const queryClient = useQueryClient()
 
-  // Загружаем уведомления
-  const { data: notificationsData, refetch: refetchNotifications } = useQuery({
+  // Загружаем уведомления (только если открыт виджет и вкладка уведомлений)
+  const { data: notificationsData } = useQuery({
     queryKey: ['notifications', 'widget'],
     queryFn: () => notificationsApi.getNotifications({ limit: 20 }),
-    enabled: !!user && !!user.is_active,
-    // Polling каждые 30 секунд для проверки новых уведомлений
-    refetchInterval: 30000 
+    enabled: isOpen && activeTab === 'notifications' && !!user,
+    refetchInterval: isOpen ? 10000 : false, // Обновляем каждые 10 сек, если открыто
   })
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
+  const notifications = notificationsData?.items || []
+  const unreadCount = notifications.filter((n: any) => !n.is_read).length
 
+  // Авто-скролл к последнему сообщению
   useEffect(() => {
-    if (isOpen) {
-      scrollToBottom()
-      if (activeTab === 'chat') {
-        setTimeout(() => inputRef.current?.focus(), 100)
-      }
+    if (activeTab === 'chat' && isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
-  }, [isOpen, activeTab])
+  }, [messages, activeTab, isOpen])
 
-  // Эффект скролла при добавлении сообщений
+  // Авто-фокус на поле ввода
   useEffect(() => {
-    if (isOpen && activeTab === 'chat') {
-      scrollToBottom()
+    if (activeTab === 'chat' && isOpen) {
+      textareaRef.current?.focus()
     }
-  }, [messages])
+  }, [activeTab, isOpen])
 
-  const mutation = useMutation({
+  // Маркировка уведомлений как прочитанных
+  const markAsReadMutation = useMutation({
+    mutationFn: notificationsApi.markAllAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+    }
+  })
+
+  // Отправка сообщения в поддержку
+  const sendMessageMutation = useMutation({
     mutationFn: supportApi.createRequest,
     onSuccess: () => {
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         {
           id: Date.now().toString(),
-          text: 'Спасибо за ваше сообщение! Мы свяжемся с вами в ближайшее время. ✅',
+          text: 'Сообщение отправлено! Мы ответим вам в ближайшее время.',
           isBot: true,
           timestamp: new Date(),
-        },
+        }
       ])
       setMessage('')
     },
     onError: () => {
-      setMessages((prev) => [
+      setMessages(prev => [
         ...prev,
         {
           id: Date.now().toString(),
-          text: 'Произошла ошибка при отправке. Попробуйте позже. ❌',
+          text: 'Ошибка отправки. Попробуйте позже.',
           isBot: true,
           timestamp: new Date(),
-        },
+        }
       ])
-    },
+    }
   })
 
-  const handleSend = async () => {
-    if (!message.trim() || mutation.isPending) return
+  const handleSendMessage = () => {
+    if (!message.trim() || sendMessageMutation.isPending) return
 
-    const userMessage: Message = {
+    const userMsg: Message = {
       id: Date.now().toString(),
       text: message.trim(),
       isBot: false,
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
-    setMessage('')
-
-    mutation.mutate({
-      message: userMessage.text,
+    setMessages(prev => [...prev, userMsg])
+    
+    sendMessageMutation.mutate({
+      message: message.trim(),
       category: 'question',
-      contact: user?.telegram_username || user?.username || user?.email || undefined,
+      contact: user?.telegram_username || user?.email,
     })
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      handleSendMessage()
     }
   }
 
-  const notifications = notificationsData?.items || []
-  const unreadCount = notifications.filter((n: any) => !n.is_read).length
-
-  // Анимация появления
-  const widgetClasses = isOpen 
-    ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto visible'
-    : 'opacity-0 translate-y-4 scale-95 pointer-events-none invisible'
+  // Если пользователь не авторизован, виджет можно скрыть или показывать заглушку
+  if (!user) return null
 
   return (
     <>
-      {/* Кнопка открытия (FAB) */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 w-14 h-14 rounded-full shadow-xl transition-all flex items-center justify-center z-[9999] touch-manipulation hover:scale-105 active:scale-95 ${
-          isOpen ? 'bg-red-500 rotate-90' : 'bg-best-primary rotate-0'
-        }`}
-        aria-label={isOpen ? "Закрыть чат" : "Открыть чат"}
-      >
-        {isOpen ? (
-          <X className="h-6 w-6 text-white" />
-        ) : (
-          <div className="relative">
-            <MessageSquare className="h-6 w-6 text-white" />
+      {/* Кнопка открытия (Floating Action Button) */}
+      <AnimatePresence>
+        {!isOpen && (
+          <motion.button
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsOpen(true)}
+            className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-[9999] w-14 h-14 rounded-full bg-best-primary text-white shadow-2xl flex items-center justify-center hover:bg-best-primary/90 transition-colors"
+          >
+            <MessageSquare className="w-6 h-6" />
             {unreadCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#0f0f1a]">
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-[#0f0f1a]">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
-          </div>
+          </motion.button>
         )}
-      </button>
+      </AnimatePresence>
 
       {/* Окно виджета */}
-      <div
-        className={`fixed bottom-36 md:bottom-24 right-4 md:right-6 w-[calc(100vw-2rem)] md:w-96 h-[500px] max-h-[70vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/20 transition-all duration-300 origin-bottom-right overflow-hidden ${widgetClasses}`}
-      >
-        {/* Хедер */}
-        <div className="flex items-center justify-between p-3 border-b border-white/10 bg-white/5">
-          <div className="flex bg-black/20 p-1 rounded-lg">
-            <button
-              onClick={() => setActiveTab('notifications')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                activeTab === 'notifications' 
-                  ? 'bg-best-primary text-white shadow-md' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Bell className="h-4 w-4" />
-              <span>Инфо</span>
-              {unreadCount > 0 && (
-                <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
-                activeTab === 'chat' 
-                  ? 'bg-best-primary text-white shadow-md' 
-                  : 'text-white/60 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <MessageSquare className="h-4 w-4" />
-              <span>Чат</span>
-            </button>
-          </div>
-        </div>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 z-[10000] w-[calc(100vw-2rem)] md:w-[400px] h-[500px] max-h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-white/10 backdrop-blur-xl bg-[#1a1a2e]/90`}
+          >
+            {/* Хедер */}
+            <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="font-bold text-white text-sm">BEST Assistant</span>
+              </div>
+              <button 
+                onClick={() => setIsOpen(false)}
+                className="p-1 hover:bg-white/10 rounded-full transition-colors"
+              >
+                <ChevronDown className="w-5 h-5 text-white/70" />
+              </button>
+            </div>
 
-        {/* Контент */}
-        <div className="flex-1 overflow-hidden relative bg-black/20">
-          {activeTab === 'chat' ? (
-            <div className="absolute inset-0 flex flex-col">
-              {/* Сообщения */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}
-                  >
-                    <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
-                        msg.isBot
-                          ? 'bg-white/10 text-white rounded-tl-none'
-                          : 'bg-best-primary text-white rounded-tr-none'
-                      }`}
-                    >
-                      <p>{msg.text}</p>
-                      <p className="text-[10px] opacity-50 mt-1 text-right">
-                        {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {mutation.isPending && (
-                  <div className="flex justify-start">
-                    <div className="bg-white/10 rounded-2xl px-4 py-2 rounded-tl-none">
-                      <Loader2 className="h-4 w-4 animate-spin text-white/70" />
-                    </div>
-                  </div>
+            {/* Табы */}
+            <div className="flex p-1 bg-black/20 m-2 rounded-lg">
+              <button
+                onClick={() => setActiveTab('notifications')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all ${
+                  activeTab === 'notifications' 
+                    ? 'bg-white/10 text-white shadow-sm' 
+                    : 'text-white/50 hover:text-white/70'
+                }`}
+              >
+                <Bell className="w-3 h-3" />
+                Уведомления
+                {unreadCount > 0 && (
+                  <span className="bg-red-500 text-white text-[9px] px-1.5 rounded-full">
+                    {unreadCount}
+                  </span>
                 )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Ввод */}
-              <div className="p-3 bg-white/5 border-t border-white/10">
-                <div className="flex gap-2 items-end">
-                  <textarea
-                    ref={inputRef}
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Ваш вопрос..."
-                    className="flex-1 bg-black/20 text-white placeholder-white/40 rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-best-primary border border-white/10 min-h-[44px] max-h-[100px]"
-                    rows={1}
-                  />
-                  <button
-                    onClick={handleSend}
-                    disabled={!message.trim() || mutation.isPending}
-                    className="p-3 bg-best-primary text-white rounded-xl hover:bg-best-primary/80 transition-all disabled:opacity-50 disabled:scale-95 active:scale-95"
-                  >
-                    <Send className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold rounded-md transition-all ${
+                  activeTab === 'chat' 
+                    ? 'bg-white/10 text-white shadow-sm' 
+                    : 'text-white/50 hover:text-white/70'
+                }`}
+              >
+                <MessageSquare className="w-3 h-3" />
+                Чат поддержки
+              </button>
             </div>
-          ) : (
-            <div className="absolute inset-0 overflow-y-auto p-2">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center p-6 opacity-50">
-                  <Bell className="h-12 w-12 mb-2" />
-                  <p>Уведомлений нет</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {notifications.map((notification: any) => (
-                    <div
-                      key={notification.id}
-                      className={`p-3 rounded-xl border transition-all ${
-                        notification.is_read 
-                          ? 'bg-white/5 border-white/5 text-white/60' 
-                          : 'bg-best-primary/10 border-best-primary/30 text-white shadow-sm'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-medium text-sm leading-tight">
-                          {notification.title}
-                        </h4>
-                        {!notification.is_read && (
-                          <span className="w-2 h-2 rounded-full bg-best-primary mt-1 shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-xs mt-1 opacity-80 leading-relaxed">
-                        {notification.message}
-                      </p>
-                      <p className="text-[10px] mt-2 opacity-40">
-                        {new Date(notification.created_at).toLocaleDateString()}
-                      </p>
+
+            {/* Контент */}
+            <div className="flex-1 overflow-hidden relative">
+              
+              {/* Уведомления */}
+              {activeTab === 'notifications' && (
+                <div className="absolute inset-0 overflow-y-auto p-2 space-y-2">
+                  {notifications.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-white/30 gap-2">
+                      <Bell className="w-8 h-8" />
+                      <span className="text-sm">Нет новых уведомлений</span>
                     </div>
-                  ))}
+                  ) : (
+                    <>
+                      <div className="flex justify-end px-2">
+                        <button 
+                          onClick={() => markAsReadMutation.mutate()}
+                          className="text-[10px] text-best-primary hover:underline"
+                        >
+                          Прочитать все
+                        </button>
+                      </div>
+                      {notifications.map((n: any) => (
+                        <div 
+                          key={n.id} 
+                          className={`p-3 rounded-xl border ${
+                            n.is_read ? 'bg-white/5 border-white/5' : 'bg-best-primary/10 border-best-primary/30'
+                          }`}
+                        >
+                          <h4 className="text-white text-sm font-bold mb-1">{n.title}</h4>
+                          <p className="text-white/70 text-xs leading-relaxed">{n.message}</p>
+                          <span className="text-white/30 text-[10px] mt-2 block">
+                            {new Date(n.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Чат */}
+              {activeTab === 'chat' && (
+                <div className="absolute inset-0 flex flex-col">
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {messages.map((msg) => (
+                      <div 
+                        key={msg.id} 
+                        className={`flex ${msg.isBot ? 'justify-start' : 'justify-end'}`}
+                      >
+                        <div className={`max-w-[85%] p-3 rounded-2xl text-sm leading-relaxed ${
+                          msg.isBot 
+                            ? 'bg-white/10 text-white rounded-tl-sm' 
+                            : 'bg-best-primary text-white rounded-tr-sm'
+                        }`}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
+                    {sendMessageMutation.isPending && (
+                      <div className="flex justify-start">
+                        <div className="bg-white/10 p-3 rounded-2xl rounded-tl-sm">
+                          <Loader2 className="w-4 h-4 animate-spin text-white/50" />
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  <div className="p-3 bg-black/20 border-t border-white/10">
+                    <div className="relative">
+                      <textarea
+                        ref={textareaRef}
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Напишите сообщение..."
+                        className="w-full bg-white/5 text-white text-sm rounded-xl pl-4 pr-10 py-3 focus:outline-none focus:bg-white/10 transition-colors resize-none h-[44px] max-h-[100px]"
+                      />
+                      <button
+                        onClick={handleSendMessage}
+                        disabled={!message.trim() || sendMessageMutation.isPending}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-best-primary rounded-lg text-white disabled:opacity-50 disabled:bg-transparent disabled:text-white/30 transition-all"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
