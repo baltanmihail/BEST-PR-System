@@ -5,9 +5,10 @@
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Set, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 import logging
 import re
+import uuid
 from collections import defaultdict
 
 from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus
@@ -158,30 +159,57 @@ class EquipmentSheetsSync:
                 
                 logger.info(f"Processing equipment: {name}, category: {category}, status: {status}")
 
-                # Проверяем, есть ли уже в базе (по названию)
-                result = await db.execute(
-                    select(Equipment).where(Equipment.name == name)
+                # Проверяем, есть ли уже в базе (по названию) используя raw SQL
+                check_result = await db.execute(
+                    text("SELECT id, specs FROM equipment WHERE name = :name"),
+                    {"name": name}
                 )
-                existing = result.scalar_one_or_none()
+                existing = check_result.fetchone()
                 
                 if existing:
-                    # Обновляем статус и номер (если есть поле для номера)
-                    existing.status = status
-                    if number and not existing.specs:
-                        existing.specs = {"number": number}
-                    elif number and existing.specs:
-                        existing.specs["number"] = number
+                    # Обновляем статус используя raw SQL с явным кастом
+                    specs_json = existing[1] or {}
+                    if number:
+                        specs_json["number"] = number
+                    
+                    await db.execute(
+                        text("""
+                            UPDATE equipment 
+                            SET status = :status::equipment_status,
+                                specs = :specs::jsonb,
+                                updated_at = NOW()
+                            WHERE name = :name
+                        """),
+                        {"status": status, "specs": str(specs_json).replace("'", '"') if specs_json else None, "name": name}
+                    )
                     updated_count += 1
                 else:
-                    # Создаём новое
-                    new_equipment = Equipment(
-                        name=name,
-                        category=category,
-                        status=status,
-                        quantity=1,  # По умолчанию 1, можно уточнить из таблицы
-                        specs={"number": number, "photo_url": photo_url} if number or photo_url else None
+                    # Создаём новое используя raw SQL с явными кастами
+                    new_id = str(uuid.uuid4())
+                    specs_json = {"number": number, "photo_url": photo_url} if number or photo_url else None
+                    
+                    await db.execute(
+                        text("""
+                            INSERT INTO equipment (id, name, category, quantity, specs, status, current_holder_id)
+                            VALUES (
+                                :id::uuid,
+                                :name,
+                                :category::equipmentcategory,
+                                :quantity,
+                                :specs::jsonb,
+                                :status::equipment_status,
+                                NULL
+                            )
+                        """),
+                        {
+                            "id": new_id,
+                            "name": name,
+                            "category": category,
+                            "quantity": 1,
+                            "specs": str(specs_json).replace("'", '"') if specs_json else None,
+                            "status": status
+                        }
                     )
-                    db.add(new_equipment)
                     created_count += 1
                 
                 synced_count += 1
