@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings as SettingsIcon, Trash2, AlertTriangle, LogOut, User, Shield, FileText, ArrowLeft, Search, Users, Edit, Save, X, Plus, Camera, Mail, Phone, MessageCircle, Globe, Instagram } from 'lucide-react'
+import { Settings as SettingsIcon, Trash2, AlertTriangle, LogOut, User, Shield, FileText, ArrowLeft, Search, Users, Edit, Save, X, Plus, Camera, Mail, Phone, MessageCircle, Globe, Instagram, MapPin } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
+import { useTour } from '../hooks/useTour'
 import api from '../services/api'
 import { usersApi, type ProfileUpdate } from '../services/users'
 
 export default function Settings() {
   const { theme } = useThemeStore()
   const { user, logout, fetchUser } = useAuthStore()
+  const { resetTour } = useTour()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -545,6 +547,31 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* Настройки интерфейса */}
+      <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6 mb-6`} data-tour="settings-theme">
+        <h2 className={`text-xl font-semibold text-white text-readable ${theme} mb-4`}>
+          Настройки интерфейса
+        </h2>
+        
+        <div className="flex items-center justify-between p-4 bg-white/10 rounded-lg">
+          <div>
+            <h3 className="text-white font-medium">Обучающий гид</h3>
+            <p className="text-white/60 text-sm">Сбросить прогресс обучения, чтобы пройти гид заново</p>
+          </div>
+          <button
+            onClick={() => {
+              if (confirm('Вы уверены, что хотите сбросить прогресс обучения? Гид появится снова на главной странице.')) {
+                resetTour()
+              }
+            }}
+            className="flex items-center space-x-2 px-4 py-2 bg-best-primary/20 text-white rounded-lg hover:bg-best-primary/30 transition-all border border-best-primary/50"
+          >
+            <MapPin className="h-4 w-4" />
+            <span>Сбросить гид</span>
+          </button>
+        </div>
+      </div>
 
       {/* Опасная зона */}
       <div className={`glass-enhanced ${theme} rounded-xl p-6 md:p-8 space-y-6 border-2 border-red-500/50`}>

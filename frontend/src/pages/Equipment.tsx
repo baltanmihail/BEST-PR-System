@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X } from 'lucide-react'
+import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, RefreshCw } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
@@ -88,6 +88,17 @@ export default function Equipment() {
     user.role === UserRole.VP4PR
   )
 
+  const syncMutation = useMutation({
+    mutationFn: () => equipmentApi.syncFromSheets(),
+    onSuccess: (data) => {
+      alert(data.message || 'Синхронизация запущена')
+      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка синхронизации')
+    }
+  })
+
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null)
@@ -173,23 +184,37 @@ export default function Equipment() {
         </div>
         <div className="flex items-center space-x-3">
           {isCoordinator && (
-            <button
-              onClick={() => {
-                setShowCreateForm(true)
-                setShowEditForm(false)
-                setEditingEquipment(null)
-                setEquipmentFormData({
-                  name: '',
-                  category: 'other',
-                  quantity: 1,
-                  specs: {},
-                })
-              }}
-              className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
-            >
-              <Plus className="h-5 w-5" />
-              <span className="hidden md:inline">Добавить оборудование</span>
-            </button>
+            <>
+              <button
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+                className="p-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all disabled:opacity-50"
+                title="Синхронизировать с Google Sheets"
+              >
+                {syncMutation.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-5 w-5" />
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateForm(true)
+                  setShowEditForm(false)
+                  setEditingEquipment(null)
+                  setEquipmentFormData({
+                    name: '',
+                    category: 'other',
+                    quantity: 1,
+                    specs: {},
+                  })
+                }}
+                className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="hidden md:inline">Добавить оборудование</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -379,6 +404,35 @@ export default function Equipment() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Пустое состояние */}
+      {!isLoading && equipmentData?.items?.length === 0 && (
+        <div className={`glass-enhanced ${theme} rounded-xl p-12 text-center`}>
+          <Camera className="h-16 w-16 mx-auto mb-4 text-white/20" />
+          <h3 className="text-xl font-bold text-white mb-2">Оборудование пока не добавлено</h3>
+          <p className="text-white/60 mb-6">
+            В данный момент список оборудования пуст.
+          </p>
+          {isCoordinator && (
+            <button
+              onClick={() => {
+                setShowCreateForm(true)
+                setShowEditForm(false)
+                setEditingEquipment(null)
+                setEquipmentFormData({
+                  name: '',
+                  category: 'other',
+                  quantity: 1,
+                  specs: {},
+                })
+              }}
+              className="px-6 py-3 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all font-semibold"
+            >
+              Добавить первое оборудование
+            </button>
+          )}
         </div>
       )}
       

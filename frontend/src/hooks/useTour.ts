@@ -311,33 +311,11 @@ export function useTour() {
 
     // Небольшая задержка для гарантии, что DOM элементы загружены
     setTimeout(() => {
-      // Проверяем, что все элементы существуют
-      const validSteps = tourSteps.filter(step => {
-        const element = document.querySelector(step.target)
-        const exists = element !== null
-        if (!exists) {
-          console.log('Element not found:', step.target)
-        }
-        return exists
-      })
-
-      console.log('Valid steps:', validSteps.length, 'out of', tourSteps.length)
-
-      if (validSteps.length > 0) {
-        console.log('Setting steps and activating tour')
-        setSteps(validSteps)
-        setIsActive(true)
-      } else {
-        console.warn(`Tour elements not found on page: ${type}`, tourSteps.map(s => s.target))
-        // Все равно запускаем гайд, даже если не все элементы найдены
-        if (tourSteps.length > 0) {
-          console.log('Starting tour with all steps despite missing elements')
-          setSteps(tourSteps)
-          setIsActive(true)
-        } else {
-          console.error('No tour steps available!')
-        }
-      }
+      // В режиме отладки или при ручном запуске всегда показываем шаги, даже если элементы не найдены
+      // (Joyride сам обработает отсутствующие элементы, показав tooltip по центру или пропустив шаг)
+      console.log('Starting tour forced:', type)
+      setSteps(tourSteps)
+      setIsActive(true)
     }, 100)
   }, [location.pathname, getTourTypeFromPath, createHomeTourSteps, createTasksTourSteps, createCalendarTourSteps, createGalleryTourSteps, createEquipmentTourSteps, createSettingsTourSteps, createUsersTourSteps, createSupportTourSteps])
 

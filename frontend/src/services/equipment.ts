@@ -134,4 +134,9 @@ export const equipmentApi = {
     })
     return response.data
   },
+
+  syncFromSheets: async (): Promise<any> => {
+    const response = await api.post('/equipment/sync/from-sheets')
+    return response.data
+  },
 }
