@@ -2,7 +2,7 @@
 Модели оборудования
 """
 from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Enum, CheckConstraint, Integer, TypeDecorator
-from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -32,19 +32,9 @@ class EquipmentCategory(str, enum.Enum):
 
 
 class EquipmentCategoryType(TypeDecorator):
-    """TypeDecorator для правильной конвертации EquipmentCategory в строку"""
-    impl = String
+    """TypeDecorator для сохранения EquipmentCategory как строки в БД"""
+    impl = String(50)
     cache_ok = True
-    
-    def __init__(self):
-        super().__init__(length=50)
-    
-    def load_dialect_impl(self, dialect):
-        """Используем PostgreSQL ENUM для PostgreSQL"""
-        if dialect.name == 'postgresql':
-            return dialect.type_descriptor(PG_ENUM(EquipmentCategory, name='equipmentcategory', create_type=False, values_callable=lambda x: [e.value for e in EquipmentCategory]))
-        else:
-            return dialect.type_descriptor(String(50))
     
     def process_bind_param(self, value, dialect):
         """Конвертируем enum в его значение (строку)"""
@@ -118,7 +108,8 @@ class Equipment(Base):
     category = Column(EquipmentCategoryType(), nullable=False, index=True)  # Категория оборудования
     quantity = Column(Integer, nullable=False, default=1)  # Количество экземпляров (по умолчанию 1)
     specs = Column(JSONB, nullable=True)  # Дополнительные характеристики
-    status = Column(Enum(EquipmentStatus), nullable=False, default=EquipmentStatus.AVAILABLE, index=True)
+    # Используем native_enum=False для совместимости и избежания проблем с типами в Postgres
+    status = Column(Enum(EquipmentStatus, native_enum=False), nullable=False, default=EquipmentStatus.AVAILABLE, index=True)
     current_holder_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
