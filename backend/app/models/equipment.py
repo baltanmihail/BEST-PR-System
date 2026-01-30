@@ -53,7 +53,8 @@ class EquipmentCategoryType(TypeDecorator):
             return None
         if isinstance(value, EquipmentCategory):
             return value.value
-        return str(value) if value else None
+        # Принудительно конвертируем в lowercase для совместимости с Postgres ENUM
+        return str(value).lower() if value else None
     
     def process_result_value(self, value, dialect):
         """Конвертируем строку обратно в enum при чтении из БД"""

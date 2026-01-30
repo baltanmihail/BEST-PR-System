@@ -158,6 +158,8 @@ class EquipmentSheetsSync:
                 # Конвертируем категорию в lowercase для соответствия enum в БД
                 category = category.lower() if category else "other"
                 
+                logger.info(f"Processing equipment: {name}, category: {category}")
+
                 # Проверяем, есть ли уже в базе (по названию)
                 result = await db.execute(
                     select(Equipment).where(Equipment.name == name)
