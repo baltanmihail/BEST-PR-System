@@ -43,7 +43,13 @@ class EquipmentCategoryType(TypeDecorator):
         """Используем PostgreSQL ENUM для PostgreSQL, если он уже существует"""
         if dialect.name == 'postgresql':
             # create_type=False означает, что мы ожидаем, что тип уже создан в БД
-            return dialect.type_descriptor(PG_ENUM(EquipmentCategory, name='equipmentcategory', create_type=False))
+            # values_callable указывает использовать .value (lowercase) вместо .name (UPPERCASE)
+            return dialect.type_descriptor(PG_ENUM(
+                EquipmentCategory, 
+                name='equipmentcategory', 
+                create_type=False,
+                values_callable=lambda x: [e.value for e in x]
+            ))
         else:
             return dialect.type_descriptor(String(50))
     
