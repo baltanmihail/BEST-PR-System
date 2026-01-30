@@ -1,5 +1,4 @@
 import { Home, Calendar, PlusSquare, Image, User } from 'lucide-react'
-import { useNavigate, useLocation } from 'react-router-dom'
 
 interface BottomNavProps {
   onTabChange?: (tab: string) => void
@@ -7,9 +6,6 @@ interface BottomNavProps {
 }
 
 export default function BottomNav({ onTabChange, activeTab = 'home' }: BottomNavProps) {
-  const navigate = useNavigate()
-  // const location = useLocation() // В будущем можно привязать к роутингу
-
   const navItems = [
     { id: 'home', icon: Home, label: 'Главная' },
     { id: 'calendar', icon: Calendar, label: 'Задачи' },
