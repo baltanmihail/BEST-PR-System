@@ -14,6 +14,7 @@ from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestSt
 from app.models.user import User
 from app.config import settings
 from app.services.google_service import GoogleService
+# from app.services.drive_structure import DriveStructureService  # Moved to __init__ to avoid circular imports
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,8 @@ class EquipmentSheetsSync:
     
     def __init__(self, google_service: GoogleService):
         self.google_service = google_service
+        # Импортируем здесь, чтобы избежать циклического импорта
+        from app.services.drive_structure import DriveStructureService
         self.drive_structure = DriveStructureService()
     
     def _get_equipment_sheets_id(self) -> str:
@@ -112,7 +115,7 @@ class EquipmentSheetsSync:
             # Читаем лист "Вся оборудка"
             values = self.google_service.read_sheet(
                 f"{self.EQUIPMENT_SHEET}!A:D",
-                sheet_id=self.EQUIPMENT_SHEETS_ID,
+                sheet_id=self._get_equipment_sheets_id(), # Используем метод для получения ID
                 background=True
             )
             
@@ -227,19 +230,6 @@ class EquipmentSheetsSync:
     ) -> dict:
         """
         Записать заявку на оборудование в лист "Заявки на оборудку"
-        
-        Структура листа:
-        - Номер заявки
-        - Дата запроса
-        - Время обработки (формула)
-        - Кто берёт (https://t.me/username - ФИО)
-        - Что берёт (формула ='Вся оборудка'!CX)
-        - Название мероприятия
-        - Дата выдачи
-        - Дата съёмки
-        - Дата возврата
-        - Комментарий
-        - Статус
         """
         try:
             # Находим номер строки оборудования в листе "Вся оборудка"
@@ -386,7 +376,8 @@ class EquipmentSheetsSync:
                     try:
                         await self._update_calendar(request, equipment, db_session)
                     finally:
-                        break
+                        pass
+                    break
             
             logger.info(f"✅ Статус заявки {request.id} обновлён в Google Sheets: {new_status.value}")
             
@@ -410,7 +401,7 @@ class EquipmentSheetsSync:
             # Читаем лист "Вся оборудка"
             values = self.google_service.read_sheet(
                 f"{self.EQUIPMENT_SHEET}!A:D",
-                sheet_id=self.EQUIPMENT_SHEETS_ID,
+                sheet_id=self._get_equipment_sheets_id(), # Используем метод для получения ID
                 background=True
             )
             
@@ -434,7 +425,7 @@ class EquipmentSheetsSync:
             # Читаем все заявки
             values = self.google_service.read_sheet(
                 f"{self.REQUESTS_SHEET}!A:A",
-                sheet_id=self.EQUIPMENT_SHEETS_ID,
+                sheet_id=self._get_equipment_sheets_id(), # Используем метод для получения ID
                 background=True
             )
             
@@ -484,19 +475,9 @@ class EquipmentSheetsSync:
             }
             status_ru = status_map.get(new_status, "На рассмотрении")
             
-            # Ищем строку с нужной заявкой (по ID из первой колонки или по другим признакам)
-            # Пока используем упрощённый подход: ищем по последним символам UUID
-            request_id_short = str(request_id)[:8]
-            
-            for i, row in enumerate(values[1:], start=2):
-                if len(row) > 0:
-                    # Можно улучшить: хранить полный ID в отдельной колонке или использовать номер заявки
-                    # Пока используем номер заявки как связь
-                    pass
-            
-            # TODO: Реализовать поиск заявки по ID и обновление статуса
-            # Проблема: в таблице нет прямого поля с UUID заявки
-            # Решение: можно добавить колонку с UUID или использовать номер заявки как связь
+            # Ищем строку с нужной заявкой
+            # (реализацию поиска нужно доработать, пока пропускаем)
+            pass
             
         except Exception as e:
             logger.error(f"Ошибка обновления статуса заявки: {e}")
@@ -509,9 +490,6 @@ class EquipmentSheetsSync:
     ):
         """Добавить запись в 'История оборудки'"""
         try:
-            # Структура "История оборудки":
-            # Номер оборудования | Название | Кто брал | Дата выдачи | Дата возврата | Комментарий
-            
             # Находим номер оборудования
             equipment_number = equipment.specs.get("number") if equipment.specs else None
             if not equipment_number:
@@ -525,7 +503,7 @@ class EquipmentSheetsSync:
                     user.full_name or f"{user.first_name} {user.last_name}".strip(),
                     request.start_date.strftime("%d.%m.%Y"),
                     request.end_date.strftime("%d.%m.%Y"),
-                    ""  # Комментарий (можно добавить поле purpose)
+                    ""  # Комментарий
                 ]
             ]
             
@@ -550,8 +528,6 @@ class EquipmentSheetsSync:
     ):
         """
         Обновить календарь занятости оборудования
-        
-        Использует EquipmentCalendarSync для полного обновления календаря с логикой цветов
         """
         try:
             from app.services.equipment_calendar_sync import EquipmentCalendarSync
@@ -568,153 +544,15 @@ class EquipmentSheetsSync:
                     try:
                         await calendar_sync.create_or_update_calendar_sheet(db_session)
                     finally:
-                        break
+                        pass
+                    break
             
             logger.info(f"✅ Календарь занятости обновлён для заявки {request.id}")
             
         except Exception as e:
             logger.error(f"Ошибка обновления календаря: {e}", exc_info=True)
-            # Находим номер оборудования
-            equipment_number = equipment.specs.get("number") if equipment.specs else None
-            if not equipment_number:
-                equipment_row = await self._find_equipment_row(equipment.name)
-                if equipment_row:
-                    # Читаем номер из первой колонки
-                    values = self.google_service.read_sheet(
-                        f"{self.EQUIPMENT_SHEET}!A{equipment_row}:A{equipment_row}",
-                        sheet_id=self.EQUIPMENT_SHEETS_ID,
-                        background=True
-                    )
-                    if values and values[0]:
-                        equipment_number = values[0][0].strip()
-            
-            if not equipment_number:
-                logger.warning(f"Не удалось найти номер оборудования для календаря: {equipment.name}")
-                return
-            
-            # Получаем номер заявки из таблицы (ищем заявку по request.id)
-            # Пока используем упрощённый подход: берём последний номер + 1 и вычитаем 1
-            application_number = await self._get_next_application_number() - 1  # Последний номер
-            
-            # Получаем ID таблицы
-            sheets_id = self._get_equipment_sheets_id()
-            
-            # Читаем календарь
-            calendar_data = self.google_service.read_sheet(
-                f"{self.CALENDAR_SHEET}!A:Z",
-                sheet_id=sheets_id,
-                background=True
-            )
-            
-            if not calendar_data or len(calendar_data) < 5:
-                logger.warning("Календарь занятости пуст или не найден")
-                return
-            
-            # Находим строку с оборудованием
-            equipment_row_idx = None
-            for i, row in enumerate(calendar_data[4:], start=5):  # Начиная с 5-й строки
-                if row and len(row) > 0 and str(row[0]).strip() == str(equipment_number):
-                    equipment_row_idx = i
-                    break
-            
-            # Если строка не найдена, создаём новую
-            if not equipment_row_idx:
-                # Добавляем новую строку
-                new_row = [str(equipment_number)] + [""] * 100  # 100 колонок для дат
-                self.google_service.append_to_sheet(
-                    f"{self.CALENDAR_SHEET}!A:Z",
-                    [new_row],
-                    sheet_id=sheets_id,
-                    background=True
-                )
-                # Читаем снова, чтобы найти новую строку
-                calendar_data = self.google_service.read_sheet(
-                    f"{self.CALENDAR_SHEET}!A:Z",
-                    sheet_id=sheets_id,
-                    background=True
-                )
-                equipment_row_idx = len(calendar_data) if calendar_data else 5
-            
-            # Находим колонки с нужными датами
-            dates_row = calendar_data[1] if len(calendar_data) > 1 else []  # Строка 2 с датами
-            
-            # Парсим даты из строки 2
-            col_to_date = {}
-            current_month = datetime.now().month
-            current_year = datetime.now().year
-            prev_day = 0
-            
-            for col_idx in range(1, len(dates_row)):  # Начиная со столбца B
-                day_str = dates_row[col_idx].strip()
-                if day_str and day_str.isdigit():
-                    try:
-                        day = int(day_str)
-                        # Если день меньше предыдущего, значит начался новый месяц
-                        if day < prev_day:
-                            current_month += 1
-                            if current_month > 12:
-                                current_month = 1
-                                current_year += 1
-                        
-                        try:
-                            cal_date = date(current_year, current_month, day)
-                            col_to_date[col_idx] = cal_date
-                            prev_day = day
-                        except ValueError:
-                            continue
-                    except ValueError:
-                        continue
-            
-            # Находим колонки для дат заявки
-            start_col = None
-            end_col = None
-            
-            for col_idx, cal_date in col_to_date.items():
-                if cal_date == request.start_date:
-                    start_col = col_idx
-                if cal_date == request.end_date:
-                    end_col = col_idx
-            
-            if start_col and end_col:
-                # Записываем номер заявки в ячейки календаря
-                # Используем batch update для экономии запросов
-                requests = []
-                
-                for col_idx in range(start_col, end_col + 1):
-                    requests.append({
-                        "updateCells": {
-                            "range": {
-                                "sheetId": self._get_sheet_id(self.CALENDAR_SHEET),
-                                "startRowIndex": equipment_row_idx - 1,
-                                "endRowIndex": equipment_row_idx,
-                                "startColumnIndex": col_idx,
-                                "endColumnIndex": col_idx + 1
-                            },
-                            "rows": [{
-                                "values": [{
-                                    "userEnteredValue": {
-                                        "stringValue": str(application_number)
-                                    }
-                                }]
-                            }],
-                            "fields": "userEnteredValue"
-                        }
-                    })
-                
-                # Выполняем batch update (разбиваем на батчи по 50)
-                batch_size = 50
-                for i in range(0, len(requests), batch_size):
-                    batch = requests[i:i + batch_size]
-                    self.google_service.batch_update_sheet(
-                        self._get_equipment_sheets_id(),
-                        batch,
-                        background=True
-                    )
-                
-                logger.info(f"✅ Календарь занятости обновлён для оборудования #{equipment_number}, заявка №{application_number}")
-            
-        except Exception as e:
-            logger.error(f"Ошибка обновления календаря: {e}", exc_info=True)
+            # Упрощенная логика (удалена, чтобы не дублировать код)
+            pass
     
     async def get_booked_dates_from_calendar(
         self,
@@ -723,20 +561,13 @@ class EquipmentSheetsSync:
     ) -> Set[date]:
         """
         Получить забронированные даты для оборудования из календаря
-        
-        Args:
-            equipment_number: Номер оборудования
-            use_cache: Использовать кэш
-        
-        Returns:
-            Множество забронированных дат
         """
         try:
             # Читаем календарь
             calendar_data = self.google_service.read_sheet(
                 f"{self.CALENDAR_SHEET}!A:Z",
-                sheet_id=self.EQUIPMENT_SHEETS_ID,
-                background=not use_cache  # Используем фоновый клиент только если не кэш
+                sheet_id=self._get_equipment_sheets_id(), # Используем метод для получения ID
+                background=not use_cache
             )
             
             if not calendar_data or len(calendar_data) < 5:
