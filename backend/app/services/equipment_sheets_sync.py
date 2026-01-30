@@ -10,7 +10,7 @@ import logging
 import re
 from collections import defaultdict
 
-from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus, EquipmentStatus, EquipmentCategory
+from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus
 from app.models.user import User
 from app.config import settings
 from app.services.google_service import GoogleService
@@ -144,23 +144,19 @@ class EquipmentSheetsSync:
                 if not name:
                     continue
                 
-                # Конвертируем статус
+                # Конвертируем статус в lowercase строку
                 status_map = {
-                    "На складе": EquipmentStatus.AVAILABLE,
-                    "Выдано": EquipmentStatus.RENTED,
-                    "В ремонте": EquipmentStatus.MAINTENANCE,
-                    "Сломано": EquipmentStatus.BROKEN
+                    "На складе": "available",
+                    "Выдано": "rented",
+                    "В ремонте": "maintenance",
+                    "Сломано": "broken"
                 }
-                status = status_map.get(status_ru, EquipmentStatus.AVAILABLE)
+                status = status_map.get(status_ru, "available")
                 
-                # Определяем категорию по названию и конвертируем в EquipmentCategory enum
-                category_str = self._detect_category(name).lower()
-                try:
-                    category = EquipmentCategory(category_str)
-                except ValueError:
-                    category = EquipmentCategory.OTHER
+                # Определяем категорию по названию (всегда lowercase строка)
+                category = self._detect_category(name).lower()
                 
-                logger.info(f"Processing equipment: {name}, category: {category.value}")
+                logger.info(f"Processing equipment: {name}, category: {category}, status: {status}")
 
                 # Проверяем, есть ли уже в базе (по названию)
                 result = await db.execute(
