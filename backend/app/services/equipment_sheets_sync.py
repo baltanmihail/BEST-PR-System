@@ -10,7 +10,7 @@ import logging
 import re
 from collections import defaultdict
 
-from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus, EquipmentStatus
+from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus, EquipmentStatus, EquipmentCategory
 from app.models.user import User
 from app.config import settings
 from app.services.google_service import GoogleService
@@ -153,12 +153,14 @@ class EquipmentSheetsSync:
                 }
                 status = status_map.get(status_ru, EquipmentStatus.AVAILABLE)
                 
-                # Определяем категорию по названию (можно улучшить)
-                category = self._detect_category(name)
-                # Конвертируем категорию в lowercase для соответствия enum в БД
-                category = category.lower() if category else "other"
+                # Определяем категорию по названию и конвертируем в EquipmentCategory enum
+                category_str = self._detect_category(name).lower()
+                try:
+                    category = EquipmentCategory(category_str)
+                except ValueError:
+                    category = EquipmentCategory.OTHER
                 
-                logger.info(f"Processing equipment: {name}, category: {category}")
+                logger.info(f"Processing equipment: {name}, category: {category.value}")
 
                 # Проверяем, есть ли уже в базе (по названию)
                 result = await db.execute(
