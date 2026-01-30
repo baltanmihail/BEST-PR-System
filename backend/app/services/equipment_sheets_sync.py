@@ -155,6 +155,8 @@ class EquipmentSheetsSync:
                 
                 # Определяем категорию по названию (можно улучшить)
                 category = self._detect_category(name)
+                # Конвертируем категорию в lowercase для соответствия enum в БД
+                category = category.lower() if category else "other"
                 
                 # Проверяем, есть ли уже в базе (по названию)
                 result = await db.execute(
@@ -218,6 +220,8 @@ class EquipmentSheetsSync:
             return "tripod"
         elif any(word in name_lower for word in ["накопитель", "storage", "ssd", "карта памяти"]):
             return "storage"
+        elif any(word in name_lower for word in ["аксессуар", "accessories", "переходник", "кабель"]):
+            return "accessories"
         else:
             return "other"
     
