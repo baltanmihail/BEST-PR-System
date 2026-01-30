@@ -116,7 +116,7 @@ export default function ChatWidget() {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 active:bg-best-primary/70 transition-all flex items-center justify-center z-50 touch-manipulation`}
+        className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 w-14 h-14 bg-best-primary rounded-full shadow-lg hover:bg-best-primary/80 active:bg-best-primary/70 transition-all flex items-center justify-center z-[10000] touch-manipulation`}
         aria-label="Открыть чат"
         style={{
           // Увеличиваем размер на мобильных для удобства
@@ -141,7 +141,7 @@ export default function ChatWidget() {
       {/* Чат виджет - справа снизу, поверх интерфейса, не влияет на layout */}
       {/* На мобильных занимает почти весь экран, на десктопе - компактный виджет */}
       <div
-        className={`fixed bottom-4 right-4 md:bottom-6 md:right-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-8rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[9999] border border-white/30 transition-all duration-300`}
+        className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 w-[calc(100vw-2rem)] md:w-96 max-w-md h-[calc(100vh-10rem)] md:h-[600px] max-h-[90vh] flex flex-col glass-enhanced ${theme} rounded-2xl shadow-2xl z-[10000] border border-white/30 transition-all duration-300`}
         style={{ 
           pointerEvents: isOpen ? 'auto' : 'none', 
           opacity: isOpen ? 1 : 0,
@@ -149,12 +149,12 @@ export default function ChatWidget() {
           visibility: isOpen ? 'visible' : 'hidden',
           // На мобильных делаем почти на весь экран
           ...(window.innerWidth < 768 ? {
-            bottom: '1rem',
+            bottom: '5rem', // Поднимаем над BottomNav
             right: '1rem',
             left: '1rem',
             width: 'auto',
-            height: 'calc(100vh - 2rem)',
-            maxHeight: 'calc(100vh - 2rem)',
+            height: 'calc(100vh - 6rem)',
+            maxHeight: 'calc(100vh - 6rem)',
           } : {})
         }}
         onClick={(e) => e.stopPropagation()}

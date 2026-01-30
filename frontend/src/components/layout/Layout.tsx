@@ -97,7 +97,9 @@ export default function Layout({ children }: LayoutProps) {
       )}
       
       {/* Чат виджет - доступен на всех страницах */}
-      <ChatWidget />
+      <div className="relative z-[10000]">
+        <ChatWidget />
+      </div>
     </div>
   )
 }

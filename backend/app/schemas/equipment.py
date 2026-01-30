@@ -35,6 +35,9 @@ class EquipmentResponse(EquipmentBase):
     id: UUID
     status: EquipmentStatus
     current_holder_id: Optional[UUID] = None
+    next_available_date: Optional[date] = Field(None, description="Дата, когда оборудование освободится")
+    available_count: Optional[int] = Field(None, description="Количество доступных экземпляров")
+    booked_count: Optional[int] = Field(None, description="Количество забронированных экземпляров")
     created_at: str
     updated_at: str
     

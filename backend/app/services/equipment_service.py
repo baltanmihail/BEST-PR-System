@@ -21,7 +21,7 @@ class EquipmentService:
         category: Optional[str] = None,
         status: Optional[EquipmentStatus] = None
     ) -> tuple[List[Equipment], int]:
-        """Получить список оборудования"""
+        """Получить список оборудования с информацией о доступности"""
         query = select(Equipment)
         count_query = select(func.count(Equipment.id))
         
@@ -40,9 +40,72 @@ class EquipmentService:
         
         query = query.order_by(Equipment.name).offset(skip).limit(limit)
         result = await db.execute(query)
-        equipment = result.scalars().all()
+        equipment_list = list(result.scalars().all())
         
-        return list(equipment), total
+        # Подгружаем информацию о занятости
+        if equipment_list:
+            equipment_ids = [eq.id for eq in equipment_list]
+            today = date.today()
+            
+            # Запрос активных бронирований
+            requests_query = select(EquipmentRequest).where(
+                and_(
+                    EquipmentRequest.equipment_id.in_(equipment_ids),
+                    cast(EquipmentRequest.status, String).in_([
+                        EquipmentRequestStatus.APPROVED.value,
+                        EquipmentRequestStatus.ACTIVE.value
+                    ]),
+                    EquipmentRequest.end_date >= today
+                )
+            ).order_by(EquipmentRequest.end_date)
+            
+            requests_result = await db.execute(requests_query)
+            active_requests = requests_result.scalars().all()
+            
+            # Группируем по оборудованию
+            requests_by_eq = {}
+            for req in active_requests:
+                if req.equipment_id not in requests_by_eq:
+                    requests_by_eq[req.equipment_id] = []
+                requests_by_eq[req.equipment_id].append(req)
+            
+            # Вычисляем доступность для каждого элемента
+            for eq in equipment_list:
+                eq_requests = requests_by_eq.get(eq.id, [])
+                booked_count = 0
+                
+                # Считаем сколько экземпляров занято ПРЯМО СЕЙЧАС (или в будущем пересекаются? 
+                # Для простоты считаем активные заявки, которые перекрывают "сегодня" и будущее.
+                # Но правильно считать пересечения. Если заявка на след. неделю, то сейчас свободно.
+                # Пока упростим: считаем "занятыми" те, что активны сейчас.
+                
+                # Точнее: нас интересует next_available_date если ВСЕ заняты.
+                # Если хоть один свободен сейчас - дата не нужна.
+                
+                # Проверяем занятость на СЕГОДНЯ
+                currently_booked = [
+                    r for r in eq_requests 
+                    if r.start_date <= today <= r.end_date
+                ]
+                booked_count = len(currently_booked)
+                
+                # Динамически добавляем атрибуты к объекту (Pydantic схема их подхватит)
+                setattr(eq, 'booked_count', booked_count)
+                setattr(eq, 'available_count', max(0, eq.quantity - booked_count))
+                
+                if booked_count >= eq.quantity:
+                    # Всё занято. Ищем, когда освободится ближайший слот.
+                    # Сортируем текущие брони по дате окончания
+                    currently_booked.sort(key=lambda r: r.end_date)
+                    # Ближайшая дата освобождения = end_date самой ранней брони + 1 день
+                    # (предполагаем, что следующая бронь не начинается сразу же... это сложно)
+                    # Для MVP берем просто минимальную дату окончания текущих броней
+                    if currently_booked:
+                        setattr(eq, 'next_available_date', currently_booked[0].end_date)
+                else:
+                    setattr(eq, 'next_available_date', None)
+
+        return equipment_list, total
     
     @staticmethod
     async def get_equipment_by_id(
