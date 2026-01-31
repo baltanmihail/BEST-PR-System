@@ -1,8 +1,8 @@
 """
 Модели оборудования
 """
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, CheckConstraint, Integer, TypeDecorator, text
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, CheckConstraint, Integer, TypeDecorator
+from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM as PG_ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
@@ -41,18 +41,89 @@ class EquipmentRequestStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+# PostgreSQL ENUM типы (уже существуют в БД, create_type=False)
+# Важно: values_callable возвращает lowercase значения
+equipment_category_enum = PG_ENUM(
+    'camera', 'lens', 'lighting', 'audio', 'tripod', 'accessories', 'storage', 'other',
+    name='equipmentcategory',
+    create_type=False  # НЕ создавать тип, он уже есть в БД
+)
+
+equipment_status_enum = PG_ENUM(
+    'available', 'rented', 'maintenance', 'broken',
+    name='equipment_status',
+    create_type=False  # НЕ создавать тип, он уже есть в БД
+)
+
+
+class EquipmentCategoryType(TypeDecorator):
+    """
+    TypeDecorator для EquipmentCategory.
+    Использует PostgreSQL ENUM как impl и конвертирует Python enum в lowercase строки.
+    """
+    impl = equipment_category_enum
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """При записи в БД — всегда lowercase строка"""
+        if value is None:
+            return 'other'
+        if isinstance(value, EquipmentCategory):
+            return value.value  # value уже lowercase
+        if isinstance(value, str):
+            return value.lower()
+        return str(value).lower()
+    
+    def process_result_value(self, value, dialect):
+        """При чтении из БД — конвертируем в Python enum"""
+        if value is None:
+            return EquipmentCategory.OTHER
+        try:
+            return EquipmentCategory(value.lower() if isinstance(value, str) else value)
+        except (ValueError, AttributeError):
+            return EquipmentCategory.OTHER
+
+
+class EquipmentStatusType(TypeDecorator):
+    """
+    TypeDecorator для EquipmentStatus.
+    Использует PostgreSQL ENUM как impl и конвертирует Python enum в lowercase строки.
+    """
+    impl = equipment_status_enum
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """При записи в БД — всегда lowercase строка"""
+        if value is None:
+            return 'available'
+        if isinstance(value, EquipmentStatus):
+            return value.value  # value уже lowercase
+        if isinstance(value, str):
+            return value.lower()
+        return str(value).lower()
+    
+    def process_result_value(self, value, dialect):
+        """При чтении из БД — конвертируем в Python enum"""
+        if value is None:
+            return EquipmentStatus.AVAILABLE
+        try:
+            return EquipmentStatus(value.lower() if isinstance(value, str) else value)
+        except (ValueError, AttributeError):
+            return EquipmentStatus.AVAILABLE
+
+
 class Equipment(Base):
     """Оборудование"""
     __tablename__ = "equipment"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False, index=True)
-    # Используем String для category - PostgreSQL сам кастит к equipmentcategory
-    category = Column(String(50), nullable=False, index=True)
+    # Используем TypeDecorator с PG_ENUM для правильной работы с PostgreSQL ENUM типом
+    category = Column(EquipmentCategoryType(), nullable=False, index=True)
     quantity = Column(Integer, nullable=False, default=1)
     specs = Column(JSONB, nullable=True)
-    # Используем String для status - PostgreSQL сам кастит к equipment_status
-    status = Column(String(50), nullable=False, default="available", index=True)
+    # Используем TypeDecorator с PG_ENUM для правильной работы с PostgreSQL ENUM типом
+    status = Column(EquipmentStatusType(), nullable=False, default="available", index=True)
     current_holder_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -5,10 +5,9 @@
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Set, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select
 import logging
 import re
-import uuid
 from collections import defaultdict
 
 from app.models.equipment import EquipmentRequest, Equipment, EquipmentRequestStatus
@@ -107,7 +106,8 @@ class EquipmentSheetsSync:
         """
         Синхронизировать оборудование из Google Sheets в БД
         
-        Читает список оборудования из листа "Вся оборудка" и создаёт/обновляет записи в БД
+        Читает список оборудования из листа "Вся оборудка" и создаёт/обновляет записи в БД.
+        Использует ORM с правильно настроенными TypeDecorators для PostgreSQL ENUM.
         
         Returns:
             Словарь с результатами синхронизации
@@ -116,7 +116,7 @@ class EquipmentSheetsSync:
             # Читаем лист "Вся оборудка"
             values = self.google_service.read_sheet(
                 f"{self.EQUIPMENT_SHEET}!A:D",
-                sheet_id=self._get_equipment_sheets_id(), # Используем метод для получения ID
+                sheet_id=self._get_equipment_sheets_id(),
                 background=True
             )
             
@@ -131,89 +131,73 @@ class EquipmentSheetsSync:
             updated_count = 0
             created_count = 0
             
-            # Обрабатываем строки (пропускаем заголовок)
-            for row in values[1:]:
-                if len(row) < 2:
-                    continue
-                
-                # Колонки: A=Номер, B=Оборудование, C=Фото (URL), D=Статус
-                number = row[0].strip() if len(row) > 0 else ""
-                name = row[1].strip() if len(row) > 1 else ""
-                photo_url = row[2].strip() if len(row) > 2 else ""
-                status_ru = row[3].strip() if len(row) > 3 else "На складе"
-                
-                if not name:
-                    continue
-                
-                # Конвертируем статус в lowercase строку
-                status_map = {
-                    "На складе": "available",
-                    "Выдано": "rented",
-                    "В ремонте": "maintenance",
-                    "Сломано": "broken"
-                }
-                status = status_map.get(status_ru, "available")
-                
-                # Определяем категорию по названию (всегда lowercase строка)
-                category = self._detect_category(name).lower()
-                
-                logger.info(f"Processing equipment: {name}, category: {category}, status: {status}")
-
-                # Проверяем, есть ли уже в базе (по названию) используя raw SQL
-                check_result = await db.execute(
-                    text("SELECT id, specs FROM equipment WHERE name = :name"),
-                    {"name": name}
-                )
-                existing = check_result.fetchone()
-                
-                if existing:
-                    # Обновляем статус используя raw SQL с явным кастом
-                    specs_json = existing[1] or {}
-                    if number:
-                        specs_json["number"] = number
+            # Используем no_autoflush чтобы контролировать когда происходит flush
+            async with db.begin_nested():
+                # Обрабатываем строки (пропускаем заголовок)
+                for row in values[1:]:
+                    if len(row) < 2:
+                        continue
                     
-                    await db.execute(
-                        text("""
-                            UPDATE equipment 
-                            SET status = :status::equipment_status,
-                                specs = :specs::jsonb,
-                                updated_at = NOW()
-                            WHERE name = :name
-                        """),
-                        {"status": status, "specs": str(specs_json).replace("'", '"') if specs_json else None, "name": name}
-                    )
-                    updated_count += 1
-                else:
-                    # Создаём новое используя raw SQL с явными кастами
-                    new_id = str(uuid.uuid4())
-                    specs_json = {"number": number, "photo_url": photo_url} if number or photo_url else None
+                    # Колонки: A=Номер, B=Оборудование, C=Фото (URL), D=Статус
+                    number = row[0].strip() if len(row) > 0 else ""
+                    name = row[1].strip() if len(row) > 1 else ""
+                    photo_url = row[2].strip() if len(row) > 2 else ""
+                    status_ru = row[3].strip() if len(row) > 3 else "На складе"
                     
-                    await db.execute(
-                        text("""
-                            INSERT INTO equipment (id, name, category, quantity, specs, status, current_holder_id)
-                            VALUES (
-                                :id::uuid,
-                                :name,
-                                :category::equipmentcategory,
-                                :quantity,
-                                :specs::jsonb,
-                                :status::equipment_status,
-                                NULL
-                            )
-                        """),
-                        {
-                            "id": new_id,
-                            "name": name,
-                            "category": category,
-                            "quantity": 1,
-                            "specs": str(specs_json).replace("'", '"') if specs_json else None,
-                            "status": status
-                        }
+                    if not name:
+                        continue
+                    
+                    # Конвертируем статус в lowercase строку для PostgreSQL ENUM
+                    status_map = {
+                        "На складе": "available",
+                        "Выдано": "rented",
+                        "В ремонте": "maintenance",
+                        "Сломано": "broken"
+                    }
+                    status = status_map.get(status_ru, "available")
+                    
+                    # Определяем категорию по названию (всегда lowercase строка)
+                    category = self._detect_category(name)
+                    
+                    logger.info(f"Processing equipment: {name}, category: {category}, status: {status}")
+                    
+                    # Проверяем, есть ли уже в базе (по названию)
+                    result = await db.execute(
+                        select(Equipment).where(Equipment.name == name)
                     )
-                    created_count += 1
-                
-                synced_count += 1
+                    existing = result.scalar_one_or_none()
+                    
+                    if existing:
+                        # Обновляем статус и specs
+                        existing.status = status  # TypeDecorator конвертирует в lowercase
+                        specs = existing.specs or {}
+                        if number:
+                            specs["number"] = number
+                        if photo_url:
+                            specs["photo_url"] = photo_url
+                        existing.specs = specs
+                        updated_count += 1
+                    else:
+                        # Создаём новое оборудование через ORM
+                        specs = {}
+                        if number:
+                            specs["number"] = number
+                        if photo_url:
+                            specs["photo_url"] = photo_url
+                        
+                        new_equipment = Equipment(
+                            name=name,
+                            category=category,  # TypeDecorator конвертирует в lowercase
+                            quantity=1,
+                            specs=specs if specs else None,
+                            status=status  # TypeDecorator конвертирует в lowercase
+                        )
+                        db.add(new_equipment)
+                        created_count += 1
+                    
+                    synced_count += 1
             
+            # Commit транзакции
             await db.commit()
             logger.info(f"✅ Синхронизировано оборудования из Google Sheets: создано {created_count}, обновлено {updated_count}, всего {synced_count}")
             
@@ -225,6 +209,7 @@ class EquipmentSheetsSync:
             }
             
         except Exception as e:
+            await db.rollback()
             logger.error(f"❌ Ошибка синхронизации оборудования из Sheets: {e}", exc_info=True)
             return {
                 "status": "error",
