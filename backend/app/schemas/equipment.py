@@ -3,7 +3,7 @@ Pydantic схемы для оборудования
 """
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
-from datetime import date
+from datetime import date, datetime
 from uuid import UUID
 from app.models.equipment import EquipmentStatus, EquipmentRequestStatus, EquipmentCategory
 
@@ -38,8 +38,8 @@ class EquipmentResponse(EquipmentBase):
     next_available_date: Optional[date] = Field(None, description="Дата, когда оборудование освободится")
     available_count: Optional[int] = Field(None, description="Количество доступных экземпляров")
     booked_count: Optional[int] = Field(None, description="Количество забронированных экземпляров")
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True
@@ -79,8 +79,8 @@ class EquipmentRequestResponse(EquipmentRequestBase):
     user_id: UUID
     status: EquipmentRequestStatus
     rejection_reason: Optional[str] = None
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True
