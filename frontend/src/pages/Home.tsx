@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Sparkles, ArrowRight, Target, Trophy, Users, MessageSquare } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { tasksApi } from '../services/tasks'
-import { publicApi } from '../services/public'
+import { publicApi, type PublicStats } from '../services/public'
 import { useAuthStore } from '../store/authStore'
 import { useEffect, useMemo } from 'react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
@@ -123,10 +123,10 @@ export default function Home() {
     enabled: isUnregistered || !!user, // Загружаем для всех
   })
 
-  const { data: publicStats } = useQuery({
+  const { data: publicStats } = useQuery<PublicStats>({
     queryKey: ['public', 'stats'],
     queryFn: () => publicApi.getStats(),
-    enabled: isUnregistered || isCoordinator,
+    enabled: isUnregistered || !!isCoordinator,
   })
 
   // Мемоизируем вычисление активных задач для оптимизации
