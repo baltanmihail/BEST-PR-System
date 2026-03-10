@@ -7,10 +7,12 @@
 import json
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-# OAuth credentials
-# https://console.cloud.google.com/apis/credentials
-CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"
-CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+import os
+
+# OAuth credentials — из Google Cloud Console → APIs & Services → Credentials
+# Set env vars GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET before running
+CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
 
 # Scopes для Google Drive и Sheets
 SCOPES = [
@@ -20,18 +22,23 @@ SCOPES = [
 ]
 
 def main():
+    if not CLIENT_ID or not CLIENT_SECRET:
+        print("ERROR: Set env vars GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET")
+        print("Example (PowerShell):")
+        print('  $env:GOOGLE_OAUTH_CLIENT_ID = "YOUR_ID.apps.googleusercontent.com"')
+        print('  $env:GOOGLE_OAUTH_CLIENT_SECRET = "GOCSPX-..."')
+        return
+
     print("=" * 60)
-    print("🔐 Получение OAuth токена для Google Drive")
+    print("OAuth token for Google Drive")
     print("=" * 60)
     print()
-    print("📋 После запуска откроется браузер.")
-    print("   Войдите аккаунтом: mikhail.baltyan@bmstu-best.ru")
-    print("   (или другим, который хотите использовать)")
+    print("Browser will open for authorization.")
     print()
-    print("⚠️  Если появится предупреждение 'Google hasn't verified this app',")
-    print("   нажмите 'Advanced' → 'Go to BEST PR System OAuth (unsafe)'")
+    print("If you see 'Google hasn't verified this app',")
+    print("click 'Advanced' -> 'Go to ... (unsafe)'")
     print()
-    input("Нажмите Enter для продолжения...")
+    input("Press Enter to continue...")
     
     # Создаём client config
     client_config = {
@@ -52,10 +59,10 @@ def main():
     
     print()
     print("=" * 60)
-    print("✅ АВТОРИЗАЦИЯ УСПЕШНА!")
+    print("SUCCESS!")
     print("=" * 60)
     print()
-    print("📋 Добавь эти переменные в Railway:")
+    print("Add these env vars to Railway:")
     print()
     print(f"GOOGLE_OAUTH_CLIENT_ID={CLIENT_ID}")
     print()
@@ -76,8 +83,8 @@ def main():
     with open("oauth_token.json", "w") as f:
         json.dump(token_data, f, indent=2)
     
-    print("💾 Токен также сохранён в файл: oauth_token.json")
-    print("   (Удали этот файл после копирования в Railway!)")
+    print("Token saved to: oauth_token.json")
+    print("DELETE this file after copying values to Railway!")
     print()
 
 if __name__ == "__main__":

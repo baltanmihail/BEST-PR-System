@@ -206,6 +206,8 @@ class EquipmentSheetsSync:
                 logger.info(f"Photo matched for '{equipment_name}': {best_match['name']}")
                 return photo_url
             
+            all_names = [f['name'] for f in files]
+            logger.warning(f"No photo match for '{equipment_name}'. Available: {all_names}")
             return None
         except Exception as e:
             logger.error(f"Error finding photo for '{equipment_name}': {e}")
@@ -272,6 +274,9 @@ class EquipmentSheetsSync:
         Sheets — источник истины: оборудование, которого нет в Sheets, удаляется из БД.
         """
         try:
+            # Сбрасываем кэш фото, чтобы подхватить новые файлы с Drive
+            self._photo_cache.clear()
+
             values = self.google_service.read_sheet(
                 f"{self.EQUIPMENT_SHEET}!A:D",
                 sheet_id=self._get_equipment_sheets_id(),
