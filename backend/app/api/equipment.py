@@ -438,8 +438,8 @@ async def upload_request_attachment(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    """Upload a file attachment for an equipment request. Returns the file URL."""
-    import os, uuid as _uuid
+    """Upload a file attachment to Google Drive. Returns the Drive link."""
+    import os
     ALLOWED_EXT = {".pdf", ".doc", ".docx", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".zip"}
     MAX_SIZE = 20 * 1024 * 1024
 
@@ -451,21 +451,36 @@ async def upload_request_attachment(
     if len(content) > MAX_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 20MB)")
 
-    upload_dir = os.path.join(os.getcwd(), "uploads", "equipment")
-    os.makedirs(upload_dir, exist_ok=True)
+    mime_type = file.content_type or "application/octet-stream"
 
-    unique_name = f"{_uuid.uuid4().hex[:12]}_{file.filename}"
-    filepath = os.path.join(upload_dir, unique_name)
-    with open(filepath, "wb") as f:
-        f.write(content)
-
-    url = f"/api/v1/equipment/uploads/{unique_name}"
-    return {"url": url, "filename": file.filename, "size": len(content)}
+    try:
+        from app.services.google_service import GoogleService
+        google_service = GoogleService()
+        file_id = google_service.upload_file(
+            file_content=content,
+            filename=file.filename or "attachment",
+            mime_type=mime_type,
+            background=True,
+        )
+        url = f"https://drive.google.com/file/d/{file_id}/view"
+        logger.info(f"File '{file.filename}' uploaded to Drive: {file_id}")
+        return {"url": url, "filename": file.filename, "size": len(content)}
+    except Exception as e:
+        logger.warning(f"Drive upload failed, falling back to local: {e}")
+        import uuid as _uuid
+        upload_dir = os.path.join(os.getcwd(), "uploads", "equipment")
+        os.makedirs(upload_dir, exist_ok=True)
+        unique_name = f"{_uuid.uuid4().hex[:12]}_{file.filename}"
+        filepath = os.path.join(upload_dir, unique_name)
+        with open(filepath, "wb") as f_out:
+            f_out.write(content)
+        url = f"/api/v1/equipment/uploads/{unique_name}"
+        return {"url": url, "filename": file.filename, "size": len(content)}
 
 
 @router.get("/uploads/{filename}")
 async def serve_upload(filename: str):
-    """Serve an uploaded file."""
+    """Serve a locally uploaded file (fallback)."""
     import os
     from fastapi.responses import FileResponse
     filepath = os.path.join(os.getcwd(), "uploads", "equipment", filename)
@@ -540,6 +555,28 @@ async def sync_equipment_from_sheets(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при синхронизации оборудования из Google Sheets: {str(e)}"
         )
+
+
+@router.post("/sync/bidirectional")
+async def sync_bidirectional(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Запустить двустороннюю синхронизацию заявок Sheets <-> БД.
+    Создаёт в БД заявки, которые есть в Sheets, но отсутствуют в системе.
+    """
+    try:
+        from app.services.google_service import GoogleService
+        from app.services.equipment_sync_bidirectional import EquipmentBidirectionalSync
+
+        google_service = GoogleService()
+        sync_service = EquipmentBidirectionalSync(google_service)
+        result = await sync_service.sync_from_sheets(db)
+        logger.info(f"Bidirectional sync result: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Bidirectional sync endpoint error: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
 
 
 @router.post("/calendar/sync")

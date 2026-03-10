@@ -161,12 +161,25 @@ async def run_equipment_sync_scheduler():
                     data = response.json()
                     synced = data.get("synced", 0)
                     if synced > 0:
-                        logger.info(f"📦 Equipment sync: {synced} items synced")
+                        logger.info(f"Equipment sync: {synced} items synced")
                 else:
-                    logger.warning(f"⚠️ Equipment sync failed: {response.status_code}")
+                    logger.warning(f"Equipment sync failed: {response.status_code}")
+
+            # Also run bidirectional sync to pick up requests from Sheets
+            bidir_url = f"http://127.0.0.1:{port}{settings.API_V1_PREFIX}/equipment/sync/bidirectional"
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(bidir_url)
+                if resp.status_code == 200:
+                    bidir_data = resp.json()
+                    created = bidir_data.get("created", 0)
+                    updated = bidir_data.get("updated", 0)
+                    if created or updated:
+                        logger.info(f"Bidirectional sync: created={created}, updated={updated}")
+                else:
+                    logger.warning(f"Bidirectional sync failed: {resp.status_code}")
         except Exception as e:
-            logger.error(f"❌ Equipment sync error: {e}")
-        
+            logger.error(f"Equipment sync error: {e}")
+
         await asyncio.sleep(interval)
 
 
