@@ -245,6 +245,27 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"⚠️ Не удалось запустить инициализацию системных шаблонов: {e}")
     
+    # Запускаем bidirectional sync при старте (подгрузить заявки из Sheets)
+    try:
+        import asyncio as _asyncio
+        async def startup_bidirectional_sync():
+            await _asyncio.sleep(20)
+            logger.info("[STARTUP] Running bidirectional sync...")
+            try:
+                from app.database import AsyncSessionLocal as _ASL
+                from app.services.google_service import GoogleService as _GS
+                from app.services.equipment_sync_bidirectional import EquipmentBidirectionalSync as _EBS
+                async with _ASL() as db:
+                    gs = _GS()
+                    sync = _EBS(gs)
+                    result = await sync.sync_from_sheets(db)
+                    logger.info(f"[STARTUP] Bidirectional sync result: {result}")
+            except Exception as e:
+                logger.error(f"[STARTUP] Bidirectional sync error: {e}", exc_info=True)
+        _asyncio.create_task(startup_bidirectional_sync())
+    except Exception as e:
+        logger.warning(f"Startup bidirectional sync init failed: {e}")
+
     # Запускаем фоновые задачи для оборудования
     try:
         import asyncio

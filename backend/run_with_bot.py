@@ -137,24 +137,25 @@ BIDIRECTIONAL_SYNC_QUOTA_ERROR = 600   # 10 мин при превышении �
 async def run_equipment_sync_scheduler():
     """
     Периодическая синхронизация оборудования Sheets → PostgreSQL.
-    Если в Sheets добавляется новое оборудование — оно подгружается на сайт.
-    Работает и в production, и в development (в dev — реже).
+    Включает:
+    1. Синхронизацию списка оборудования (Sheets → БД)
+    2. Двустороннюю синхронизацию заявок (Sheets ↔ БД)
     """
     await wait_for_api()
-    await asyncio.sleep(15)  # После reminders
-    
+    await asyncio.sleep(15)
+
     environment = os.getenv("ENVIRONMENT", "development")
-    interval = SYNC_EQUIPMENT_INTERVAL_INITIAL if environment == "production" else 120  # dev: 2 мин
-    logger.info(f"📦 Equipment sync scheduler: interval={interval}s")
-    
+    interval = SYNC_EQUIPMENT_INTERVAL_INITIAL if environment == "production" else 120
+    logger.info(f"Equipment sync scheduler: interval={interval}s")
+
     while True:
         try:
             import httpx
             from app.config import settings
-            
+
             port = int(os.getenv("PORT", 8080))
             url = f"http://127.0.0.1:{port}{settings.API_V1_PREFIX}/equipment/sync/cron"
-            
+
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(url)
                 if response.status_code == 200:
@@ -164,119 +165,75 @@ async def run_equipment_sync_scheduler():
                         logger.info(f"Equipment sync: {synced} items synced")
                 else:
                     logger.warning(f"Equipment sync failed: {response.status_code}")
-
-            # Also run bidirectional sync to pick up requests from Sheets
-            bidir_url = f"http://127.0.0.1:{port}{settings.API_V1_PREFIX}/equipment/sync/bidirectional"
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(bidir_url)
-                if resp.status_code == 200:
-                    bidir_data = resp.json()
-                    created = bidir_data.get("created", 0)
-                    updated = bidir_data.get("updated", 0)
-                    if created or updated:
-                        logger.info(f"Bidirectional sync: created={created}, updated={updated}")
-                else:
-                    logger.warning(f"Bidirectional sync failed: {resp.status_code}")
         except Exception as e:
             logger.error(f"Equipment sync error: {e}")
+
+        # Bidirectional sync: call directly, not via HTTP
+        await _run_bidirectional_sync_direct()
 
         await asyncio.sleep(interval)
 
 
+async def _run_bidirectional_sync_direct():
+    """Run bidirectional sync directly (not via HTTP) for reliability."""
+    try:
+        from app.database import AsyncSessionLocal
+        from app.services.google_service import GoogleService
+        from app.services.equipment_sync_bidirectional import EquipmentBidirectionalSync
+
+        async with AsyncSessionLocal() as db:
+            google_service = GoogleService()
+            sync_service = EquipmentBidirectionalSync(google_service)
+            result = await sync_service.sync_from_sheets(db)
+
+            logger.info(f"[BIDIR] Result: {result}")
+
+            status_changes = result.get("status_changes", [])
+            created = result.get("created", 0)
+            updated = result.get("updated", 0)
+
+            if status_changes:
+                logger.info(f"[BIDIR] {len(status_changes)} status change(s)")
+                try:
+                    from app.services.equipment_notifications import EquipmentNotifications
+                    notifications = EquipmentNotifications()
+                    await notifications.send_status_change_notifications(
+                        db=db, status_changes=status_changes
+                    )
+                except Exception as e:
+                    logger.warning(f"[BIDIR] Notifications failed: {e}")
+
+            if created or updated:
+                try:
+                    from app.services.equipment_calendar_sync import EquipmentCalendarSync
+                    calendar_sync = EquipmentCalendarSync(google_service)
+                    await calendar_sync.create_or_update_calendar_sheet(db)
+                    logger.info("[BIDIR] Calendar updated")
+                except Exception as e:
+                    logger.warning(f"[BIDIR] Calendar update failed: {e}")
+
+    except Exception as e:
+        logger.error(f"[BIDIR] Direct sync error: {e}", exc_info=True)
+
+
 async def run_bidirectional_sync_scheduler():
     """
-    Периодическая двусторонняя синхронизация заявок Sheets <-> PostgreSQL.
-    Аналог periodic_sync() из BEST Channel Bot:
-    1. Читает статусы заявок из Google Sheets
-    2. Сравнивает с БД и обновляет при расхождении
-    3. Отправляет уведомления пользователям об изменении статуса
-    4. Обновляет календарь занятости и статусы оборудования
+    Дополнительный шедулер bidirectional sync (backup).
+    Основной sync теперь встроен в run_equipment_sync_scheduler.
     """
     environment = os.getenv("ENVIRONMENT", "development")
     if environment != "production":
-        logger.info("Bidirectional sync scheduler не запускается вне production")
+        logger.info("Bidirectional sync scheduler skipped (not production)")
         return
 
     await wait_for_api()
     await asyncio.sleep(BIDIRECTIONAL_SYNC_INITIAL_DELAY)
 
     interval = BIDIRECTIONAL_SYNC_INTERVAL
-    logger.info(f"Bidirectional sync scheduler: interval={interval}s")
+    logger.info(f"Bidirectional sync backup scheduler: interval={interval}s")
 
     while True:
-        try:
-            from app.database import AsyncSessionLocal
-            from app.services.google_service import GoogleService
-            from app.services.equipment_sync_bidirectional import EquipmentBidirectionalSync
-            from app.services.equipment_notifications import EquipmentNotifications
-
-            async with AsyncSessionLocal() as db:
-                google_service = GoogleService()
-                sync_service = EquipmentBidirectionalSync(google_service)
-
-                result = await sync_service.sync_from_sheets(db)
-
-                status_changes = result.get("status_changes", [])
-                if status_changes:
-                    logger.info(
-                        f"Bidirectional sync: {len(status_changes)} status change(s), sending notifications"
-                    )
-                    notifications = EquipmentNotifications()
-                    await notifications.send_status_change_notifications(
-                        db=db, status_changes=status_changes
-                    )
-                    try:
-                        from app.services.notification_service import NotificationService
-                        from app.models.notification import NotificationType
-                        status_labels = {
-                            "approved": "одобрена", "rejected": "отклонена",
-                            "active": "выдано", "completed": "возвращено",
-                        }
-                        for change in status_changes:
-                            user_id = change.get("user_id")
-                            new_status = change.get("new_status", "")
-                            eq_name = change.get("equipment_name", "оборудование")
-                            if user_id:
-                                ntype = NotificationType.EQUIPMENT_APPROVED if new_status == "approved" else NotificationType.SYSTEM
-                                label = status_labels.get(new_status, new_status)
-                                await NotificationService.create_notification(
-                                    db=db,
-                                    user_id=user_id,
-                                    notification_type=ntype,
-                                    title=f"Статус заявки изменён",
-                                    message=f"Заявка на \"{eq_name}\" — {label}",
-                                    data={"request_id": str(change.get("request_id", ""))},
-                                )
-                    except Exception as e:
-                        logger.warning(f"In-app notification for bidirectional sync failed: {e}")
-
-                updated = result.get("updated", 0)
-                if updated > 0:
-                    try:
-                        from app.services.equipment_calendar_sync import EquipmentCalendarSync
-                        calendar_sync = EquipmentCalendarSync(google_service)
-                        await calendar_sync.create_or_update_calendar_sheet(db)
-                        logger.info("Bidirectional sync: calendar updated")
-                    except Exception as e:
-                        logger.warning(f"Calendar update failed: {e}")
-
-                    try:
-                        from app.services.equipment_status_sync import EquipmentStatusSync
-                        status_sync = EquipmentStatusSync(google_service)
-                        await status_sync.update_equipment_statuses_by_date(db)
-                        logger.info("Bidirectional sync: equipment statuses updated")
-                    except Exception as e:
-                        logger.warning(f"Equipment status update failed: {e}")
-
-                if result.get("status") == "error" and "429" in str(result.get("error", "")):
-                    interval = BIDIRECTIONAL_SYNC_QUOTA_ERROR
-                    logger.warning(f"Quota exceeded, next sync in {interval}s")
-                else:
-                    interval = BIDIRECTIONAL_SYNC_INTERVAL
-
-        except Exception as e:
-            logger.error(f"Bidirectional sync error: {e}")
-
+        await _run_bidirectional_sync_direct()
         await asyncio.sleep(interval)
 
 
