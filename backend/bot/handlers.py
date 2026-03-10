@@ -1632,6 +1632,7 @@ async def callback_register_accept(callback: CallbackQuery, state: FSMContext):
         
         register_response = await call_api("POST", "/registration/register", data={
             "telegram_auth": auth_data,
+            "full_name": full_name,
             "personal_data_consent": {
                 "consent": True,
                 "consent_date": datetime.now(timezone.utc).isoformat()

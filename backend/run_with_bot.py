@@ -212,6 +212,30 @@ async def run_bidirectional_sync_scheduler():
                     await notifications.send_status_change_notifications(
                         db=db, status_changes=status_changes
                     )
+                    try:
+                        from app.services.notification_service import NotificationService
+                        from app.models.notification import NotificationType
+                        status_labels = {
+                            "approved": "одобрена", "rejected": "отклонена",
+                            "active": "выдано", "completed": "возвращено",
+                        }
+                        for change in status_changes:
+                            user_id = change.get("user_id")
+                            new_status = change.get("new_status", "")
+                            eq_name = change.get("equipment_name", "оборудование")
+                            if user_id:
+                                ntype = NotificationType.EQUIPMENT_APPROVED if new_status == "approved" else NotificationType.SYSTEM
+                                label = status_labels.get(new_status, new_status)
+                                await NotificationService.create_notification(
+                                    db=db,
+                                    user_id=user_id,
+                                    notification_type=ntype,
+                                    title=f"Статус заявки изменён",
+                                    message=f"Заявка на \"{eq_name}\" — {label}",
+                                    data={"request_id": str(change.get("request_id", ""))},
+                                )
+                    except Exception as e:
+                        logger.warning(f"In-app notification for bidirectional sync failed: {e}")
 
                 updated = result.get("updated", 0)
                 if updated > 0:

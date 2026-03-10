@@ -171,23 +171,6 @@ async def approve_application(
         import logging
         logging.error(f"Failed to send notification: {e}")
     
-    # Приглашаем пользователя в общий чат PR-отдела
-    try:
-        from sqlalchemy import select as _sel
-        from app.models.user import User as _User
-        _u = await db.execute(_sel(_User).where(_User.id == application.user_id))
-        approved_user = _u.scalar_one_or_none()
-        if approved_user and approved_user.telegram_id and settings.TELEGRAM_GENERAL_CHAT_ID:
-            from app.utils.telegram_sender import invite_user_to_chat
-            chat_id = int(settings.TELEGRAM_GENERAL_CHAT_ID)
-            await invite_user_to_chat(
-                user_telegram_id=int(approved_user.telegram_id),
-                chat_id=chat_id,
-            )
-    except Exception as e:
-        import logging
-        logging.error(f"Failed to invite user to chat: {e}")
-    
     return {
         "id": str(application.id),
         "status": application.status.value,

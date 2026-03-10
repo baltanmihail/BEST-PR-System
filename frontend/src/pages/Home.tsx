@@ -126,7 +126,7 @@ export default function Home() {
   const { data: publicStats } = useQuery({
     queryKey: ['public', 'stats'],
     queryFn: () => publicApi.getStats(),
-    enabled: isUnregistered,
+    enabled: isUnregistered || isCoordinator,
   })
 
   // Мемоизируем вычисление активных задач для оптимизации

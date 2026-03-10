@@ -1,26 +1,29 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw, HardDrive, Headphones, Lightbulb, Box } from 'lucide-react'
+import { Camera, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw, HardDrive, Headphones, Lightbulb, Box, ShoppingCart, Minus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
+import { equipmentApi, type Equipment, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
 import { UserRole } from '../types/user'
+import EquipmentCalendar from '../components/EquipmentCalendar'
+
+interface CartItem {
+  equipment: Equipment
+  start_date: string
+  end_date: string
+}
 
 export default function EquipmentPage() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null)
-  const [showRequestForm, setShowRequestForm] = useState(false)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
-  const [requestData, setRequestData] = useState<EquipmentRequest>({
-    equipment_id: '',
-    start_date: '',
-    end_date: '',
-    purpose: '',
-  })
+
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [showCartModal, setShowCartModal] = useState(false)
+  const [cartPurpose, setCartPurpose] = useState('')
 
   const isRegistered = user && user.is_active
 
@@ -38,7 +41,6 @@ export default function EquipmentPage() {
     enabled: !!isRegistered,
   })
 
-  // Синхронизация с Google Sheets (для админов)
   const syncMutation = useMutation({
     mutationFn: () => equipmentApi.syncFromSheets(),
     onSuccess: (data: any) => {
@@ -50,48 +52,67 @@ export default function EquipmentPage() {
     }
   })
 
-  const createRequestMutation = useMutation({
-    mutationFn: (data: EquipmentRequest) => equipmentApi.createRequest(data),
+  const batchMutation = useMutation({
+    mutationFn: (data: { items: { equipment_id: string; start_date: string; end_date: string }[]; purpose?: string }) =>
+      equipmentApi.createBatchRequests(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
       queryClient.invalidateQueries({ queryKey: ['equipment', 'requests'] })
-      setShowRequestForm(false)
-      setSelectedEquipment(null)
-      setRequestData({
-        equipment_id: '',
-        start_date: '',
-        end_date: '',
-        purpose: '',
-      })
+      setCart([])
+      setShowCartModal(false)
+      setCartPurpose('')
     },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка оформления заявки')
+    }
   })
 
-  const handleRequestClick = (equipment: Equipment) => {
+  const addToCart = (equipment: Equipment) => {
     if (!isRegistered) {
       alert('Для аренды оборудования необходимо зарегистрироваться')
       navigate('/register')
       return
     }
-    setSelectedEquipment(equipment)
-    setRequestData({
-      ...requestData,
-      equipment_id: equipment.id,
-    })
-    setShowRequestForm(true)
+    if (cart.find(c => c.equipment.id === equipment.id)) return
+    setCart(prev => [...prev, { equipment, start_date: '', end_date: '' }])
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!requestData.start_date || !requestData.end_date) {
-      alert('Укажите даты аренды')
-      return
-    }
-    if (new Date(requestData.end_date) < new Date(requestData.start_date)) {
-      alert('Дата возврата должна быть позже даты выдачи')
-      return
-    }
-    createRequestMutation.mutate(requestData)
+  const removeFromCart = (equipmentId: string) => {
+    setCart(prev => prev.filter(c => c.equipment.id !== equipmentId))
   }
+
+  const updateCartItem = (equipmentId: string, field: 'start_date' | 'end_date', value: string) => {
+    setCart(prev => prev.map(c =>
+      c.equipment.id === equipmentId ? { ...c, [field]: value } : c
+    ))
+  }
+
+  const setAllDates = (field: 'start_date' | 'end_date', value: string) => {
+    setCart(prev => prev.map(c => ({ ...c, [field]: value })))
+  }
+
+  const handleCartSubmit = () => {
+    const incomplete = cart.find(c => !c.start_date || !c.end_date)
+    if (incomplete) {
+      alert('Укажите даты для всех позиций')
+      return
+    }
+    const invalid = cart.find(c => new Date(c.end_date) < new Date(c.start_date))
+    if (invalid) {
+      alert(`Дата возврата раньше даты выдачи для: ${invalid.equipment.name}`)
+      return
+    }
+    batchMutation.mutate({
+      items: cart.map(c => ({
+        equipment_id: c.equipment.id,
+        start_date: c.start_date,
+        end_date: c.end_date,
+      })),
+      purpose: cartPurpose || undefined,
+    })
+  }
+
+  const isInCart = (equipmentId: string) => cart.some(c => c.equipment.id === equipmentId)
 
   const isCoordinator = user && (
     user.role === UserRole.COORDINATOR_SMM ||
@@ -309,112 +330,111 @@ export default function EquipmentPage() {
         </div>
       )}
 
-      {/* Модальное окно заявки */}
-      {showRequestForm && selectedEquipment && (
+      {/* Модальное окно корзины */}
+      {showCartModal && cart.length > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div 
-            className={`glass-enhanced ${theme} rounded-xl p-6 w-full max-w-md border-2 border-best-primary/50 shadow-2xl relative animate-in zoom-in-95 duration-200`} 
-            data-tour="equipment-request"
-          >
+          <div className={`glass-enhanced ${theme} rounded-xl p-6 w-full max-w-lg border-2 border-best-primary/50 shadow-2xl relative animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto`}>
             <button
-              onClick={() => {
-                setShowRequestForm(false)
-                setSelectedEquipment(null)
-              }}
+              onClick={() => setShowCartModal(false)}
               className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
 
-            {/* Фото оборудования в модалке */}
-            {getPhotoUrl(selectedEquipment.specs?.photo_url) && (
-              <div className="w-full h-32 rounded-xl overflow-hidden bg-white/5 mb-4">
-                <img 
-                  src={getPhotoUrl(selectedEquipment.specs?.photo_url)} 
-                  alt={selectedEquipment.name}
-                  className="w-full h-full object-contain"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              </div>
-            )}
-            
-            <h2 className={`text-xl font-bold text-white mb-1 text-readable ${theme}`}>
-              Забронировать
-            </h2>
-            <p className="text-white/60 text-sm mb-4">{selectedEquipment.name}</p>
-            
-            {selectedEquipment.quantity > 1 && (
-              <p className="text-white/50 text-xs mb-4">
-                Доступно: {selectedEquipment.quantity} шт.
-              </p>
-            )}
+            <div className="flex items-center space-x-2 mb-4">
+              <ShoppingCart className="h-5 w-5 text-best-primary" />
+              <h2 className={`text-xl font-bold text-white text-readable ${theme}`}>
+                Оформление заявки ({cart.length} поз.)
+              </h2>
+            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Общие даты */}
+            <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/10">
+              <p className="text-white/60 text-xs uppercase tracking-wider mb-2 font-medium">Общие даты (для всех позиций)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                    Дата выдачи
-                  </label>
+                  <label className="block text-white/70 text-xs mb-1">Дата выдачи</label>
                   <input
                     type="date"
-                    value={requestData.start_date}
-                    onChange={(e) =>
-                      setRequestData({ ...requestData, start_date: e.target.value })
-                    }
                     min={new Date().toISOString().split('T')[0]}
-                    required
-                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                    onChange={(e) => setAllDates('start_date', e.target.value)}
+                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-sm text-readable ${theme}`}
                   />
                 </div>
                 <div>
-                  <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                    Дата возврата
-                  </label>
+                  <label className="block text-white/70 text-xs mb-1">Дата возврата</label>
                   <input
                     type="date"
-                    value={requestData.end_date}
-                    onChange={(e) =>
-                      setRequestData({ ...requestData, end_date: e.target.value })
-                    }
-                    min={requestData.start_date || new Date().toISOString().split('T')[0]}
-                    required
-                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                    min={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setAllDates('end_date', e.target.value)}
+                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-sm text-readable ${theme}`}
                   />
                 </div>
               </div>
-              <div>
-                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                  Название съёмки / цель
-                </label>
-                <input
-                  type="text"
-                  value={requestData.purpose}
-                  onChange={(e) =>
-                    setRequestData({ ...requestData, purpose: e.target.value })
-                  }
-                  placeholder="Например: Съёмка для LBE, фотосет для ВК..."
-                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
-                />
-              </div>
-              
-              <button
-                type="submit"
-                disabled={createRequestMutation.isPending}
-                className={`w-full bg-best-primary text-white py-3 px-4 rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-best-primary/20`}
-              >
-                {createRequestMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Отправка...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Отправить заявку</span>
-                  </>
-                )}
-              </button>
-            </form>
+            </div>
+
+            {/* Позиции */}
+            <div className="space-y-3 mb-4">
+              {cart.map((item) => (
+                <div key={item.equipment.id} className="p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-2 flex-1 min-w-0">
+                      {getPhotoUrl(item.equipment.specs?.photo_url) && (
+                        <img src={getPhotoUrl(item.equipment.specs?.photo_url)} alt="" className="h-8 w-8 rounded object-contain bg-white/10" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                      )}
+                      <span className={`text-white text-sm font-medium truncate text-readable ${theme}`}>{item.equipment.name}</span>
+                    </div>
+                    <button onClick={() => removeFromCart(item.equipment.id)} className="text-red-400 hover:text-red-300 ml-2 flex-shrink-0">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={item.start_date}
+                      min={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => updateCartItem(item.equipment.id, 'start_date', e.target.value)}
+                      required
+                      className={`bg-white/10 text-white rounded px-2 py-1.5 border border-white/20 text-xs focus:outline-none focus:ring-1 focus:ring-best-primary text-readable ${theme}`}
+                    />
+                    <input
+                      type="date"
+                      value={item.end_date}
+                      min={item.start_date || new Date().toISOString().split('T')[0]}
+                      onChange={(e) => updateCartItem(item.equipment.id, 'end_date', e.target.value)}
+                      required
+                      className={`bg-white/10 text-white rounded px-2 py-1.5 border border-white/20 text-xs focus:outline-none focus:ring-1 focus:ring-best-primary text-readable ${theme}`}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Цель */}
+            <div className="mb-4">
+              <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                Название съёмки / цель
+              </label>
+              <input
+                type="text"
+                value={cartPurpose}
+                onChange={(e) => setCartPurpose(e.target.value)}
+                placeholder="Например: Съёмка для LBE, фотосет для ВК..."
+                className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+              />
+            </div>
+
+            <button
+              onClick={handleCartSubmit}
+              disabled={batchMutation.isPending}
+              className="w-full bg-best-primary text-white py-3 px-4 rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-best-primary/20"
+            >
+              {batchMutation.isPending ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /><span>Отправка...</span></>
+              ) : (
+                <><CheckCircle2 className="h-4 w-4" /><span>Отправить заявку ({cart.length} поз.)</span></>
+              )}
+            </button>
           </div>
         </div>
       )}
@@ -519,13 +539,23 @@ export default function EquipmentPage() {
                     )}
 
                     {isRegistered && equipment.status === 'available' ? (
-                      <button
-                        onClick={() => handleRequestClick(equipment)}
-                        className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 active:scale-95 transition-all text-sm font-semibold shadow-lg shadow-best-primary/20 flex items-center space-x-2"
-                      >
-                        <Plus className="h-4 w-4" />
-                        <span>В корзину</span>
-                      </button>
+                      isInCart(equipment.id) ? (
+                        <button
+                          onClick={() => removeFromCart(equipment.id)}
+                          className="px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 active:scale-95 transition-all text-sm font-semibold border border-red-500/30 flex items-center space-x-2"
+                        >
+                          <Minus className="h-4 w-4" />
+                          <span>Убрать</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => addToCart(equipment)}
+                          className="px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 active:scale-95 transition-all text-sm font-semibold shadow-lg shadow-best-primary/20 flex items-center space-x-2"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>В корзину</span>
+                        </button>
+                      )
                     ) : (
                       <button
                         disabled
@@ -582,6 +612,11 @@ export default function EquipmentPage() {
         </div>
       )}
       
+      {/* Календарь занятости */}
+      {isRegistered && equipmentData?.items && equipmentData.items.length > 0 && (
+        <EquipmentCalendar equipmentList={equipmentData.items} />
+      )}
+
       {/* Мои заявки */}
       {isRegistered && Array.isArray(myRequests) && myRequests.length > 0 && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mt-6`}>
@@ -732,6 +767,44 @@ export default function EquipmentPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+      {/* Плавающая панель корзины */}
+      {cart.length > 0 && !showCartModal && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 p-4">
+          <div className={`max-w-lg mx-auto glass-enhanced ${theme} rounded-xl p-4 border-2 border-best-primary/50 shadow-2xl flex items-center justify-between`}>
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <ShoppingCart className="h-6 w-6 text-best-primary" />
+                <span className="absolute -top-2 -right-2 bg-best-primary text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                  {cart.length}
+                </span>
+              </div>
+              <div>
+                <p className={`text-white font-semibold text-sm text-readable ${theme}`}>
+                  {cart.length} {cart.length === 1 ? 'позиция' : cart.length < 5 ? 'позиции' : 'позиций'}
+                </p>
+                <p className="text-white/50 text-xs truncate max-w-[200px]">
+                  {cart.map(c => c.equipment.name.split(' ')[0]).join(', ')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setCart([])}
+                className="p-2 text-white/50 hover:text-red-400 transition-colors"
+                title="Очистить корзину"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setShowCartModal(true)}
+                className="px-5 py-2.5 bg-best-primary text-white rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all shadow-lg shadow-best-primary/30 text-sm"
+              >
+                Оформить
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

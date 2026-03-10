@@ -63,6 +63,27 @@ export interface EquipmentUpdate {
   status?: EquipmentStatus
 }
 
+export interface TimelineDayRequest {
+  request_id: string
+  equipment_name: string
+  equipment_id: string
+  user_name: string
+  status: EquipmentRequestStatus
+  is_overdue: boolean
+}
+
+export interface TimelineDay {
+  date: string
+  requests: TimelineDayRequest[]
+}
+
+export interface TimelineResponse {
+  month: number
+  year: number
+  timeline: TimelineDay[]
+  total_requests: number
+}
+
 export const equipmentApi = {
   getEquipment: async (params?: {
     skip?: number
@@ -108,6 +129,14 @@ export const equipmentApi = {
     return response.data
   },
 
+  createBatchRequests: async (data: {
+    items: { equipment_id: string; start_date: string; end_date: string }[]
+    purpose?: string
+  }): Promise<EquipmentRequestResponse[]> => {
+    const response = await api.post<EquipmentRequestResponse[]>('/equipment/requests/batch', data)
+    return response.data
+  },
+
   // CRUD для координаторов
   createEquipment: async (data: EquipmentCreate): Promise<Equipment> => {
     const response = await api.post<Equipment>('/equipment', data)
@@ -131,6 +160,13 @@ export const equipmentApi = {
   rejectRequest: async (requestId: string, reason: string): Promise<EquipmentRequestResponse> => {
     const response = await api.post<EquipmentRequestResponse>(`/equipment/requests/${requestId}/reject`, null, {
       params: { reason }
+    })
+    return response.data
+  },
+
+  getTimeline: async (month: number, year: number): Promise<TimelineResponse> => {
+    const response = await api.get<TimelineResponse>('/equipment/timeline', {
+      params: { month, year }
     })
     return response.data
   },

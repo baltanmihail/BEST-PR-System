@@ -1,7 +1,7 @@
 """
 API endpoints для оборудования
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from uuid import UUID
@@ -12,13 +12,74 @@ from app.models.user import User
 from app.models.equipment import Equipment, EquipmentStatus, EquipmentRequestStatus, EquipmentRequest
 from app.schemas.equipment import (
     EquipmentResponse, EquipmentCreate, EquipmentUpdate,
-    EquipmentRequestResponse, EquipmentRequestCreate, EquipmentRequestUpdate
+    EquipmentRequestResponse, EquipmentRequestCreate, EquipmentRequestUpdate,
+    EquipmentRequestBatchCreate
 )
 from app.services.equipment_service import EquipmentService
 from app.utils.permissions import get_current_user, require_coordinator, get_current_user_allow_inactive
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+async def _notify_coordinators_new_request(user_name: str, equipment_name: str, request_id: str):
+    """Notify all coordinators about a new equipment request (in-app)."""
+    try:
+        from app.database import AsyncSessionLocal
+        from app.models.user import User as _User, UserRole as _UR
+        from app.services.notification_service import NotificationService
+        from app.models.notification import NotificationType
+        from sqlalchemy import select, or_
+
+        async with AsyncSessionLocal() as db:
+            coord_roles = [_UR.COORDINATOR_SMM, _UR.COORDINATOR_DESIGN,
+                           _UR.COORDINATOR_CHANNEL, _UR.COORDINATOR_PRFR, _UR.VP4PR]
+            result = await db.execute(
+                select(_User).where(
+                    or_(*[_User.role == r for r in coord_roles]),
+                    _User.is_active == True,
+                )
+            )
+            coordinators = result.scalars().all()
+            for coord in coordinators:
+                await NotificationService.create_notification(
+                    db=db,
+                    user_id=coord.id,
+                    notification_type=NotificationType.EQUIPMENT_REQUEST,
+                    title="Новая заявка на оборудование",
+                    message=f"{user_name} запросил(а) \"{equipment_name}\"",
+                    data={"request_id": request_id},
+                )
+    except Exception as e:
+        logger.warning(f"Failed to notify coordinators: {e}")
+
+
+async def _trigger_sheets_sync_background():
+    """Background task: update Sheets calendar & equipment statuses after request change."""
+    try:
+        from app.database import AsyncSessionLocal as async_session_factory
+        from app.services.google_service import GoogleService
+        google_service = GoogleService()
+
+        async with async_session_factory() as db:
+            try:
+                from app.services.equipment_calendar_sync import EquipmentCalendarSync
+                cal_sync = EquipmentCalendarSync(google_service)
+                await cal_sync.sync_calendar(db)
+            except Exception as e:
+                logger.warning(f"Calendar sync failed: {e}")
+
+            try:
+                from app.services.equipment_status_sync import EquipmentStatusSync
+                status_sync = EquipmentStatusSync(google_service)
+                await status_sync.sync_statuses(db)
+            except Exception as e:
+                logger.warning(f"Status sync failed: {e}")
+
+        
+
+    except Exception as e:
+        logger.error(f"Background sheets sync error: {e}")
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
 
@@ -156,6 +217,7 @@ async def get_all_requests(
 @router.post("/requests", response_model=EquipmentRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_equipment_request(
     request_data: EquipmentRequestCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -180,12 +242,60 @@ async def create_equipment_request(
             task_id=request_data.task_id,
             purpose=request_data.purpose
         )
-        return await _enrich_request_response(db, request)
+        background_tasks.add_task(_trigger_sheets_sync_background)
+        enriched = await _enrich_request_response(db, request)
+        background_tasks.add_task(
+            _notify_coordinators_new_request, current_user.full_name or "Пользователь",
+            enriched.equipment_name or "оборудование", str(request.id)
+        )
+        return enriched
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/requests/batch", response_model=list[EquipmentRequestResponse], status_code=status.HTTP_201_CREATED)
+async def create_equipment_requests_batch(
+    batch: EquipmentRequestBatchCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Создать несколько заявок из корзины одним запросом"""
+    results = []
+    errors = []
+
+    for item in batch.items:
+        if item.end_date < item.start_date:
+            errors.append(f"equipment {item.equipment_id}: end_date < start_date")
+            continue
+        try:
+            req = await EquipmentService.create_equipment_request(
+                db=db,
+                equipment_id=item.equipment_id,
+                user_id=current_user.id,
+                start_date=item.start_date,
+                end_date=item.end_date,
+                purpose=batch.purpose,
+            )
+            results.append(await _enrich_request_response(db, req))
+        except ValueError as e:
+            errors.append(f"equipment {item.equipment_id}: {e}")
+
+    if not results and errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors))
+
+    if results:
+        background_tasks.add_task(_trigger_sheets_sync_background)
+        eq_names = ", ".join(r.equipment_name or "?" for r in results)
+        background_tasks.add_task(
+            _notify_coordinators_new_request, current_user.full_name or "Пользователь",
+            eq_names, str(results[0].id)
+        )
+
+    return results
 
 
 @router.patch("/requests/{request_id}", response_model=EquipmentRequestResponse)
@@ -237,6 +347,7 @@ async def update_equipment_request(
 @router.post("/requests/{request_id}/approve", response_model=EquipmentRequestResponse)
 async def approve_equipment_request(
     request_id: UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_coordinator())
 ):
@@ -252,7 +363,22 @@ async def approve_equipment_request(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Request not found"
             )
-        return await _enrich_request_response(db, request)
+        background_tasks.add_task(_trigger_sheets_sync_background)
+        enriched = await _enrich_request_response(db, request)
+        try:
+            from app.services.notification_service import NotificationService
+            from app.models.notification import NotificationType
+            await NotificationService.create_notification(
+                db=db,
+                user_id=request.user_id,
+                notification_type=NotificationType.EQUIPMENT_APPROVED,
+                title="Заявка одобрена",
+                message=f"Ваша заявка на \"{enriched.equipment_name or 'оборудование'}\" одобрена.",
+                data={"request_id": str(request.id)},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create in-app notification: {e}")
+        return enriched
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -264,6 +390,7 @@ async def approve_equipment_request(
 async def reject_equipment_request(
     request_id: UUID,
     reason: str = Query(..., description="Причина отклонения"),
+    background_tasks: BackgroundTasks = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_coordinator())
 ):
@@ -279,7 +406,23 @@ async def reject_equipment_request(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Request not found"
             )
-        return await _enrich_request_response(db, request)
+        if background_tasks:
+            background_tasks.add_task(_trigger_sheets_sync_background)
+        enriched = await _enrich_request_response(db, request)
+        try:
+            from app.services.notification_service import NotificationService
+            from app.models.notification import NotificationType
+            await NotificationService.create_notification(
+                db=db,
+                user_id=request.user_id,
+                notification_type=NotificationType.EQUIPMENT_REJECTED,
+                title="Заявка отклонена",
+                message=f"Ваша заявка на \"{enriched.equipment_name or 'оборудование'}\" отклонена. Причина: {reason}",
+                data={"request_id": str(request.id), "reason": reason},
+            )
+        except Exception as e:
+            logger.warning(f"Failed to create in-app notification: {e}")
+        return enriched
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

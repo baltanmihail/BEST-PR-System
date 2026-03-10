@@ -67,6 +67,19 @@ class EquipmentRequestCreate(EquipmentRequestBase):
     pass
 
 
+class EquipmentRequestBatchItem(BaseModel):
+    """Одна позиция в batch-заявке (корзина)"""
+    equipment_id: UUID
+    start_date: date
+    end_date: date
+
+
+class EquipmentRequestBatchCreate(BaseModel):
+    """Batch-заявка из корзины: несколько позиций с общим purpose"""
+    items: list[EquipmentRequestBatchItem] = Field(..., min_length=1, max_length=20)
+    purpose: Optional[str] = Field(None, description="Общая цель / название мероприятия")
+
+
 class EquipmentRequestUpdate(BaseModel):
     """Схема для обновления заявки"""
     start_date: Optional[date] = None
