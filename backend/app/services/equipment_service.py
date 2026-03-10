@@ -8,6 +8,7 @@ from uuid import UUID
 from datetime import date
 
 from app.models.equipment import Equipment, EquipmentRequest, EquipmentStatus, EquipmentRequestStatus, EquipmentCategory
+from app.models.user import User
 
 
 class EquipmentService:
@@ -184,10 +185,10 @@ class EquipmentService:
         user_id: UUID,
         start_date: date,
         end_date: date,
-        task_id: Optional[UUID] = None
+        task_id: Optional[UUID] = None,
+        purpose: Optional[str] = None
     ) -> EquipmentRequest:
         """Создать заявку на оборудование"""
-        # Проверяем доступность оборудования
         available = await EquipmentService.get_available_equipment(
             db, start_date, end_date
         )
@@ -202,7 +203,8 @@ class EquipmentService:
             task_id=task_id,
             start_date=start_date,
             end_date=end_date,
-            status=EquipmentRequestStatus.PENDING.value  # .value для PostgreSQL ENUM
+            purpose=purpose,
+            status=EquipmentRequestStatus.PENDING.value
         )
         
         db.add(request)
@@ -213,32 +215,64 @@ class EquipmentService:
         try:
             from app.services.google_service import GoogleService
             from app.services.equipment_sheets_sync import EquipmentSheetsSync
-            from app.models.user import User
+            from app.database import AsyncSessionLocal
             
-            # Загружаем пользователя и оборудование
+            # Загружаем пользователя и оборудование (до закрытия сессии)
             user_result = await db.execute(select(User).where(User.id == user_id))
             user = user_result.scalar_one()
             
             equipment_result = await db.execute(select(Equipment).where(Equipment.id == equipment_id))
             equipment = equipment_result.scalar_one()
             
-            # Синхронизируем в фоне
+            # Копируем данные для фоновой задачи (сессия будет закрыта)
+            req_id = request.id
+            eq_id = equipment.id
+            usr_id = user.id
+            
             async def sync_request():
                 try:
-                    google_service = GoogleService()
-                    sync_service = EquipmentSheetsSync(google_service)
-                    await sync_service.log_equipment_request(db, request, equipment, user)
+                    async with AsyncSessionLocal() as session:
+                        from app.models.user import User
+                        user_res = await session.execute(select(User).where(User.id == usr_id))
+                        usr = user_res.scalar_one()
+                        eq_res = await session.execute(select(Equipment).where(Equipment.id == eq_id))
+                        eq = eq_res.scalar_one()
+                        req_res = await session.execute(select(EquipmentRequest).where(EquipmentRequest.id == req_id))
+                        req = req_res.scalar_one()
+                        
+                        google_service = GoogleService()
+                        sync_service = EquipmentSheetsSync(google_service)
+                        log_result = await sync_service.log_equipment_request(session, req, eq, usr)
+                        
+                        # Уведомление VP4PR и Channel координатору (из BEST Channel Bot)
+                        if log_result.get("status") == "success":
+                            app_number = log_result.get("application_number", 0)
+                            shooting_name = ""
+                            if req.task_id:
+                                from app.models.task import Task
+                                t = await session.execute(select(Task).where(Task.id == req.task_id))
+                                task = t.scalar_one_or_none()
+                                if task:
+                                    shooting_name = task.title or ""
+                            from app.services.equipment_notifications import EquipmentNotifications
+                            notif = EquipmentNotifications()
+                            await notif.send_new_application_notification(
+                                db=session,
+                                request=req,
+                                equipment=eq,
+                                user=usr,
+                                application_number=app_number,
+                                shooting_name=shooting_name
+                            )
                 except Exception as e:
                     import logging
-                    logger = logging.getLogger(__name__)
-                    logger.warning(f"Не удалось синхронизировать заявку с Sheets: {e}")
+                    logging.getLogger(__name__).warning(f"Не удалось синхронизировать заявку с Sheets: {e}")
             
             import asyncio
             asyncio.create_task(sync_request())
         except Exception as e:
             import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Ошибка запуска синхронизации заявки: {e}")
+            logging.getLogger(__name__).warning(f"Ошибка запуска синхронизации заявки: {e}")
         
         return request
     
@@ -345,10 +379,16 @@ class EquipmentService:
                 
                 # Синхронизируем статус с Sheets
                 await sync_service.update_request_status(
-                    db, request, old_status, EquipmentRequestStatus.APPROVED, equipment, user
+                    request, equipment, user, EquipmentRequestStatus.APPROVED
                 )
                 
-                # Отправляем уведомление об одобрении
+                # Обновляем дайджест (убираем заявку из списка)
+                from app.database import AsyncSessionLocal
+                from app.services.equipment_digest_service import EquipmentDigestService
+                async with AsyncSessionLocal() as notify_db:
+                    await EquipmentDigestService.update_digest_for_coordinators(notify_db, None)
+                
+                # Отправляем уведомление об одобрении пользователю
                 notifications = EquipmentNotifications()
                 await notifications.send_status_change_notifications(
                     db=db,
@@ -416,7 +456,13 @@ class EquipmentService:
                     request, equipment, user, EquipmentRequestStatus.REJECTED
                 )
                 
-                # Отправляем уведомление об отклонении
+                # Обновляем дайджест (убираем заявку из списка)
+                from app.database import AsyncSessionLocal
+                from app.services.equipment_digest_service import EquipmentDigestService
+                async with AsyncSessionLocal() as notify_db:
+                    await EquipmentDigestService.update_digest_for_coordinators(notify_db, None)
+                
+                # Отправляем уведомление об отклонении пользователю
                 notifications = EquipmentNotifications()
                 await notifications.send_status_change_notifications(
                     db=db,
@@ -449,7 +495,7 @@ class EquipmentService:
         specs: Optional[dict] = None,
         status: EquipmentStatus = EquipmentStatus.AVAILABLE
     ) -> Equipment:
-        """Создать новое оборудование"""
+        """Создать новое оборудование (в БД и в Google Sheets)"""
         if quantity < 1:
             raise ValueError("Quantity must be at least 1")
         
@@ -464,6 +510,26 @@ class EquipmentService:
         db.add(equipment)
         await db.commit()
         await db.refresh(equipment)
+        
+        # Синхронизируем в Google Sheets (в фоне)
+        try:
+            from app.services.google_service import GoogleService
+            from app.services.equipment_sheets_sync import EquipmentSheetsSync
+            google_service = GoogleService()
+            sync_service = EquipmentSheetsSync(google_service)
+            
+            async def append_to_sheets():
+                try:
+                    await sync_service.append_equipment_to_sheets(equipment)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Не удалось добавить оборудование в Sheets: {e}")
+            
+            import asyncio
+            asyncio.create_task(append_to_sheets())
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Ошибка запуска синхронизации оборудования в Sheets: {e}")
         
         return equipment
     

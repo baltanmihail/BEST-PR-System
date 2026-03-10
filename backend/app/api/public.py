@@ -193,6 +193,26 @@ async def get_public_task(
     }
 
 
+@router.get("/user-by-telegram/{telegram_id}", response_model=dict)
+async def get_user_by_telegram(
+    telegram_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """Проверить регистрацию и роль по telegram_id (для бота)."""
+    result = await db.execute(
+        select(User).where(
+            User.telegram_id == telegram_id,
+            User.is_active == True,
+            User.deleted_at.is_(None)
+        )
+    )
+    u = result.scalar_one_or_none()
+    if not u:
+        return {"registered": False, "role": None}
+    role_val = u.role.value if hasattr(u.role, "value") else str(u.role)
+    return {"registered": True, "role": role_val}
+
+
 @router.get("/leaderboard", response_model=List[dict])
 async def get_public_leaderboard(
     limit: int = Query(10, ge=1, le=50, description="Количество участников"),

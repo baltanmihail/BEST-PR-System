@@ -4,13 +4,12 @@ API endpoints для оборудования
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
-from datetime import timedelta
 from uuid import UUID
 from datetime import date, timedelta
 
 from app.database import get_db
 from app.models.user import User
-from app.models.equipment import EquipmentStatus, EquipmentRequestStatus
+from app.models.equipment import Equipment, EquipmentStatus, EquipmentRequestStatus, EquipmentRequest
 from app.schemas.equipment import (
     EquipmentResponse, EquipmentCreate, EquipmentUpdate,
     EquipmentRequestResponse, EquipmentRequestCreate, EquipmentRequestUpdate
@@ -22,6 +21,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
+
+
+async def _enrich_request_response(
+    db: AsyncSession,
+    req: EquipmentRequest,
+) -> EquipmentRequestResponse:
+    """Обогащает ответ заявки названием оборудования и именем пользователя"""
+    from sqlalchemy import select as sa_select
+    
+    resp = EquipmentRequestResponse.model_validate(req)
+    
+    # Подгружаем название оборудования
+    eq_result = await db.execute(sa_select(Equipment.name).where(Equipment.id == req.equipment_id))
+    eq_name = eq_result.scalar_one_or_none()
+    if eq_name:
+        resp.equipment_name = eq_name
+    
+    # Подгружаем имя пользователя
+    user_result = await db.execute(sa_select(User.full_name).where(User.id == req.user_id))
+    user_name = user_result.scalar_one_or_none()
+    if user_name:
+        resp.user_name = user_name
+    
+    return resp
 
 
 @router.get("", response_model=dict)
@@ -52,28 +75,6 @@ async def get_equipment(
         "skip": skip,
         "limit": limit
     }
-
-
-@router.get("/{equipment_id}", response_model=EquipmentResponse)
-async def get_equipment_by_id(
-    equipment_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Получить оборудование по ID
-    
-    Доступно всем авторизованным пользователям
-    """
-    equipment = await EquipmentService.get_equipment_by_id(db, equipment_id)
-    
-    if not equipment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Equipment not found"
-        )
-    
-    return EquipmentResponse.model_validate(equipment)
 
 
 @router.get("/available", response_model=List[EquipmentResponse])
@@ -119,7 +120,7 @@ async def get_my_requests(
     Доступно всем авторизованным пользователям (включая неактивных)
     """
     requests = await EquipmentService.get_user_requests(db, current_user.id)
-    return [EquipmentRequestResponse.model_validate(req) for req in requests]
+    return [await _enrich_request_response(db, req) for req in requests]
 
 
 @router.get("/requests/all", response_model=dict)
@@ -145,7 +146,7 @@ async def get_all_requests(
     )
     
     return {
-        "items": [EquipmentRequestResponse.model_validate(req) for req in requests],
+        "items": [await _enrich_request_response(db, req) for req in requests],
         "total": total,
         "skip": skip,
         "limit": limit
@@ -176,9 +177,10 @@ async def create_equipment_request(
             user_id=current_user.id,
             start_date=request_data.start_date,
             end_date=request_data.end_date,
-            task_id=request_data.task_id
+            task_id=request_data.task_id,
+            purpose=request_data.purpose
         )
-        return EquipmentRequestResponse.model_validate(request)
+        return await _enrich_request_response(db, request)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -229,7 +231,7 @@ async def update_equipment_request(
     await db.commit()
     await db.refresh(request)
     
-    return EquipmentRequestResponse.model_validate(request)
+    return await _enrich_request_response(db, request)
 
 
 @router.post("/requests/{request_id}/approve", response_model=EquipmentRequestResponse)
@@ -250,7 +252,7 @@ async def approve_equipment_request(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Request not found"
             )
-        return EquipmentRequestResponse.model_validate(request)
+        return await _enrich_request_response(db, request)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -277,12 +279,34 @@ async def reject_equipment_request(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Request not found"
             )
-        return EquipmentRequestResponse.model_validate(request)
+        return await _enrich_request_response(db, request)
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/sync/cron")
+async def sync_equipment_cron(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Внутренний endpoint для периодической синхронизации Sheets → PostgreSQL.
+    Вызывается планировщиком (без auth). Sheets — источник истины.
+    """
+    try:
+        from app.services.google_service import GoogleService
+        from app.services.equipment_sheets_sync import EquipmentSheetsSync
+        
+        google_service = GoogleService()
+        sync_service = EquipmentSheetsSync(google_service)
+        result = await sync_service.sync_equipment_from_sheets(db)
+        logger.info(f"✅ [Cron] Синхронизация оборудования: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"❌ [Cron] Ошибка синхронизации: {e}", exc_info=True)
+        return {"status": "error", "error": str(e), "synced": 0}
 
 
 @router.post("/sync/from-sheets")
@@ -501,13 +525,11 @@ async def get_equipment_timeline(
         first_day = date(year, month, 1)
         last_day = date(year, month, cal_lib.monthrange(year, month)[1])
         
-        # Получаем все заявки на оборудование в диапазоне дат
+        # Получаем заявки, пересекающиеся с выбранным месяцем
         requests_query = select(EquipmentRequest).where(
             and_(
-                or_(
-                    EquipmentRequest.start_date <= last_day,
-                    EquipmentRequest.end_date >= first_day
-                )
+                EquipmentRequest.start_date <= last_day,
+                EquipmentRequest.end_date >= first_day
             )
         )
         
@@ -544,13 +566,14 @@ async def get_equipment_timeline(
             day_requests = []
             for req in requests:
                 if req.start_date <= current_date <= req.end_date:
+                    req_status = req.status if isinstance(req.status, EquipmentRequestStatus) else EquipmentRequestStatus(req.status)
                     day_requests.append({
                         "request_id": str(req.id),
                         "equipment_name": req.equipment.name if req.equipment else "Неизвестно",
                         "equipment_id": str(req.equipment_id),
                         "user_name": req.user.full_name if req.user else "Неизвестно",
-                        "status": req.status.value,
-                        "is_overdue": req.end_date < date.today() and req.status not in [EquipmentRequestStatus.COMPLETED.value, EquipmentRequestStatus.CANCELLED.value]
+                        "status": req_status.value,
+                        "is_overdue": req.end_date < date.today() and req_status not in [EquipmentRequestStatus.COMPLETED, EquipmentRequestStatus.CANCELLED]
                     })
             
             timeline_data.append({
@@ -573,6 +596,24 @@ async def get_equipment_timeline(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении таймлайна занятости: {str(e)}"
         )
+
+
+@router.get("/{equipment_id}", response_model=EquipmentResponse)
+async def get_equipment_by_id(
+    equipment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получить оборудование по ID"""
+    equipment = await EquipmentService.get_equipment_by_id(db, equipment_id)
+    
+    if not equipment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Equipment not found"
+        )
+    
+    return EquipmentResponse.model_validate(equipment)
 
 
 @router.get("/{equipment_id}/booked-dates")

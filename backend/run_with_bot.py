@@ -123,6 +123,48 @@ async def run_reminders_scheduler():
         await asyncio.sleep(120)
 
 
+# Интервалы синхронизации оборудования (из BEST Channel Bot config.py)
+SYNC_EQUIPMENT_INTERVAL_ACTIVE = 120   # 2 мин при активности
+SYNC_EQUIPMENT_INTERVAL_IDLE = 300     # 5 мин без активности
+SYNC_EQUIPMENT_INTERVAL_INITIAL = 60   # 1 мин первый запуск
+
+
+async def run_equipment_sync_scheduler():
+    """
+    Периодическая синхронизация оборудования Sheets → PostgreSQL.
+    Если в Sheets добавляется новое оборудование — оно подгружается на сайт.
+    Работает и в production, и в development (в dev — реже).
+    """
+    await wait_for_api()
+    await asyncio.sleep(15)  # После reminders
+    
+    environment = os.getenv("ENVIRONMENT", "development")
+    interval = SYNC_EQUIPMENT_INTERVAL_INITIAL if environment == "production" else 120  # dev: 2 мин
+    logger.info(f"📦 Equipment sync scheduler: interval={interval}s")
+    
+    while True:
+        try:
+            import httpx
+            from app.config import settings
+            
+            port = int(os.getenv("PORT", 8080))
+            url = f"http://127.0.0.1:{port}{settings.API_V1_PREFIX}/equipment/sync/cron"
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url)
+                if response.status_code == 200:
+                    data = response.json()
+                    synced = data.get("synced", 0)
+                    if synced > 0:
+                        logger.info(f"📦 Equipment sync: {synced} items synced")
+                else:
+                    logger.warning(f"⚠️ Equipment sync failed: {response.status_code}")
+        except Exception as e:
+            logger.error(f"❌ Equipment sync error: {e}")
+        
+        await asyncio.sleep(interval)
+
+
 async def run_bot():
     """Запуск Telegram бота"""
     # Запускаем бота только в production, чтобы избежать конфликтов
@@ -139,6 +181,7 @@ async def run_bot():
         # Используем прямое создание бота и диспетчера
         from aiogram import Bot, Dispatcher
         from aiogram.enums import ParseMode
+        from aiogram.fsm.storage.memory import MemoryStorage
         from app.config import settings
         from bot.handlers import router
         
@@ -187,8 +230,12 @@ async def run_bot():
         except Exception as e:
             logger.warning(f"⚠️ Не удалось установить команды бота: {e}")
         
-        dp = Dispatcher()
+        # Используем MemoryStorage для FSM
+        storage = MemoryStorage()
+        dp = Dispatcher(storage=storage)
         dp.include_router(router)
+        
+        logger.info("✅ FSM Storage инициализирован (MemoryStorage)")
         
         # Запускаем polling с очисткой обновлений
         await dp.start_polling(bot, skip_updates=True, allowed_updates=["message", "callback_query"])
@@ -230,11 +277,15 @@ async def main():
     # Запускаем планировщик напоминаний
     reminders_task = asyncio.create_task(run_reminders_scheduler())
     
+    # Запускаем периодическую синхронизацию оборудования Sheets → PostgreSQL
+    equipment_sync_task = asyncio.create_task(run_equipment_sync_scheduler())
+    
     # Ждём завершения всех задач
     await asyncio.gather(
         api_task,
         bot_task,
         reminders_task,
+        equipment_sync_task,
         return_exceptions=True
     )
 

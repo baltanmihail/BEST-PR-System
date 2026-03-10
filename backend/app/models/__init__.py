@@ -5,6 +5,8 @@ from app.models.user import User
 from app.models.task import Task, TaskStage, TaskAssignment
 from app.models.task_question import TaskQuestion
 from app.models.equipment import Equipment, EquipmentRequest
+from app.models.equipment_admin_notification import EquipmentAdminNotification
+from app.models.equipment_admin_digest import EquipmentAdminDigest
 from app.models.event import Event
 from app.models.gamification import PointsLog, Achievement
 from app.models.file import File
@@ -26,6 +28,8 @@ __all__ = [
     "TaskQuestion",
     "Equipment",
     "EquipmentRequest",
+    "EquipmentAdminNotification",
+    "EquipmentAdminDigest",
     "Event",
     "PointsLog",
     "Achievement",

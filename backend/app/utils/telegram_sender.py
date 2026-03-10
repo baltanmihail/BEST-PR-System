@@ -38,7 +38,60 @@ async def get_bot():
     return _bot_instance
 
 
-async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "HTML", silent_fail: bool = False) -> bool:
+async def edit_telegram_message(
+    chat_id: int,
+    message_id: int,
+    text: str,
+    parse_mode: str = "HTML",
+    reply_markup=None,
+    silent_fail: bool = False
+) -> bool:
+    """Редактировать сообщение в Telegram"""
+    try:
+        bot = await get_bot()
+        if not bot:
+            if not silent_fail:
+                logger.warning("Bot instance not available, cannot edit message")
+            return False
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup
+        )
+        if not silent_fail:
+            logger.debug(f"Message {message_id} edited for chat {chat_id}")
+        return True
+    except Exception as e:
+        if not silent_fail:
+            logger.error(f"Failed to edit Telegram message {message_id} in chat {chat_id}: {e}")
+        return False
+
+
+async def delete_telegram_message(chat_id: int, message_id: int, silent_fail: bool = False) -> bool:
+    """Удалить сообщение в Telegram"""
+    try:
+        bot = await get_bot()
+        if not bot:
+            return False
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+        if not silent_fail:
+            logger.debug(f"Message {message_id} deleted in chat {chat_id}")
+        return True
+    except Exception as e:
+        if not silent_fail:
+            logger.debug(f"Could not delete message {message_id}: {e}")
+        return False
+
+
+async def send_telegram_message(
+    chat_id: int,
+    message: str,
+    parse_mode: str = "HTML",
+    silent_fail: bool = False,
+    return_message_id: bool = False
+):
     """
     Отправить сообщение в Telegram
     
@@ -47,25 +100,28 @@ async def send_telegram_message(chat_id: int, message: str, parse_mode: str = "H
         message: Текст сообщения
         parse_mode: Режим парсинга (HTML или Markdown)
         silent_fail: Если True, не логирует ошибку (для тестовых сообщений)
+        return_message_id: Если True, возвращает (success, message_id), иначе bool
     
     Returns:
-        True если сообщение отправлено успешно, False в противном случае
+        bool или (bool, int): success и опционально message_id
     """
     try:
         bot = await get_bot()
         if not bot:
             if not silent_fail:
                 logger.warning("Bot instance not available, cannot send message")
-            return False
+            return (False, None) if return_message_id else False
         
-        await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
+        sent = await bot.send_message(chat_id=chat_id, text=message, parse_mode=parse_mode)
         if not silent_fail:
             logger.info(f"Message sent to Telegram user {chat_id}")
-        return True
+        if return_message_id and sent:
+            return (True, sent.message_id)
+        return (True, sent.message_id if sent else None) if return_message_id else True
     except Exception as e:
         if not silent_fail:
             logger.error(f"Failed to send Telegram message to {chat_id}: {e}")
-        return False
+        return (False, None) if return_message_id else False
 
 
 async def close_bot():

@@ -58,13 +58,16 @@ async def get_notifications(
             }
         raise
     
-    # Фильтр по важности
+    # Фильтр по важности (приоритет 1 — важные, 2 — обычные)
     important_types = [
         NotificationType.MODERATION_REQUEST,
         NotificationType.SUPPORT_REQUEST,
         NotificationType.TASK_DEADLINE,
         NotificationType.MODERATION_APPROVED,
-        NotificationType.MODERATION_REJECTED
+        NotificationType.MODERATION_REJECTED,
+        NotificationType.EQUIPMENT_REQUEST,   # напоминания, новые заявки
+        NotificationType.EQUIPMENT_APPROVED,
+        NotificationType.EQUIPMENT_REJECTED,
     ]
     
     if important_only:
@@ -87,6 +90,9 @@ async def get_notifications(
             unread_count = 0
         else:
             raise
+    
+    # Счётчик важных НЕПРОЧИТАННЫХ (для кнопки фильтра)
+    important_unread_count = len([n for n in important if not n.is_read])
     
     return {
         "items": [
@@ -128,7 +134,7 @@ async def get_notifications(
         ],
         "total": total,
         "unread_count": unread_count,
-        "important_count": len(important),
+        "important_count": important_unread_count,  # Только непрочитанные важные!
         "skip": skip,
         "limit": limit
     }
@@ -147,13 +153,16 @@ async def get_unread_count(
     try:
         count = await NotificationService.get_unread_count(db, current_user.id)
         
-        # Подсчитываем важные непрочитанные
+        # Подсчитываем важные непрочитанные (синхронно с get_notifications)
         important_types = [
             NotificationType.MODERATION_REQUEST,
             NotificationType.SUPPORT_REQUEST,
             NotificationType.TASK_DEADLINE,
             NotificationType.MODERATION_APPROVED,
-            NotificationType.MODERATION_REJECTED
+            NotificationType.MODERATION_REJECTED,
+            NotificationType.EQUIPMENT_REQUEST,
+            NotificationType.EQUIPMENT_APPROVED,
+            NotificationType.EQUIPMENT_REJECTED,
         ]
         
         # Используем .value для сравнения с PostgreSQL ENUM (lowercase)
@@ -185,6 +194,22 @@ async def get_unread_count(
                 "important_unread_count": 0
             }
         raise
+
+
+@router.post("/cleanup", response_model=dict)
+async def cleanup_old_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Удалить уведомления старше 21 дня. Только VP4PR/координаторы."""
+    from app.models.user import UserRole
+    if current_user.role not in [
+        UserRole.VP4PR, UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR
+    ]:
+        raise HTTPException(status_code=403, detail="Доступ запрещён")
+    count = await NotificationService.cleanup_old_notifications(db)
+    return {"deleted_count": count, "message": f"Удалено {count} старых уведомлений"}
 
 
 @router.patch("/{notification_id}/read", response_model=dict)

@@ -2,7 +2,7 @@
 Обработчики команд для Telegram бота
 """
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, FSInputFile, WebAppInfo
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
@@ -10,6 +10,9 @@ from typing import Optional
 from pathlib import Path
 import httpx
 import logging
+
+# Импортируем FSM states в начале файла
+from bot.states import TaskCreationStates, EquipmentRequestStates
 
 from app.config import settings
 import hmac
@@ -956,11 +959,25 @@ async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
                 f"✅ {completed} задач\n\n"
             )
         
-        text += (
-            "💡 <b>Хочешь попасть в рейтинг?</b>\n"
-            "Зарегистрируйся и начни выполнять задачи!\n\n"
-            f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>"
+        # Разный текст: по роли и регистрации (fallback: если в топе — считаем зарегистрированным)
+        viewer_resp = await call_api("GET", f"/public/user-by-telegram/{callback.from_user.id}")
+        viewer = viewer_resp if isinstance(viewer_resp, dict) and "error" not in viewer_resp else {}
+        in_top = any(
+            (u.get("username") or "").lstrip("@") == (callback.from_user.username or "").lstrip("@")
+            for u in leaderboard
         )
+        is_registered = viewer.get("registered") or in_top
+        if is_registered:
+            role = (viewer.get("role") or "").lower()
+            if role == "vp4pr":
+                footer = "📊 Как глава PR ты видишь полный рейтинг. Мотивируй команду!\n\n"
+            elif "coordinator" in role:
+                footer = "📊 Ты в рейтинге! Выполняй задачи и поднимайся выше.\n\n"
+            else:
+                footer = "📊 Ты уже в рейтинге! Выполняй задачи и зарабатывай баллы.\n\n"
+        else:
+            footer = "💡 <b>Хочешь попасть в рейтинг?</b>\nЗарегистрируйся и начни выполнять задачи!\n\n"
+        text += footer + f"🌐 <a href=\"{settings.FRONTEND_URL}\">Перейти на сайт</a>"
         
         await callback.message.answer(text, parse_mode="HTML")
     except Exception as e:
@@ -2738,9 +2755,14 @@ async def callback_ask_question(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
-@router.message(F.text)
+@router.message(F.text, StateFilter(None))
 async def handle_text_message(message: Message, state: FSMContext):
-    """Обработка текстовых сообщений (онбординг, вопросы и т.д.)"""
+    """Обработка текстовых сообщений (онбординг, вопросы и т.д.)
+    
+    ВАЖНО: StateFilter(None) означает, что этот handler срабатывает ТОЛЬКО когда
+    нет активного FSM состояния. FSM handlers для заявок на оборудование, 
+    создания задач и т.д. будут обрабатываться отдельными handlers.
+    """
     # Если это группа/супергруппа и сообщение не начинается с команды - игнорируем
     is_group = message.chat.type in ("group", "supergroup")
     if is_group and not message.text.startswith("/"):
@@ -2751,6 +2773,7 @@ async def handle_text_message(message: Message, state: FSMContext):
     text = message.text
     
     # Проверяем состояние (онбординг, регистрация, вопросы)
+    # Это использует state.get_data(), а не FSM States
     data = await state.get_data()
     onboarding_step = data.get("onboarding_step")
     asking_question = data.get("asking_question")
@@ -2915,10 +2938,10 @@ async def handle_text_message(message: Message, state: FSMContext):
 
 
 # ========== FSM для создания задач ==========
-from bot.states import TaskCreationStates, EquipmentRequestStates
+# Импорты TaskCreationStates, EquipmentRequestStates уже в начале файла
 from app.models.task import TaskType, TaskPriority
 from datetime import datetime, timedelta, timezone
-from aiogram import F
+# F уже импортирован в начале файла
 from aiogram.types import ContentType
 
 
@@ -3887,6 +3910,10 @@ async def callback_equipment_new_request(callback: CallbackQuery, state: FSMCont
         await state.set_state(EquipmentRequestStates.waiting_for_shooting_name)
         await state.update_data(equipment_request_step=1)
         
+        # Логируем для отладки
+        new_state = await state.get_state()
+        logger.info(f"[FSM Equipment] State set to: {new_state} for user {callback.from_user.id}")
+        
     except Exception as e:
         logger.error(f"Error in callback_equipment_new_request: {e}")
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
@@ -3895,7 +3922,10 @@ async def callback_equipment_new_request(callback: CallbackQuery, state: FSMCont
 @router.message(EquipmentRequestStates.waiting_for_shooting_name)
 async def process_equipment_shooting_name(message: Message, state: FSMContext):
     """Обработка названия съёмки"""
-    shooting_name = message.text.strip()
+    current_state = await state.get_state()
+    logger.info(f"[FSM Equipment] process_equipment_shooting_name called! User: {message.from_user.id}, text: '{message.text}', state: {current_state}")
+    
+    shooting_name = message.text.strip() if message.text else ""
     
     if len(shooting_name) < 3:
         await message.answer("❌ Название слишком короткое. Введи название съёмки (минимум 3 символа):")
@@ -4344,6 +4374,13 @@ async def process_equipment_request_confirm(callback: CallbackQuery, state: FSMC
         return
     
     # Подготавливаем данные для API
+    purpose_parts = []
+    if shooting_name:
+        purpose_parts.append(shooting_name)
+    if comment:
+        purpose_parts.append(comment)
+    purpose = " — ".join(purpose_parts) if purpose_parts else None
+    
     request_data = {
         "equipment_id": equipment_id,
         "start_date": rental_start_str,
@@ -4352,6 +4389,8 @@ async def process_equipment_request_confirm(callback: CallbackQuery, state: FSMC
     
     if task_id:
         request_data["task_id"] = task_id
+    if purpose:
+        request_data["purpose"] = purpose
     
     headers = {"Authorization": f"Bearer {access_token}"}
     
@@ -4589,15 +4628,27 @@ async def callback_equipment_quick_request(callback: CallbackQuery, state: FSMCo
         await callback.answer("❌ Произошла ошибка. Попробуйте позже.", show_alert=True)
 
 
-@router.message()
-async def handle_unknown(message: Message):
-    """Обработка неизвестных сообщений (не текст)"""
+@router.message(StateFilter(None))
+async def handle_unknown(message: Message, state: FSMContext):
+    """Обработка неизвестных сообщений (только когда нет активного FSM состояния)"""
+    # Логируем для отладки проблем с FSM
+    current_state = await state.get_state()
+    logger.debug(f"[handle_unknown] User: {message.from_user.id}, text: '{message.text[:50] if message.text else None}...', state: {current_state}")
+    
     # В группах игнорируем неизвестные сообщения (не команды)
     is_group = message.chat.type in ("group", "supergroup")
     if is_group:
         return
     
-    # В личном чате отвечаем
+    # Проверяем, что это не команда (команды обрабатываются отдельными handlers)
+    if message.text and message.text.startswith('/'):
+        await message.answer(
+            "❓ Неизвестная команда. Используйте /help для списка доступных команд."
+        )
+        return
+    
+    # Для обычного текста показываем подсказку
     await message.answer(
-        "❓ Неизвестная команда. Используйте /help для списка доступных команд."
+        "💡 Я понимаю только команды.\n\n"
+        "Используйте /help для списка доступных команд или /equipment для заявки на оборудование."
     )

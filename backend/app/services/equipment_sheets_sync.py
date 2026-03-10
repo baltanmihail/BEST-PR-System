@@ -99,6 +99,170 @@ class EquipmentSheetsSync:
             logger.error(f"Ошибка поиска таблицы '{name}': {e}")
             return None
     
+    def _get_photo_folder_id(self) -> Optional[str]:
+        """Получить ID папки с фото оборудования"""
+        # Сначала проверяем конфиг (приоритет — явно указанная папка)
+        if settings.GOOGLE_EQUIPMENT_PHOTO_FOLDER_ID:
+            return settings.GOOGLE_EQUIPMENT_PHOTO_FOLDER_ID
+        
+        try:
+            equipment_folder_id = self.drive_structure.get_equipment_folder_id()
+            if not equipment_folder_id:
+                return None
+            
+            service = self.google_service._get_drive_service(background=False)
+            
+            query = f"name='Photo' and mimeType='application/vnd.google-apps.folder' and '{equipment_folder_id}' in parents and trashed=false"
+            
+            results = service.files().list(
+                q=query,
+                fields="files(id, name)",
+                pageSize=1
+            ).execute()
+            
+            files = results.get('files', [])
+            if files:
+                logger.info(f"Found Photo folder: {files[0]['id']}")
+                return files[0]['id']
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error finding Photo folder: {e}")
+            return None
+    
+    _photo_cache: Dict[str, List[Dict]] = {}
+    
+    def _get_equipment_photo_url(self, equipment_name: str) -> Optional[str]:
+        """
+        Получить URL фото оборудования из папки с фото на Google Drive.
+        Использует многоуровневое сопоставление (точное → частичное → по ключевым словам).
+        """
+        try:
+            photo_folder_id = self._get_photo_folder_id()
+            if not photo_folder_id:
+                return None
+            
+            # Кэшируем список файлов, чтобы не делать запрос для каждого оборудования
+            if photo_folder_id not in self._photo_cache:
+                service = self.google_service._get_drive_service(background=False)
+                query = f"'{photo_folder_id}' in parents and trashed=false and (mimeType contains 'image/')"
+                results = service.files().list(
+                    q=query,
+                    fields="files(id, name)",
+                    pageSize=100
+                ).execute()
+                self._photo_cache[photo_folder_id] = results.get('files', [])
+            
+            files = self._photo_cache[photo_folder_id]
+            if not files:
+                return None
+            
+            equipment_name_lower = equipment_name.lower().strip()
+            
+            def normalize(s: str) -> str:
+                """Нормализуем строку для сравнения: убираем лишние пробелы, спецсимволы"""
+                s = s.lower().strip()
+                for ch in [',', '.', '(', ')', '-', '_', '/', '\\']:
+                    s = s.replace(ch, ' ')
+                return ' '.join(s.split())
+            
+            eq_norm = normalize(equipment_name)
+            eq_words = set(eq_norm.split())
+            
+            best_match = None
+            best_score = 0
+            
+            for file in files:
+                file_name = file['name']
+                file_name_no_ext = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
+                fn_norm = normalize(file_name_no_ext)
+                fn_words = set(fn_norm.split())
+                
+                # Точное совпадение нормализованных строк
+                if fn_norm == eq_norm:
+                    best_match = file
+                    break
+                
+                # Одна строка содержит другую
+                if fn_norm in eq_norm or eq_norm in fn_norm:
+                    score = len(fn_norm) + len(eq_norm)
+                    if score > best_score:
+                        best_score = score
+                        best_match = file
+                        continue
+                
+                # Пересечение слов (минимум 2 или одно длинное >=5 символов)
+                common = eq_words & fn_words
+                long_common = [w for w in common if len(w) >= 5]
+                if len(common) >= 2 or len(long_common) >= 1:
+                    score = sum(len(w) for w in common)
+                    if score > best_score:
+                        best_score = score
+                        best_match = file
+            
+            if best_match:
+                file_id = best_match['id']
+                photo_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+                logger.info(f"Photo matched for '{equipment_name}': {best_match['name']}")
+                return photo_url
+            
+            return None
+        except Exception as e:
+            logger.error(f"Error finding photo for '{equipment_name}': {e}")
+            return None
+    
+    async def _get_next_equipment_number(self) -> str:
+        """Получить следующий номер для строки в листе 'Вся оборудка'"""
+        try:
+            values = self.google_service.read_sheet(
+                f"{self.EQUIPMENT_SHEET}!A:A",
+                sheet_id=self._get_equipment_sheets_id(),
+                background=True
+            )
+            if not values or len(values) < 2:
+                return "1"
+            max_num = 0
+            for row in values[1:]:
+                if row and str(row[0]).strip().replace(".", "").isdigit():
+                    try:
+                        max_num = max(max_num, int(float(str(row[0]).strip())))
+                    except (ValueError, TypeError):
+                        pass
+            return str(max_num + 1)
+        except Exception as e:
+            logger.warning(f"Ошибка получения номера оборудования: {e}")
+            return "1"
+    
+    async def append_equipment_to_sheets(self, equipment: Equipment) -> dict:
+        """
+        Добавить новое оборудование в лист "Вся оборудка" Google Sheets.
+        Вызывается при создании оборудования через сайт.
+        """
+        try:
+            number = await self._get_next_equipment_number()
+            photo_url = (equipment.specs or {}).get("photo_url", "") or ""
+            status_ru = {
+                "available": "На складе",
+                "rented": "Выдано",
+                "maintenance": "В ремонте",
+                "broken": "Сломано"
+            }.get(
+                equipment.status.value if hasattr(equipment.status, "value") else str(equipment.status),
+                "На складе"
+            )
+            row_data = [[number, equipment.name, photo_url, status_ru]]
+            self.google_service.append_to_sheet(
+                range_name=f"{self.EQUIPMENT_SHEET}!A:D",
+                values=row_data,
+                sheet_id=self._get_equipment_sheets_id(),
+                background=True
+            )
+            logger.info(f"✅ Оборудование '{equipment.name}' добавлено в Sheets (№{number})")
+            return {"status": "success", "number": number}
+        except Exception as e:
+            logger.error(f"❌ Ошибка добавления оборудования в Sheets: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+    
     async def sync_equipment_from_sheets(
         self,
         db: AsyncSession
@@ -147,6 +311,34 @@ class EquipmentSheetsSync:
                     if not name:
                         continue
                     
+                    # Пропускаем служебные строки (пометки, комментарии и т.д.)
+                    skip_keywords = [
+                        "позже", "появится", "скоро", "планируется", 
+                        "примечание", "комментарий", "итого", "всего",
+                        "на учёте", "на учете", "будет", "добавится",
+                        "в процессе", "заказано", "ожидается", "todo",
+                        "...", "---", "***"
+                    ]
+                    name_lower = name.lower()
+                    if any(keyword in name_lower for keyword in skip_keywords):
+                        logger.info(f"Skipping service row: {name}")
+                        continue
+                    
+                    # Пропускаем строки с именами людей (формат: "... оборудование Фамилия Имя")
+                    if re.search(r'оборудовани[ея]\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+', name):
+                        logger.info(f"Skipping person reference row: {name}")
+                        continue
+                    
+                    # Пропускаем если название слишком короткое (менее 3 символов)
+                    if len(name) < 3:
+                        logger.info(f"Skipping short name: {name}")
+                        continue
+                    
+                    # Пропускаем если номер не числовой (заголовки, разделители)
+                    if number and not number.replace(".", "").isdigit():
+                        logger.info(f"Skipping non-numeric row: {number} - {name}")
+                        continue
+                    
                     # Конвертируем статус в lowercase строку для PostgreSQL ENUM
                     status_map = {
                         "На складе": "available",
@@ -156,20 +348,29 @@ class EquipmentSheetsSync:
                     }
                     status = status_map.get(status_ru, "available")
                     
-                    # Определяем категорию по названию (всегда lowercase строка)
+                    # Парсим количество (2шт, 2 штуки) из названия
+                    quantity = self._parse_quantity_from_name(name)
+                    # name остаётся как в Sheets — для сопоставления при следующей синхронизации
+                    
+                    # Определяем категорию по названию
                     category = self._detect_category(name)
                     
-                    logger.info(f"Processing equipment: {name}, category: {category}, status: {status}")
+                    # Если фото нет в таблице — ищем в папке Equipment/Photo
+                    if not photo_url:
+                        photo_url = self._get_equipment_photo_url(name) or ""
                     
-                    # Проверяем, есть ли уже в базе (по названию)
+                    logger.info(f"Processing: {name}, qty: {quantity}, category: {category}, status: {status}")
+                    
+                    # Проверяем, есть ли уже в базе (по названию из Sheets)
                     result = await db.execute(
                         select(Equipment).where(Equipment.name == name)
                     )
                     existing = result.scalar_one_or_none()
                     
                     if existing:
-                        # Обновляем статус и specs
-                        existing.status = status  # TypeDecorator конвертирует в lowercase
+                        # Обновляем статус, quantity и specs
+                        existing.status = status
+                        existing.quantity = quantity
                         specs = existing.specs or {}
                         if number:
                             specs["number"] = number
@@ -187,10 +388,10 @@ class EquipmentSheetsSync:
                         
                         new_equipment = Equipment(
                             name=name,
-                            category=category,  # TypeDecorator конвертирует в lowercase
-                            quantity=1,
+                            category=category,
+                            quantity=quantity,  # Парсится из названия (2шт и т.д.)
                             specs=specs if specs else None,
-                            status=status  # TypeDecorator конвертирует в lowercase
+                            status=status
                         )
                         db.add(new_equipment)
                         created_count += 1
@@ -217,26 +418,110 @@ class EquipmentSheetsSync:
                 "synced": 0
             }
     
+    def _parse_quantity_from_name(self, name: str) -> int:
+        """
+        Извлечь количество из названия оборудования.
+        Примеры: "Световые палки Aputure, 2шт" → 2
+                 "Стойка (2 штуки)" → 2
+        Returns: quantity (1 если не найдено)
+        """
+        import re
+        # Паттерны: 2шт, 2 шт, 2штуки, 2 штуки, (2шт), (2 штуки)
+        patterns = [
+            r',\s*(\d+)\s*шт[\s.)]*$', r',\s*(\d+)\s*штук[иа]?[\s.)]*$',
+            r'\(\s*(\d+)\s*шт[\s.)]*\)', r'\(\s*(\d+)\s*штук[иа]?[\s.)]*\)',
+            r'\s+(\d+)\s*шт\.?\s*$', r'\s+(\d+)\s*штук[иа]?\s*$',
+        ]
+        for pat in patterns:
+            m = re.search(pat, name, re.IGNORECASE)
+            if m:
+                q = int(m.group(1))
+                if 1 <= q <= 100:
+                    return q
+        return 1
+    
     def _detect_category(self, name: str) -> str:
         """Определить категорию оборудования по названию"""
         name_lower = name.lower()
         
-        if any(word in name_lower for word in ["камера", "camera", "видеокамера"]):
+        # Камеры
+        if any(word in name_lower for word in [
+            "камера", "camera", "видеокамера", "фотоаппарат", "фотокамера",
+            "беззеркальн", "зеркальн", "mirrorless", "dslr",
+            "sony zv", "sony a7", "sony a6", "canon eos", "nikon z",
+            "fujifilm", "panasonic gh", "zv-e10", "zv e10"
+        ]):
             return "camera"
+        # Объективы
         elif any(word in name_lower for word in ["объектив", "lens", "линза"]):
             return "lens"
-        elif any(word in name_lower for word in ["свет", "lighting", "ламп", "софтбокс"]):
+        # Свет (Aputure amaran, световые палки, панели и т.д.)
+        elif any(word in name_lower for word in [
+            "свет", "lighting", "ламп", "софтбокс", "led панель", "кольцев",
+            "aputure", "amaran", "godox", "световая палка", "светодиод",
+            "falcon eyes", "nanlite", "yongnuo"
+        ]):
             return "lighting"
-        elif any(word in name_lower for word in ["микрофон", "audio", "аудио", "рекордер"]):
+        # Аудио (микрофоны, рекордеры, DJI Mic)
+        elif any(word in name_lower for word in [
+            "микрофон", "audio", "аудио", "рекордер", "mic ",
+            "dji mic", "rode", "boya", "saramonic", "zoom h"
+        ]):
             return "audio"
-        elif any(word in name_lower for word in ["штатив", "tripod", "стойка"]):
+        # Стабилизаторы / гимбалы
+        elif any(word in name_lower for word in [
+            "стабилизатор", "stabilizer", "gimbal", "steadicam", "zhiyun",
+            "dji rs", "dji osmo", "dji om", "ronin",
+            "держатель телефона"
+        ]):
+            return "accessories"
+        # Штативы и стойки
+        elif any(word in name_lower for word in [
+            "штатив", "tripod", "стойка", "монопод", "тренога"
+        ]):
             return "tripod"
-        elif any(word in name_lower for word in ["накопитель", "storage", "ssd", "карта памяти"]):
+        # Накопители (SD-карты, SSD, USB)
+        elif any(word in name_lower for word in [
+            "накопитель", "storage", "ssd", "карта памяти", "sd card",
+            "cf card", "sd ", "sd samsung", "microsd", "usb flash",
+            "samsung evo", "sandisk", "512 гб", "256 гб", "128 гб",
+            "64 гб", "1 тб"
+        ]):
             return "storage"
-        elif any(word in name_lower for word in ["аксессуар", "accessories", "переходник", "кабель"]):
+        # Аксессуары
+        elif any(word in name_lower for word in [
+            "аксессуар", "accessories", "переходник", "кабель", "батарея",
+            "зарядка", "фильтр", "бленда", "адаптер", "ремень", "чехол"
+        ]):
             return "accessories"
         else:
             return "other"
+    
+    def _is_valid_equipment_row(self, row: list) -> bool:
+        """Проверить, является ли строка валидной записью оборудования (не комментарий)"""
+        if len(row) < 2:
+            return False
+        
+        name = row[1].strip() if len(row) > 1 else ""
+        
+        # Пропускаем пустые названия
+        if not name:
+            return False
+        
+        # Пропускаем строки-комментарии (начинаются с "Позже", "TODO", "Примечание" и т.д.)
+        skip_prefixes = [
+            "позже", "todo", "примечание", "комментарий", "заметка", 
+            "note", "...", "---", "***", "///"
+        ]
+        name_lower = name.lower()
+        if any(name_lower.startswith(prefix) for prefix in skip_prefixes):
+            return False
+        
+        # Пропускаем слишком короткие названия (менее 3 символов)
+        if len(name) < 3:
+            return False
+        
+        return True
     
     async def log_equipment_request(
         self,
@@ -275,9 +560,9 @@ class EquipmentSheetsSync:
             else:
                 who_takes = full_name
             
-            # Получаем название мероприятия из задачи (если есть)
-            shooting_name = ""
-            if request.task_id:
+            # Получаем название мероприятия: из purpose, или из задачи
+            shooting_name = request.purpose or ""
+            if not shooting_name and request.task_id:
                 from app.models.task import Task
                 task_result = await db.execute(
                     select(Task).where(Task.id == request.task_id)
@@ -302,7 +587,7 @@ class EquipmentSheetsSync:
                     request.start_date.strftime("%d.%m.%Y"),  # Дата выдачи
                     request.start_date.strftime("%d.%m.%Y"),  # Дата съёмки (можно уточнить)
                     request.end_date.strftime("%d.%m.%Y"),  # Дата возврата
-                    "",  # Комментарий (можно добавить поле purpose)
+                    request.purpose or "",  # Комментарий / цель использования
                     status_ru  # Статус
                 ]
             ]
@@ -323,7 +608,7 @@ class EquipmentSheetsSync:
                 # Находим номер последней строки
                 all_values = self.google_service.read_sheet(
                     f"{self.REQUESTS_SHEET}!A:A",
-                    sheet_id=self.EQUIPMENT_SHEETS_ID,
+                    sheet_id=self._get_equipment_sheets_id(),
                     background=True
                 )
                 last_row = len(all_values) if all_values else 1
@@ -381,8 +666,8 @@ class EquipmentSheetsSync:
         И добавить запись в "История оборудки" при одобрении
         """
         try:
-            # Обновляем статус заявки
-            await self._update_request_status_in_sheets(request.id, new_status)
+            # Обновляем статус заявки в Sheets (находим строку по equipment, user, dates)
+            await self._update_request_status_in_sheets(request, equipment, user, new_status)
             
             # Если заявка одобрена или активна, добавляем в историю и обновляем календарь
             if new_status in [EquipmentRequestStatus.APPROVED, EquipmentRequestStatus.ACTIVE]:
@@ -463,15 +748,14 @@ class EquipmentSheetsSync:
     
     async def _update_request_status_in_sheets(
         self,
-        request_id: str,
+        request: EquipmentRequest,
+        equipment: Equipment,
+        user: User,
         new_status: EquipmentRequestStatus
     ):
         """Обновить статус заявки в листе 'Заявки на оборудку'"""
         try:
-            # Получаем ID таблицы
             sheets_id = self._get_equipment_sheets_id()
-            
-            # Читаем все заявки
             values = self.google_service.read_sheet(
                 f"{self.REQUESTS_SHEET}!A:K",
                 sheet_id=sheets_id,
@@ -481,7 +765,6 @@ class EquipmentSheetsSync:
             if not values or len(values) < 2:
                 return
             
-            # Статус заявки
             status_map = {
                 EquipmentRequestStatus.PENDING: "На рассмотрении",
                 EquipmentRequestStatus.APPROVED: "Одобрено",
@@ -492,12 +775,64 @@ class EquipmentSheetsSync:
             }
             status_ru = status_map.get(new_status, "На рассмотрении")
             
-            # Ищем строку с нужной заявкой
-            # (реализацию поиска нужно доработать, пока пропускаем)
-            pass
+            # Ищем строку: совпадение по датам + пользователю + оборудованию
+            start_str = request.start_date.strftime("%d.%m.%Y")
+            end_str = request.end_date.strftime("%d.%m.%Y")
+            user_identifiers = []
+            if user.telegram_username:
+                user_identifiers.append(user.telegram_username.lstrip('@'))
+            if user.full_name:
+                user_identifiers.append(user.full_name)
+            name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+            if name:
+                user_identifiers.append(name)
+            
+            row_index = None  # 0-based row index в values
+            for i, row in enumerate(values[1:], start=1):
+                if len(row) < 10:
+                    continue
+                # Колонки: 0=Номер, 6=Дата выдачи, 8=Дата возврата, 3=Кто берёт
+                row_start = row[6].strip() if len(row) > 6 else ""
+                row_end = row[8].strip() if len(row) > 8 else ""
+                row_who = row[3].strip() if len(row) > 3 else ""
+                
+                if row_start == start_str and row_end == end_str:
+                    # "Кто берёт" должен содержать username или ФИО пользователя
+                    if any(ident and ident.lower() in row_who.lower() for ident in user_identifiers):
+                        row_index = i
+                        break
+            
+            if row_index is None:
+                logger.warning(f"Не найдена строка заявки в Sheets для request {request.id}")
+                return
+            
+            # Обновляем статус: колонка K (индекс 10), row_index+1 т.к. есть заголовок
+            sheet_id = self._get_sheet_id(self.REQUESTS_SHEET)
+            cell_range = {
+                "sheetId": sheet_id,
+                "startRowIndex": row_index,
+                "endRowIndex": row_index + 1,
+                "startColumnIndex": 10,
+                "endColumnIndex": 11
+            }
+            
+            self.google_service.batch_update_sheet(
+                sheets_id,
+                [{
+                    "updateCells": {
+                        "range": cell_range,
+                        "rows": [{
+                            "values": [{"userEnteredValue": {"stringValue": status_ru}}]
+                        }],
+                        "fields": "userEnteredValue.stringValue"
+                    }
+                }],
+                background=True
+            )
+            logger.info(f"✅ Статус заявки обновлён в Sheets: строка {row_index + 2}, статус={status_ru}")
             
         except Exception as e:
-            logger.error(f"Ошибка обновления статуса заявки: {e}")
+            logger.error(f"Ошибка обновления статуса заявки в Sheets: {e}", exc_info=True)
     
     async def _log_to_history(
         self,

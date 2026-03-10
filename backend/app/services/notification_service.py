@@ -41,6 +41,9 @@ class NotificationService:
         
         return notification
     
+    # Храним уведомления не более 21 дня (3 недели)
+    NOTIFICATION_RETENTION_DAYS = 21
+
     @staticmethod
     async def get_user_notifications(
         db: AsyncSession,
@@ -49,13 +52,21 @@ class NotificationService:
         skip: int = 0,
         limit: int = 50
     ) -> tuple[List[Notification], int]:
-        """Получить уведомления пользователя"""
-        query = select(Notification).where(Notification.user_id == user_id)
+        """Получить уведомления пользователя (не старше 21 дня)"""
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=NotificationService.NOTIFICATION_RETENTION_DAYS)
+        query = select(Notification).where(
+            Notification.user_id == user_id,
+            Notification.created_at >= cutoff
+        )
         
         if unread_only:
             query = query.where(Notification.is_read == False)
         
-        count_query = select(func.count(Notification.id)).where(Notification.user_id == user_id)
+        count_query = select(func.count(Notification.id)).where(
+            Notification.user_id == user_id,
+            Notification.created_at >= cutoff
+        )
         if unread_only:
             count_query = count_query.where(Notification.is_read == False)
         
@@ -116,15 +127,29 @@ class NotificationService:
         db: AsyncSession,
         user_id: UUID
     ) -> int:
-        """Получить количество непрочитанных уведомлений"""
+        """Получить количество непрочитанных уведомлений (не старше 21 дня)"""
+        from datetime import timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=NotificationService.NOTIFICATION_RETENTION_DAYS)
         query = select(func.count(Notification.id)).where(
             and_(
                 Notification.user_id == user_id,
-                Notification.is_read == False
+                Notification.is_read == False,
+                Notification.created_at >= cutoff
             )
         )
         result = await db.execute(query)
         return result.scalar_one() or 0
+
+    @staticmethod
+    async def cleanup_old_notifications(db: AsyncSession) -> int:
+        """Удалить уведомления старше 21 дня из БД."""
+        from datetime import timedelta
+        from sqlalchemy import delete
+        cutoff = datetime.now(timezone.utc) - timedelta(days=NotificationService.NOTIFICATION_RETENTION_DAYS)
+        stmt = delete(Notification).where(Notification.created_at < cutoff)
+        result = await db.execute(stmt)
+        await db.commit()
+        return result.rowcount or 0
     
     @staticmethod
     async def notify_task_assigned(

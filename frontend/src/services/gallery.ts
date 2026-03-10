@@ -84,4 +84,31 @@ export const galleryApi = {
     const response = await api.put(`/gallery/${id}`, data)
     return response.data
   },
+
+  createGalleryItem: async (data: {
+    title: string
+    description?: string
+    category?: string
+    tags?: string
+    thumbnail_url?: string
+    files?: File[]
+  }): Promise<GalleryItem> => {
+    const formData = new FormData()
+    formData.append('title', data.title)
+    if (data.description) formData.append('description', data.description)
+    if (data.category) formData.append('category', data.category)
+    if (data.tags) formData.append('tags', data.tags)
+    if (data.thumbnail_url) formData.append('thumbnail_url', data.thumbnail_url)
+    if (data.files) {
+      data.files.forEach(file => formData.append('files', file))
+    }
+    const response = await api.post<GalleryItem>('/gallery', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return response.data
+  },
+
+  deleteGalleryItem: async (id: string): Promise<void> => {
+    await api.delete(`/gallery/${id}`)
+  },
 }

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar, RefreshCw, CheckSquare, Link as LinkIcon, Save, X } from 'lucide-react'
+import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar, RefreshCw, CheckSquare, Link as LinkIcon, Save, X, Plus, Upload, Trash2 } from 'lucide-react'
 import { galleryApi, type GalleryItem } from '../services/gallery'
 import { tasksApi } from '../services/tasks'
 import { useThemeStore } from '../store/themeStore'
@@ -15,6 +15,14 @@ export default function Gallery() {
   const [selectedItem, setSelectedItem] = useState<GalleryItem | null>(null)
   const [isLinkingTask, setIsLinkingTask] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string>('')
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [createTitle, setCreateTitle] = useState('')
+  const [createDescription, setCreateDescription] = useState('')
+  const [createCategory, setCreateCategory] = useState<string>('final')
+  const [createTags, setCreateTags] = useState('')
+  const [createThumbnailUrl, setCreateThumbnailUrl] = useState('')
+  const [createFiles, setCreateFiles] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isCoordinator = user && (
     user.role === UserRole.COORDINATOR_SMM ||
@@ -67,6 +75,48 @@ export default function Gallery() {
     }
   })
 
+  const createMutation = useMutation({
+    mutationFn: (formData: { title: string; description?: string; category?: string; tags?: string; thumbnail_url?: string; files?: File[] }) =>
+      galleryApi.createGalleryItem(formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      setShowCreateForm(false)
+      setCreateTitle('')
+      setCreateDescription('')
+      setCreateCategory('final')
+      setCreateTags('')
+      setCreateThumbnailUrl('')
+      setCreateFiles([])
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка при создании элемента')
+    }
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => galleryApi.deleteGalleryItem(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['gallery'] })
+      setSelectedItem(null)
+    },
+    onError: (error: any) => {
+      alert(error.response?.data?.detail || 'Ошибка удаления')
+    }
+  })
+
+  const handleCreateSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!createTitle.trim()) return
+    createMutation.mutate({
+      title: createTitle,
+      description: createDescription || undefined,
+      category: createCategory,
+      tags: createTags || undefined,
+      thumbnail_url: createThumbnailUrl || undefined,
+      files: createFiles.length > 0 ? createFiles : undefined,
+    })
+  }
+
   const items = data?.items || []
 
   const getCategoryName = (category: string) => {
@@ -114,20 +164,130 @@ export default function Gallery() {
           </div>
           
           {isCoordinator && (
-            <button
-              onClick={() => syncMutation.mutate()}
-              disabled={syncMutation.isPending}
-              className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50 shadow-lg shadow-best-primary/20"
-            >
-              {syncMutation.isPending ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-5 w-5" />
-              )}
-              <span>Синхронизировать с Drive</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => syncMutation.mutate()}
+                disabled={syncMutation.isPending}
+                className="flex items-center space-x-2 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-all disabled:opacity-50 border border-white/10"
+              >
+                {syncMutation.isPending ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-5 w-5" />
+                )}
+                <span className="hidden md:inline">Синхронизировать</span>
+              </button>
+              <button
+                onClick={() => setShowCreateForm(true)}
+                className="flex items-center space-x-2 px-4 py-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all shadow-lg shadow-best-primary/20"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="hidden md:inline">Добавить работу</span>
+              </button>
+            </div>
           )}
         </div>
+
+        {/* Форма создания элемента */}
+        {showCreateForm && (
+          <div className="mb-6 p-6 rounded-xl bg-white/5 border border-best-primary/30">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className={`text-lg font-bold text-white text-readable ${theme}`}>Добавить работу</h3>
+              <button onClick={() => setShowCreateForm(false)} className="text-white/50 hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div>
+                <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>Название *</label>
+                <input
+                  type="text"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  required
+                  placeholder="Например: Фотоотчёт LBE 2026"
+                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                />
+              </div>
+              <div>
+                <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>Описание</label>
+                <textarea
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  placeholder="Краткое описание работы..."
+                  rows={2}
+                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-none text-readable ${theme}`}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>Категория</label>
+                  <select
+                    value={createCategory}
+                    onChange={(e) => setCreateCategory(e.target.value)}
+                    className={`w-full bg-white/10 text-white rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  >
+                    <option value="photo">Фото</option>
+                    <option value="video">Видео</option>
+                    <option value="final">Готовая работа</option>
+                    <option value="wip">В работе</option>
+                  </select>
+                </div>
+                <div>
+                  <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>Теги</label>
+                  <input
+                    type="text"
+                    value={createTags}
+                    onChange={(e) => setCreateTags(e.target.value)}
+                    placeholder="LBE, event, фото"
+                    className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>URL превью (ссылка на изображение)</label>
+                <input
+                  type="url"
+                  value={createThumbnailUrl}
+                  onChange={(e) => setCreateThumbnailUrl(e.target.value)}
+                  placeholder="https://..."
+                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
+                />
+              </div>
+              <div>
+                <label className={`block text-white/80 text-sm mb-1 text-readable ${theme}`}>Файлы</label>
+                <div 
+                  className="border-2 border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-best-primary/50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => setCreateFiles(Array.from(e.target.files || []))}
+                  />
+                  {createFiles.length > 0 ? (
+                    <p className="text-white/70 text-sm">{createFiles.length} файл(ов) выбрано</p>
+                  ) : (
+                    <div className="flex flex-col items-center text-white/40">
+                      <Upload className="h-6 w-6 mb-1" />
+                      <p className="text-sm">Нажмите для выбора файлов</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={createMutation.isPending || !createTitle.trim()}
+                className="w-full flex items-center justify-center space-x-2 bg-best-primary text-white py-3 rounded-lg font-bold hover:bg-best-primary/80 transition-all disabled:opacity-50"
+              >
+                {createMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
+                <span>{createMutation.isPending ? 'Создание...' : 'Создать'}</span>
+              </button>
+            </form>
+          </div>
+        )}
 
         {/* Фильтры */}
         <div className="flex flex-wrap items-center gap-3 mb-6" data-tour="gallery-filters">
@@ -266,12 +426,28 @@ export default function Gallery() {
               <h2 className={`text-2xl font-bold text-white text-readable ${theme}`}>
                 {selectedItem.title}
               </h2>
-              <button
-                onClick={() => setSelectedItem(null)}
-                className="p-2 rounded-lg hover:bg-white/10 transition-all"
-              >
-                <span className="text-white text-2xl">×</span>
-              </button>
+              <div className="flex items-center space-x-2">
+                {isCoordinator && (
+                  <button
+                    onClick={() => {
+                      if (confirm('Удалить этот элемент галереи?')) {
+                        deleteMutation.mutate(selectedItem.id)
+                      }
+                    }}
+                    disabled={deleteMutation.isPending}
+                    className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                    title="Удалить"
+                  >
+                    {deleteMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedItem(null)}
+                  className="p-2 rounded-lg hover:bg-white/10 transition-all"
+                >
+                  <span className="text-white text-2xl">×</span>
+                </button>
+              </div>
             </div>
 
             {selectedItem.thumbnail_url && (

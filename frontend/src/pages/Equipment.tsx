@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Video, Mic, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw } from 'lucide-react'
+import { Camera, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw, HardDrive, Headphones, Lightbulb, Box } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { equipmentApi, type Equipment, type EquipmentRequest, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
 import { UserRole } from '../types/user'
 
-export default function Equipment() {
+export default function EquipmentPage() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null)
   const [showRequestForm, setShowRequestForm] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [requestData, setRequestData] = useState<EquipmentRequest>({
     equipment_id: '',
     start_date: '',
@@ -140,42 +141,66 @@ export default function Equipment() {
       case 'camera':
         return <Camera className="h-6 w-6" />
       case 'audio':
-        return <Mic className="h-6 w-6" />
+        return <Headphones className="h-6 w-6" />
       case 'lighting':
-        return <Video className="h-6 w-6" />
-      default:
+        return <Lightbulb className="h-6 w-6" />
+      case 'tripod':
+        return <Box className="h-6 w-6" />
+      case 'storage':
+        return <HardDrive className="h-6 w-6" />
+      case 'lens':
         return <Camera className="h-6 w-6" />
+      default:
+        return <Box className="h-6 w-6" />
     }
   }
+  
+  const allCategories: { key: string; label: string }[] = [
+    { key: 'all', label: 'Все' },
+    { key: 'camera', label: 'Камеры' },
+    { key: 'lens', label: 'Объективы' },
+    { key: 'lighting', label: 'Свет' },
+    { key: 'audio', label: 'Аудио' },
+    { key: 'tripod', label: 'Штативы' },
+    { key: 'storage', label: 'Накопители' },
+    { key: 'accessories', label: 'Аксессуары' },
+    { key: 'other', label: 'Прочее' },
+  ]
+  
+  const filteredItems = (equipmentData?.items || []).filter((eq: Equipment) =>
+    categoryFilter === 'all' || eq.category === categoryFilter
+  )
 
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'bg-green-500/20 border-green-500/50 text-green-400'
-      case 'rented':
-        return 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400'
-      case 'maintenance':
-        return 'bg-orange-500/20 border-orange-500/50 text-orange-400'
-      case 'broken':
-        return 'bg-red-500/20 border-red-500/50 text-red-400'
-      default:
-        return 'bg-white/10 border-white/20 text-white'
+    const map: Record<string, string> = {
+      available: 'bg-green-500/20 border-green-500/50 text-green-400',
+      rented: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400',
+      maintenance: 'bg-orange-500/20 border-orange-500/50 text-orange-400',
+      broken: 'bg-red-500/20 border-red-500/50 text-red-400',
+      pending: 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400',
+      approved: 'bg-green-500/20 border-green-500/50 text-green-400',
+      rejected: 'bg-red-500/20 border-red-500/50 text-red-400',
+      active: 'bg-blue-500/20 border-blue-500/50 text-blue-400',
+      completed: 'bg-white/10 border-white/20 text-white/60',
+      cancelled: 'bg-white/10 border-white/20 text-white/40',
     }
+    return map[status] || 'bg-white/10 border-white/20 text-white'
   }
 
   const getStatusText = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'Доступно'
-      case 'rented':
-        return 'Выдано'
-      case 'maintenance':
-        return 'В ремонте'
-      case 'broken':
-        return 'Сломано'
-      default:
-        return status
+    const map: Record<string, string> = {
+      available: 'Доступно',
+      rented: 'Выдано',
+      maintenance: 'В ремонте',
+      broken: 'Сломано',
+      pending: 'На рассмотрении',
+      approved: 'Одобрено',
+      rejected: 'Отклонено',
+      active: 'Выдано',
+      completed: 'Возвращено',
+      cancelled: 'Отменено',
     }
+    return map[status] || status
   }
 
   return (
@@ -233,6 +258,23 @@ export default function Equipment() {
         </div>
       </div>
 
+      {/* Фильтры по категориям */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        {allCategories.map(cat => (
+          <button
+            key={cat.key}
+            onClick={() => setCategoryFilter(cat.key)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              categoryFilter === cat.key
+                ? 'bg-best-primary text-white shadow-lg shadow-best-primary/20'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+            }`}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
       {/* Предупреждение для незарегистрированных */}
       {!isRegistered && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-yellow-500/50 bg-yellow-500/10`}>
@@ -270,77 +312,94 @@ export default function Equipment() {
               <X className="h-5 w-5" />
             </button>
 
+            {/* Фото оборудования в модалке */}
+            {selectedEquipment.specs?.photo_url && (
+              <div className="w-full h-32 rounded-xl overflow-hidden bg-white/5 mb-4">
+                <img 
+                  src={selectedEquipment.specs.photo_url} 
+                  alt={selectedEquipment.name}
+                  className="w-full h-full object-contain"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              </div>
+            )}
+            
             <h2 className={`text-xl font-bold text-white mb-1 text-readable ${theme}`}>
-              Бронирование
+              Забронировать
             </h2>
-            <p className="text-white/60 text-sm mb-6">{selectedEquipment.name}</p>
+            <p className="text-white/60 text-sm mb-4">{selectedEquipment.name}</p>
+            
+            {selectedEquipment.quantity > 1 && (
+              <p className="text-white/50 text-xs mb-4">
+                Доступно: {selectedEquipment.quantity} шт.
+              </p>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                  Дата выдачи
-                </label>
-                <input
-                  type="date"
-                  value={requestData.start_date}
-                  onChange={(e) =>
-                    setRequestData({ ...requestData, start_date: e.target.value })
-                  }
-                  min={new Date().toISOString().split('T')[0]}
-                  required
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                    Дата выдачи
+                  </label>
+                  <input
+                    type="date"
+                    value={requestData.start_date}
+                    onChange={(e) =>
+                      setRequestData({ ...requestData, start_date: e.target.value })
+                    }
+                    min={new Date().toISOString().split('T')[0]}
+                    required
+                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                    Дата возврата
+                  </label>
+                  <input
+                    type="date"
+                    value={requestData.end_date}
+                    onChange={(e) =>
+                      setRequestData({ ...requestData, end_date: e.target.value })
+                    }
+                    min={requestData.start_date || new Date().toISOString().split('T')[0]}
+                    required
+                    className={`w-full bg-white/10 text-white rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
+                  />
+                </div>
               </div>
               <div>
                 <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                  Дата возврата
+                  Название съёмки / цель
                 </label>
                 <input
-                  type="date"
-                  value={requestData.end_date}
-                  onChange={(e) =>
-                    setRequestData({ ...requestData, end_date: e.target.value })
-                  }
-                  min={requestData.start_date || new Date().toISOString().split('T')[0]}
-                  required
-                  className={`w-full bg-white/10 text-white rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
-                />
-              </div>
-              <div>
-                <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
-                  Цель использования
-                </label>
-                <textarea
+                  type="text"
                   value={requestData.purpose}
                   onChange={(e) =>
                     setRequestData({ ...requestData, purpose: e.target.value })
                   }
-                  required
-                  placeholder="Для какой задачи нужно оборудование?"
-                  rows={3}
-                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-4 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-none text-readable ${theme} text-sm`}
+                  placeholder="Например: Съёмка для LBE, фотосет для ВК..."
+                  className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
                 />
               </div>
               
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={createRequestMutation.isPending}
-                  className={`w-full bg-best-primary text-white py-3 px-4 rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-best-primary/20`}
-                >
-                  {createRequestMutation.isPending ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Отправка...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="h-4 w-4" />
-                      <span>Подтвердить бронь</span>
-                    </>
-                  )}
-                </button>
-              </div>
+              <button
+                type="submit"
+                disabled={createRequestMutation.isPending}
+                className={`w-full bg-best-primary text-white py-3 px-4 rounded-lg font-bold hover:bg-best-primary/80 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 shadow-lg shadow-best-primary/20`}
+              >
+                {createRequestMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Отправка...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Отправить заявку</span>
+                  </>
+                )}
+              </button>
             </form>
           </div>
         </div>
@@ -356,7 +415,7 @@ export default function Equipment() {
       {/* Список оборудования */}
       {!isLoading && equipmentData && equipmentData.items && Array.isArray(equipmentData.items) && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" data-tour="equipment-list">
-          {equipmentData.items.map((equipment: Equipment) => (
+          {filteredItems.map((equipment: Equipment) => (
             <div
               key={equipment.id}
               className={`glass-enhanced ${theme} rounded-xl p-6 hover:scale-[1.02] transition-transform relative overflow-hidden group`}
@@ -365,23 +424,36 @@ export default function Equipment() {
               <div className="absolute inset-0 bg-gradient-to-br from-best-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
               
               <div className="relative z-10">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-white/5 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
-                      {getCategoryIcon(equipment.category)}
-                    </div>
-                    <div>
-                      <h3 className={`text-white font-bold text-lg text-readable ${theme} leading-tight`}>
-                        {equipment.name}
-                      </h3>
-                      <span className="text-white/50 text-xs uppercase tracking-wider font-medium">
-                        {getCategoryName(equipment.category)}
-                      </span>
-                    </div>
+                {/* Фото оборудования (большое, сверху карточки) */}
+                {equipment.specs?.photo_url ? (
+                  <div className="w-full h-36 rounded-xl border border-white/10 overflow-hidden bg-white/5 mb-4 flex items-center justify-center">
+                    <img 
+                      src={equipment.specs.photo_url} 
+                      alt={equipment.name}
+                      className="max-w-full max-h-full object-contain p-2"
+                      onError={(e) => {
+                        const parent = (e.target as HTMLImageElement).parentElement;
+                        if (parent) parent.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full h-24 rounded-xl border border-white/5 bg-white/5 mb-4 flex items-center justify-center text-white/20">
+                    {getCategoryIcon(equipment.category)}
+                  </div>
+                )}
+                
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1 min-w-0">
+                    <h3 className={`text-white font-bold text-base text-readable ${theme} leading-tight truncate`}>
+                      {equipment.name}
+                    </h3>
+                    <span className="text-white/50 text-xs uppercase tracking-wider font-medium">
+                      {getCategoryName(equipment.category)}
+                    </span>
                   </div>
                   
-                  {/* Статус (Badge) */}
-                  <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wide border shadow-sm ${getStatusColor(equipment.status)}`}>
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold tracking-wide border shadow-sm flex-shrink-0 ml-2 ${getStatusColor(equipment.status)}`}>
                     {getStatusText(equipment.status)}
                   </span>
                 </div>

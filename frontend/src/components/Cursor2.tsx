@@ -239,10 +239,10 @@ export default function Cursor2() {
 
   return (
     <>
-      {/* Основной 3D курсор */}
+      {/* Основной 3D курсор - z-index выше всех элементов включая чат */}
       <div
         ref={containerRef}
-        className="fixed pointer-events-none z-[9999]"
+        className="fixed pointer-events-none z-[99999]"
         style={{
           width: '32px',
           height: '32px',

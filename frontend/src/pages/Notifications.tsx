@@ -22,6 +22,7 @@ export default function Notifications() {
     mutationFn: notificationsApi.markAsRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] })
     },
   })
 
@@ -29,11 +30,16 @@ export default function Notifications() {
     mutationFn: notificationsApi.markAllAsRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] })
     },
   })
 
-  const notifications = data?.items || []
+  // Важные и обычные (без дублей)
   const importantNotifications = data?.important || []
+  const regularRaw = data?.regular || []
+  const importantIds = new Set(importantNotifications.map((n) => n.id))
+  const regularNotifications = regularRaw.filter((n) => !importantIds.has(n.id))
+  const allNotifications = data?.items || []
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6">
@@ -107,7 +113,7 @@ export default function Notifications() {
           </div>
         )}
 
-        {/* Обычные уведомления */}
+        {/* Обычные или все уведомления в зависимости от фильтра */}
         <div>
           {filter === 'all' && importantNotifications.length > 0 && (
             <h2 className={`text-xl font-bold text-white mb-4 text-readable ${theme}`}>Обычные</h2>
@@ -116,14 +122,14 @@ export default function Notifications() {
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-best-primary"></div>
             </div>
-          ) : notifications.length === 0 ? (
+          ) : (filter === 'all' ? regularNotifications : allNotifications).length === 0 ? (
             <div className="text-center py-12 text-white/60">
               <Bell className="h-12 w-12 mx-auto mb-4 opacity-50" />
               <p>Нет уведомлений</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {notifications.map((notification) => (
+              {(filter === 'all' ? regularNotifications : allNotifications).map((notification) => (
                 <NotificationItem
                   key={notification.id}
                   notification={notification}

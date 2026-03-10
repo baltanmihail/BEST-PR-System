@@ -1,20 +1,104 @@
 """
 Сервис уведомлений об изменении статусов заявок на оборудование
-Аналогично BEST Channel Bot: уведомления при одобрении, отклонении и т.д.
+Одно обновляемое сообщение-дайджест для VP4PR и Channel (не PR-FR).
+Приоритеты: 1) Новые заявки, 2) Напоминания.
 """
 import logging
 from typing import List, Dict, Optional
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 
-from app.models.equipment import EquipmentRequest, EquipmentRequestStatus
+from app.models.equipment import EquipmentRequest, EquipmentRequestStatus, Equipment
 from app.models.user import User, UserRole
+from app.models.equipment_admin_notification import EquipmentAdminNotification
+from app.services.equipment_digest_service import EquipmentDigestService
 
 logger = logging.getLogger(__name__)
+
+# Текст уведомления о новой заявке (из BEST Channel Bot messages.py)
+NEW_APPLICATION_NOTIFICATION = """🔔 <b>Новая заявка на оборудование</b>
+
+📋 <b>Номер заявки:</b> #{application_number}
+👤 <b>Пользователь:</b> {fio}
+🎬 <b>Съёмка:</b> {shooting_name}
+📅 <b>Дата съёмки:</b> {shooting_date}
+📥 <b>Получение:</b> {rental_start}
+📤 <b>Возврат:</b> {rental_end}
+📦 <b>Оборудование:</b> #{equipment_number} {equipment_name}
+💬 <b>Комментарий:</b> {comment}
+
+Используйте сайт или бот для просмотра и обработки заявки."""
 
 
 class EquipmentNotifications:
     """Сервис для отправки уведомлений об изменении статусов заявок"""
+    
+    async def send_new_application_notification(
+        self,
+        db: AsyncSession,
+        request: EquipmentRequest,
+        equipment: Equipment,
+        user: User,
+        application_number: int,
+        shooting_name: str = ""
+    ) -> dict:
+        """
+        Обновить дайджест для VP4PR и Channel (одно сообщение, приоритеты).
+        Не создаём отдельные сообщения — только дайджест.
+        """
+        try:
+            bot = await self._get_bot()
+            if not bot:
+                return {"status": "skipped", "reason": "bot_not_available"}
+
+            # Обновляем одно сообщение-дайджест для координаторов (VP4PR, Channel, TELEGRAM_ADMIN_IDS)
+            sent = await EquipmentDigestService.update_digest_for_coordinators(db, bot)
+
+            logger.info(f"✅ Дайджест обновлён для {sent} получателей (заявка #{application_number})")
+            return {"status": "success", "notified_count": sent}
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка отправки уведомления о новой заявке: {e}", exc_info=True)
+            return {"status": "error", "error": str(e)}
+    
+    @staticmethod
+    async def delete_admin_notifications_for_request(db: AsyncSession, request_id: UUID) -> int:
+        """
+        Удалить уведомления координаторам о заявке при approve/reject (как в BEST Channel Bot).
+        Возвращает количество удалённых сообщений в TG.
+        """
+        try:
+            from app.utils.telegram_sender import get_bot, delete_telegram_message
+            
+            result = await db.execute(
+                select(EquipmentAdminNotification).where(EquipmentAdminNotification.request_id == request_id)
+            )
+            recs = result.scalars().all()
+            if not recs:
+                return 0
+            
+            bot = await get_bot()
+            deleted = 0
+            for rec in recs:
+                try:
+                    ok = await delete_telegram_message(rec.telegram_id, rec.message_id, silent_fail=True)
+                    if ok:
+                        deleted += 1
+                except Exception:
+                    pass
+                db.delete(rec)
+            await db.commit()
+            logger.info(f"✅ Удалено {deleted} уведомлений координаторам для заявки {request_id}")
+            return deleted
+        except Exception as e:
+            logger.warning(f"Ошибка удаления уведомлений для заявки {request_id}: {e}")
+            return 0
+    
+    async def _get_bot(self):
+        """Получить экземпляр бота для отправки сообщений"""
+        from app.utils.telegram_sender import get_bot
+        return await get_bot()
     
     async def send_status_change_notifications(
         self,

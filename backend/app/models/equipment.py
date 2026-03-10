@@ -172,8 +172,12 @@ class EquipmentRequest(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
+    purpose = Column(String, nullable=True)
     status = Column(EquipmentRequestStatusType(), nullable=False, default=EquipmentRequestStatus.PENDING, index=True)
     rejection_reason = Column(String, nullable=True)
+    # Отслеживание отправленных напоминаний (чтобы не дублировать)
+    issue_reminder_sent_for = Column(Date, nullable=True)   # дата выдачи, для которой отправили напоминание
+    return_reminder_sent_for = Column(Date, nullable=True)  # дата возврата, для которой отправили напоминание
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     

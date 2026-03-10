@@ -59,6 +59,7 @@ class EquipmentRequestBase(BaseModel):
     start_date: date
     end_date: date
     task_id: Optional[UUID] = None
+    purpose: Optional[str] = Field(None, description="Цель использования / название мероприятия")
 
 
 class EquipmentRequestCreate(EquipmentRequestBase):
@@ -79,6 +80,8 @@ class EquipmentRequestResponse(EquipmentRequestBase):
     user_id: UUID
     status: EquipmentRequestStatus
     rejection_reason: Optional[str] = None
+    equipment_name: Optional[str] = Field(None, description="Название оборудования")
+    user_name: Optional[str] = Field(None, description="Имя пользователя")
     created_at: datetime
     updated_at: datetime
     

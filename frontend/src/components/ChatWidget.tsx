@@ -141,7 +141,13 @@ export default function ChatWidget() {
       {/* Окно виджета */}
       {isOpen && (
         <div
-          className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 z-[10000] w-[calc(100vw-2rem)] md:w-[400px] h-[500px] max-h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-white/10 backdrop-blur-xl bg-[#1a1a2e]/95 animate-in slide-in-from-bottom-10 fade-in duration-300`}
+          className={`fixed bottom-20 md:bottom-6 right-4 md:right-6 z-[10000] w-[calc(100vw-2rem)] md:w-[400px] h-[500px] max-h-[80vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-white/10 backdrop-blur-xl bg-[#1a1a2e]/95 animate-in slide-in-from-bottom-10 fade-in duration-300 isolate`}
+          style={{ cursor: 'auto', isolation: 'isolate', pointerEvents: 'auto' }}
+          onWheel={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onScroll={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Хедер */}
           <div className="flex items-center justify-between px-4 py-3 bg-white/5 border-b border-white/10">
