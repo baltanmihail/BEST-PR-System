@@ -396,6 +396,20 @@ class GoogleService:
         
         return result.get('values', [])
     
+    def read_sheet_formulas(self, range_name: str, sheet_id: Optional[str] = None,
+                           background: bool = False) -> List[List[Any]]:
+        """Read formulas from Google Sheets (valueRenderOption=FORMULA)."""
+        sheet_id = sheet_id or settings.GOOGLE_SHEETS_ID
+        if not sheet_id:
+            raise ValueError("Google Sheets ID not configured")
+        service = self._get_sheets_service(background=background)
+        result = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id,
+            range=range_name,
+            valueRenderOption="FORMULA",
+        ).execute()
+        return result.get('values', [])
+
     def write_sheet(self, range_name: str, values: List[List[Any]], 
                    sheet_id: Optional[str] = None, background: bool = False):
         """

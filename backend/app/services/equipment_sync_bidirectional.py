@@ -9,6 +9,7 @@
 - Новые заявки из Sheets создаются в БД
 """
 import logging
+import re
 from typing import List, Dict, Optional
 from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,9 @@ class EquipmentBidirectionalSync:
             sheets_id = self.sheets_sync._get_equipment_sheets_id()
             logger.info(f"Bidirectional sync: reading sheets_id={sheets_id}")
 
+            # Read equipment list to resolve names when formula cells are empty
+            eq_name_map = self._load_equipment_name_map(sheets_id)
+
             values = self.google_service.read_sheet(
                 "Заявки на оборудку!A:K",
                 sheet_id=sheets_id,
@@ -72,7 +76,18 @@ class EquipmentBidirectionalSync:
             if col_idx is None:
                 return {"status": "error", "error": "missing_columns"}
 
-            sheets_rows = self._parse_sheet_rows(values[1:], col_idx)
+            # Also read formulas to resolve equipment references like ='Вся оборудка'!C2
+            formulas = None
+            try:
+                formulas = self.google_service.read_sheet_formulas(
+                    "Заявки на оборудку!A:K",
+                    sheet_id=sheets_id,
+                    background=True,
+                )
+            except Exception as e:
+                logger.warning(f"Could not read formulas: {e}")
+
+            sheets_rows = self._parse_sheet_rows(values[1:], col_idx, eq_name_map, formulas[1:] if formulas and len(formulas) > 1 else None)
             logger.info(f"Bidirectional sync: parsed {len(sheets_rows)} valid rows from sheets")
 
             if not sheets_rows:
@@ -187,6 +202,61 @@ class EquipmentBidirectionalSync:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _load_equipment_name_map(self, sheets_id: str) -> Dict[int, str]:
+        """
+        Read 'Вся оборудка' sheet and build row_number -> equipment_name map.
+        Tries columns A and B to find the equipment name column.
+        Row 1 is header, row 2+ is equipment data.
+        """
+        SHEET_NAMES = ["Вся оборудка", "Вся оборудку"]
+        for sheet_name in SHEET_NAMES:
+            try:
+                values = self.google_service.read_sheet(
+                    f"'{sheet_name}'!A:B",
+                    sheet_id=sheets_id,
+                    background=True,
+                )
+                if values:
+                    break
+            except Exception:
+                continue
+        else:
+            logger.warning("_load_equipment_name_map: could not read any equipment sheet")
+            return {}
+
+        name_map: Dict[int, str] = {}
+        # Determine which column has the name (not a number)
+        name_col = 1  # default: column B
+        if len(values) > 1:
+            header = values[0]
+            for ci, h in enumerate(header):
+                h_lower = str(h).strip().lower()
+                if h_lower in ("оборудование", "название", "name", "наименование"):
+                    name_col = ci
+                    break
+
+        for i, row in enumerate(values):
+            row_num = i + 1
+            if row_num == 1:
+                continue
+            name = ""
+            if name_col < len(row):
+                name = str(row[name_col]).strip()
+            if not name and len(row) >= 1:
+                # fallback: first non-number cell
+                for cell in row:
+                    val = str(cell).strip()
+                    if val and not val.isdigit():
+                        name = val
+                        break
+            if name:
+                name_map[row_num] = name
+        logger.info(f"Equipment name map loaded: {len(name_map)} items")
+        if name_map:
+            sample = list(name_map.items())[:3]
+            logger.info(f"  Sample: {sample}")
+        return name_map
+
     @staticmethod
     def _resolve_columns(headers: List[str]) -> Optional[Dict[str, int]]:
         """Build column name -> index mapping. Uses fuzzy matching for known columns."""
@@ -270,10 +340,15 @@ class EquipmentBidirectionalSync:
 
     @staticmethod
     def _parse_sheet_rows(
-        rows: List[list], col_idx: Dict[str, int]
+        rows: List[list],
+        col_idx: Dict[str, int],
+        eq_name_map: Optional[Dict[int, str]] = None,
+        formula_rows: Optional[List[list]] = None,
     ) -> List[Dict]:
         parsed = []
-        for row in rows:
+        eq_col = col_idx.get("Что берёт", -1)
+
+        for row_i, row in enumerate(rows):
             def _cell(name: str) -> str:
                 i = col_idx.get(name, -1)
                 if i < 0 or i >= len(row):
@@ -302,6 +377,16 @@ class EquipmentBidirectionalSync:
             equipment_name = _cell("Что берёт")
             purpose = _cell("Название мероприятия")
             comment = _cell("Комментарий")
+
+            # If equipment_name is empty, try to resolve from formula
+            if not equipment_name and eq_name_map and formula_rows:
+                equipment_name = _resolve_eq_from_formula(
+                    formula_rows, row_i, eq_col, eq_name_map
+                )
+                if equipment_name:
+                    logger.info(
+                        f"Row #{app_num}: resolved equipment from formula -> '{equipment_name}'"
+                    )
 
             parsed.append({
                 "app_num": app_num,
@@ -402,4 +487,41 @@ def _parse_date(s: str) -> Optional[date]:
             return datetime.strptime(s.strip(), fmt).date()
         except (ValueError, AttributeError):
             continue
-    return None
+
+
+# Regex to extract row number from formulas like ='Вся оборудка'!C2 or ='Вся оборудку'!C15
+_FORMULA_ROW_RE = re.compile(r"[!'\"]\s*!?\s*[A-Z]+(\d+)", re.IGNORECASE)
+_FORMULA_ROW_RE2 = re.compile(r"![A-Z]+(\d+)", re.IGNORECASE)
+
+
+def _resolve_eq_from_formula(
+    formula_rows: List[list],
+    row_i: int,
+    eq_col: int,
+    eq_name_map: Dict[int, str],
+) -> str:
+    """Extract equipment name from a formula like ='Вся оборудка'!C2."""
+    if eq_col < 0 or row_i >= len(formula_rows):
+        return ""
+    frow = formula_rows[row_i]
+    if eq_col >= len(frow):
+        return ""
+    formula = str(frow[eq_col]).strip()
+    if not formula:
+        return ""
+
+    # Try to find the row number in the formula
+    m = _FORMULA_ROW_RE2.search(formula)
+    if not m:
+        m = _FORMULA_ROW_RE.search(formula)
+    if m:
+        ref_row = int(m.group(1))
+        name = eq_name_map.get(ref_row, "")
+        if name:
+            logger.debug(f"Formula '{formula}' -> row {ref_row} -> '{name}'")
+            return name
+        else:
+            logger.warning(f"Formula '{formula}' -> row {ref_row}, but no name in map")
+    else:
+        logger.debug(f"Could not parse formula: '{formula}'")
+    return ""

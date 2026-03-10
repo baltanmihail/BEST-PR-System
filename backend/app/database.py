@@ -99,5 +99,11 @@ Base = declarative_base()
 
 async def get_db():
     """Dependency для получения сессии БД"""
-    async with AsyncSessionLocal() as session:
+    session = AsyncSessionLocal()
+    try:
         yield session
+    finally:
+        try:
+            await session.close()
+        except Exception:
+            pass
