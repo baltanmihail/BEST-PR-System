@@ -2,17 +2,79 @@
 Публичные API endpoints (без авторизации)
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, cast, String
 from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
+import logging
+import io
+import re
 
 from app.database import get_db
 from app.models.task import Task, TaskType, TaskStatus, TaskPriority, TaskAssignment, AssignmentStatus
 from app.models.user import User, UserRole
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/public", tags=["public"])
+
+_photo_cache: dict[str, tuple[bytes, str]] = {}
+
+
+@router.get("/drive-photo/{file_id}")
+async def proxy_drive_photo(file_id: str):
+    """
+    Проксирует фото оборудования из Google Drive через сервисный аккаунт.
+    Кэширует в памяти для быстрого повторного доступа.
+    """
+    if not re.match(r'^[a-zA-Z0-9_-]+$', file_id):
+        raise HTTPException(status_code=400, detail="Invalid file_id")
+
+    if file_id in _photo_cache:
+        data, mime = _photo_cache[file_id]
+        return Response(content=data, media_type=mime, headers={
+            "Cache-Control": "public, max-age=86400",
+        })
+
+    try:
+        from app.services.google_service import GoogleService
+        from googleapiclient.http import MediaIoBaseDownload
+
+        gs = GoogleService()
+        drive = gs._get_drive_service(background=False)
+
+        meta = drive.files().get(fileId=file_id, fields="mimeType,size").execute()
+        mime_type = meta.get("mimeType", "image/jpeg")
+        size = int(meta.get("size", 0))
+
+        if not mime_type.startswith("image/"):
+            raise HTTPException(status_code=403, detail="Not an image")
+        if size > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="File too large")
+
+        buf = io.BytesIO()
+        request = drive.files().get_media(fileId=file_id)
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+
+        buf.seek(0)
+        data = buf.read()
+
+        if len(_photo_cache) < 200:
+            _photo_cache[file_id] = (data, mime_type)
+
+        return Response(content=data, media_type=mime_type, headers={
+            "Cache-Control": "public, max-age=86400",
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Drive photo proxy error for {file_id}: {e}")
+        raise HTTPException(status_code=404, detail="Photo not found")
 
 
 @router.get("/tasks", response_model=dict)

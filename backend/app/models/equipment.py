@@ -26,6 +26,7 @@ class EquipmentCategory(str, enum.Enum):
     LIGHTING = "lighting"
     AUDIO = "audio"
     TRIPOD = "tripod"
+    STABILIZER = "stabilizer"
     ACCESSORIES = "accessories"
     STORAGE = "storage"
     OTHER = "other"
@@ -44,9 +45,9 @@ class EquipmentRequestStatus(str, enum.Enum):
 # PostgreSQL ENUM типы (уже существуют в БД, create_type=False)
 # Важно: values_callable возвращает lowercase значения
 equipment_category_enum = PG_ENUM(
-    'camera', 'lens', 'lighting', 'audio', 'tripod', 'accessories', 'storage', 'other',
+    'camera', 'lens', 'lighting', 'audio', 'tripod', 'stabilizer', 'accessories', 'storage', 'other',
     name='equipmentcategory',
-    create_type=False  # НЕ создавать тип, он уже есть в БД
+    create_type=False
 )
 
 equipment_status_enum = PG_ENUM(

@@ -1,6 +1,6 @@
 import api from './api'
 
-export type EquipmentCategory = 'camera' | 'lens' | 'lighting' | 'audio' | 'tripod' | 'accessories' | 'storage' | 'other'
+export type EquipmentCategory = 'camera' | 'lens' | 'lighting' | 'audio' | 'tripod' | 'stabilizer' | 'accessories' | 'storage' | 'other'
 export type EquipmentStatus = 'available' | 'rented' | 'maintenance' | 'broken'
 export type EquipmentRequestStatus = 'pending' | 'approved' | 'rejected' | 'active' | 'completed' | 'cancelled'
 

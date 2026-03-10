@@ -202,7 +202,7 @@ class EquipmentSheetsSync:
             
             if best_match:
                 file_id = best_match['id']
-                photo_url = f"https://lh3.googleusercontent.com/d/{file_id}=w400"
+                photo_url = f"/api/v1/public/drive-photo/{file_id}"
                 logger.info(f"Photo matched for '{equipment_name}': {best_match['name']}")
                 return photo_url
             
@@ -501,7 +501,7 @@ class EquipmentSheetsSync:
             "dji rs", "dji osmo", "dji om", "ronin",
             "держатель смартфона", "держатель телефона"
         ]):
-            return "accessories"
+            return "stabilizer"
         # Аксессуары
         elif any(word in name_lower for word in [
             "аксессуар", "accessories", "переходник", "кабель", "батарея",

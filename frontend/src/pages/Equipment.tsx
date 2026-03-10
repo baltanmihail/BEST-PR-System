@@ -112,6 +112,16 @@ export default function EquipmentPage() {
     }
   })
 
+  const API_ORIGIN = import.meta.env.VITE_API_URL
+    ? import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, '')
+    : (import.meta.env.DEV ? 'http://localhost:8000' : 'https://best-pr-api.up.railway.app')
+
+  const getPhotoUrl = (url?: string): string | undefined => {
+    if (!url) return undefined
+    if (url.startsWith('/api/')) return `${API_ORIGIN}${url}`
+    return url
+  }
+
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showEditForm, setShowEditForm] = useState(false)
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null)
@@ -129,6 +139,7 @@ export default function EquipmentPage() {
       lighting: 'Свет',
       audio: 'Аудио',
       tripod: 'Штатив',
+      stabilizer: 'Стабилизатор',
       accessories: 'Аксессуары',
       storage: 'Накопитель',
       other: 'Прочее'
@@ -146,6 +157,8 @@ export default function EquipmentPage() {
         return <Lightbulb className="h-6 w-6" />
       case 'tripod':
         return <Box className="h-6 w-6" />
+      case 'stabilizer':
+        return <RefreshCw className="h-6 w-6" />
       case 'storage':
         return <HardDrive className="h-6 w-6" />
       case 'lens':
@@ -162,6 +175,7 @@ export default function EquipmentPage() {
     { key: 'lighting', label: 'Свет' },
     { key: 'audio', label: 'Аудио' },
     { key: 'tripod', label: 'Штативы' },
+    { key: 'stabilizer', label: 'Стабилизаторы' },
     { key: 'storage', label: 'Накопители' },
     { key: 'accessories', label: 'Аксессуары' },
     { key: 'other', label: 'Прочее' },
@@ -313,10 +327,10 @@ export default function EquipmentPage() {
             </button>
 
             {/* Фото оборудования в модалке */}
-            {selectedEquipment.specs?.photo_url && (
+            {getPhotoUrl(selectedEquipment.specs?.photo_url) && (
               <div className="w-full h-32 rounded-xl overflow-hidden bg-white/5 mb-4">
                 <img 
-                  src={selectedEquipment.specs.photo_url} 
+                  src={getPhotoUrl(selectedEquipment.specs?.photo_url)} 
                   alt={selectedEquipment.name}
                   className="w-full h-full object-contain"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
@@ -425,10 +439,10 @@ export default function EquipmentPage() {
               
               <div className="relative z-10">
                 {/* Фото оборудования (большое, сверху карточки) */}
-                {equipment.specs?.photo_url ? (
+                {getPhotoUrl(equipment.specs?.photo_url) ? (
                   <div className="w-full h-36 rounded-xl border border-white/10 overflow-hidden bg-white/5 mb-4 flex items-center justify-center">
                     <img 
-                      src={equipment.specs.photo_url} 
+                      src={getPhotoUrl(equipment.specs?.photo_url)} 
                       alt={equipment.name}
                       className="max-w-full max-h-full object-contain p-2"
                       onError={(e) => {
@@ -671,6 +685,7 @@ export default function EquipmentPage() {
                 <option value="lighting">💡 Свет</option>
                 <option value="audio">🎤 Аудио</option>
                 <option value="tripod">📐 Штатив</option>
+                <option value="stabilizer">🎯 Стабилизатор</option>
                 <option value="accessories">🔧 Аксессуары</option>
                 <option value="storage">💾 Накопитель</option>
                 <option value="other">📦 Прочее</option>
