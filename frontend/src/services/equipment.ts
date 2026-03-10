@@ -33,7 +33,10 @@ export interface EquipmentRequestResponse {
   user_name?: string
   start_date: string
   end_date: string
+  quantity: number
   purpose?: string
+  notes?: string
+  attachments?: string[]
   status: EquipmentRequestStatus
   rejection_reason?: string
   created_at: string
@@ -131,10 +134,20 @@ export const equipmentApi = {
   },
 
   createBatchRequests: async (data: {
-    items: { equipment_id: string; start_date: string; end_date: string }[]
+    items: { equipment_id: string; start_date: string; end_date: string; quantity?: number; comment?: string }[]
     purpose?: string
+    attachments?: string[]
   }): Promise<EquipmentRequestResponse[]> => {
     const response = await api.post<EquipmentRequestResponse[]>('/equipment/requests/batch', data)
+    return response.data
+  },
+
+  uploadFile: async (file: File): Promise<{ url: string; filename: string; size: number }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await api.post('/equipment/requests/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
     return response.data
   },
 

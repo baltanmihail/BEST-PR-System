@@ -186,17 +186,20 @@ class EquipmentService:
         start_date: date,
         end_date: date,
         task_id: Optional[UUID] = None,
-        purpose: Optional[str] = None
+        purpose: Optional[str] = None,
+        quantity: int = 1,
+        notes: Optional[str] = None,
+        attachments: Optional[list] = None,
     ) -> EquipmentRequest:
         """Создать заявку на оборудование"""
         available = await EquipmentService.get_available_equipment(
             db, start_date, end_date
         )
         available_ids = [eq.id for eq in available]
-        
+
         if equipment_id not in available_ids:
             raise ValueError("Equipment is not available for these dates")
-        
+
         request = EquipmentRequest(
             equipment_id=equipment_id,
             user_id=user_id,
@@ -204,6 +207,9 @@ class EquipmentService:
             start_date=start_date,
             end_date=end_date,
             purpose=purpose,
+            quantity=quantity,
+            notes=notes,
+            attachments=attachments,
             status=EquipmentRequestStatus.PENDING.value
         )
         

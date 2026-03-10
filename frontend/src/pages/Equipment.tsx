@@ -12,6 +12,13 @@ interface CartItem {
   equipment: Equipment
   start_date: string
   end_date: string
+  quantity: number
+  comment: string
+}
+
+interface UploadedFile {
+  url: string
+  filename: string
 }
 
 export default function EquipmentPage() {
@@ -24,6 +31,8 @@ export default function EquipmentPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [showCartModal, setShowCartModal] = useState(false)
   const [cartPurpose, setCartPurpose] = useState('')
+  const [cartFiles, setCartFiles] = useState<UploadedFile[]>([])
+  const [uploading, setUploading] = useState(false)
 
   const isRegistered = user && user.is_active
 
@@ -53,7 +62,7 @@ export default function EquipmentPage() {
   })
 
   const batchMutation = useMutation({
-    mutationFn: (data: { items: { equipment_id: string; start_date: string; end_date: string }[]; purpose?: string }) =>
+    mutationFn: (data: { items: { equipment_id: string; start_date: string; end_date: string; quantity?: number; comment?: string }[]; purpose?: string; attachments?: string[] }) =>
       equipmentApi.createBatchRequests(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] })
@@ -61,6 +70,7 @@ export default function EquipmentPage() {
       setCart([])
       setShowCartModal(false)
       setCartPurpose('')
+      setCartFiles([])
     },
     onError: (error: any) => {
       alert(error.response?.data?.detail || 'Ошибка оформления заявки')
@@ -74,14 +84,14 @@ export default function EquipmentPage() {
       return
     }
     if (cart.find(c => c.equipment.id === equipment.id)) return
-    setCart(prev => [...prev, { equipment, start_date: '', end_date: '' }])
+    setCart(prev => [...prev, { equipment, start_date: '', end_date: '', quantity: 1, comment: '' }])
   }
 
   const removeFromCart = (equipmentId: string) => {
     setCart(prev => prev.filter(c => c.equipment.id !== equipmentId))
   }
 
-  const updateCartItem = (equipmentId: string, field: 'start_date' | 'end_date', value: string) => {
+  const updateCartItem = (equipmentId: string, field: keyof CartItem, value: any) => {
     setCart(prev => prev.map(c =>
       c.equipment.id === equipmentId ? { ...c, [field]: value } : c
     ))
@@ -107,9 +117,29 @@ export default function EquipmentPage() {
         equipment_id: c.equipment.id,
         start_date: c.start_date,
         end_date: c.end_date,
+        quantity: c.quantity,
+        comment: c.comment || undefined,
       })),
       purpose: cartPurpose || undefined,
+      attachments: cartFiles.length > 0 ? cartFiles.map(f => f.url) : undefined,
     })
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploading(true)
+    try {
+      for (const file of Array.from(files)) {
+        const result = await equipmentApi.uploadFile(file)
+        setCartFiles(prev => [...prev, { url: result.url, filename: result.filename }])
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Ошибка загрузки файла')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
   }
 
   const isInCart = (equipmentId: string) => cart.some(c => c.equipment.id === equipmentId)
@@ -455,7 +485,22 @@ export default function EquipmentPage() {
                             {request.purpose}
                           </span>
                         )}
+                        {request.quantity > 1 && (
+                          <span className="text-best-primary/70 font-medium">{request.quantity} шт.</span>
+                        )}
                       </div>
+                      {request.notes && (
+                        <p className="text-white/40 text-xs mt-0.5 italic">{request.notes}</p>
+                      )}
+                      {request.attachments && request.attachments.length > 0 && (
+                        <div className="flex gap-1 mt-1 flex-wrap">
+                          {request.attachments.map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer" className="text-best-primary/80 text-xs underline hover:text-best-primary">
+                              Файл {i + 1}
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       {request.rejection_reason && (
                         <p className="text-red-400/80 text-xs mt-1">Причина: {request.rejection_reason}</p>
                       )}
@@ -605,7 +650,7 @@ export default function EquipmentPage() {
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2 mb-2">
                     <input
                       type="date"
                       value={item.start_date}
@@ -623,12 +668,38 @@ export default function EquipmentPage() {
                       className={`bg-white/10 text-white rounded px-2 py-1.5 border border-white/20 text-xs focus:outline-none focus:ring-1 focus:ring-best-primary text-readable ${theme}`}
                     />
                   </div>
+                  <div className="flex items-center gap-2">
+                    {/* Количество */}
+                    {item.equipment.quantity > 1 && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-white/50 text-[10px] uppercase">Кол-во:</span>
+                        <select
+                          value={item.quantity}
+                          onChange={(e) => updateCartItem(item.equipment.id, 'quantity', parseInt(e.target.value))}
+                          className={`bg-white/10 text-white rounded px-2 py-1 border border-white/20 text-xs focus:outline-none focus:ring-1 focus:ring-best-primary text-readable ${theme} w-14`}
+                        >
+                          {Array.from({ length: item.equipment.quantity }, (_, i) => i + 1).map(n => (
+                            <option key={n} value={n}>{n}</option>
+                          ))}
+                        </select>
+                        <span className="text-white/30 text-[10px]">/ {item.equipment.quantity}</span>
+                      </div>
+                    )}
+                    {/* Комментарий */}
+                    <input
+                      type="text"
+                      value={item.comment}
+                      onChange={(e) => updateCartItem(item.equipment.id, 'comment', e.target.value)}
+                      placeholder="Комментарий..."
+                      className={`flex-1 bg-white/10 text-white placeholder-white/20 rounded px-2 py-1 border border-white/20 text-xs focus:outline-none focus:ring-1 focus:ring-best-primary text-readable ${theme}`}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
 
             {/* Цель */}
-            <div className="mb-4">
+            <div className="mb-3">
               <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
                 Название съёмки / цель
               </label>
@@ -639,6 +710,38 @@ export default function EquipmentPage() {
                 placeholder="Например: Съёмка для LBE, фотосет для ВК..."
                 className={`w-full bg-white/10 text-white placeholder-white/30 rounded-lg px-3 py-2.5 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm`}
               />
+            </div>
+
+            {/* Файлы */}
+            <div className="mb-4">
+              <label className={`block text-white/80 mb-1.5 text-xs font-medium uppercase tracking-wider text-readable ${theme}`}>
+                Файлы (сценарий, идея, ТЗ...)
+              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className={`inline-flex items-center gap-1 px-3 py-1.5 bg-white/10 text-white/70 rounded-lg hover:bg-white/20 transition-all text-xs font-medium border border-white/10 cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  <span>{uploading ? 'Загрузка...' : 'Прикрепить файл'}</span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    multiple
+                    accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.gif,.webp,.mp4,.zip"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                  />
+                </label>
+                {cartFiles.map((f, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 px-2 py-1 bg-best-primary/20 text-best-primary rounded text-xs border border-best-primary/30">
+                    <span className="truncate max-w-[120px]">{f.filename}</span>
+                    <button
+                      onClick={() => setCartFiles(prev => prev.filter((_, j) => j !== i))}
+                      className="text-white/40 hover:text-red-400"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
             </div>
 
             <button
@@ -873,7 +976,22 @@ export default function EquipmentPage() {
                           {request.purpose}
                         </span>
                       )}
+                      {request.quantity > 1 && (
+                        <span className="text-best-primary/70 font-medium">{request.quantity} шт.</span>
+                      )}
                     </div>
+                    {request.notes && (
+                      <p className="text-white/40 text-xs mt-1 italic">{request.notes}</p>
+                    )}
+                    {request.attachments && request.attachments.length > 0 && (
+                      <div className="flex gap-1 mt-1 flex-wrap">
+                        {(request.attachments as string[]).map((url: string, i: number) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="text-best-primary/80 text-xs underline hover:text-best-primary">
+                            Файл {i + 1}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                     {request.status === 'pending' && (
                       <div className="flex items-center gap-1 mt-2 text-yellow-400/80 text-xs">
                         <Clock className="h-3 w-3" />

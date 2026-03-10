@@ -1,7 +1,7 @@
 """
 API endpoints для оборудования
 """
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from uuid import UUID
@@ -279,6 +279,9 @@ async def create_equipment_requests_batch(
                 start_date=item.start_date,
                 end_date=item.end_date,
                 purpose=batch.purpose,
+                quantity=item.quantity,
+                notes=item.comment,
+                attachments=batch.attachments,
             )
             results.append(await _enrich_request_response(db, req))
         except ValueError as e:
@@ -428,6 +431,47 @@ async def reject_equipment_request(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+@router.post("/requests/upload")
+async def upload_request_attachment(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload a file attachment for an equipment request. Returns the file URL."""
+    import os, uuid as _uuid
+    ALLOWED_EXT = {".pdf", ".doc", ".docx", ".txt", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".zip"}
+    MAX_SIZE = 20 * 1024 * 1024
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXT:
+        raise HTTPException(status_code=400, detail=f"File type {ext} not allowed")
+
+    content = await file.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=400, detail="File too large (max 20MB)")
+
+    upload_dir = os.path.join(os.getcwd(), "uploads", "equipment")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    unique_name = f"{_uuid.uuid4().hex[:12]}_{file.filename}"
+    filepath = os.path.join(upload_dir, unique_name)
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    url = f"/api/v1/equipment/uploads/{unique_name}"
+    return {"url": url, "filename": file.filename, "size": len(content)}
+
+
+@router.get("/uploads/{filename}")
+async def serve_upload(filename: str):
+    """Serve an uploaded file."""
+    import os
+    from fastapi.responses import FileResponse
+    filepath = os.path.join(os.getcwd(), "uploads", "equipment", filename)
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(filepath)
 
 
 @router.post("/sync/cron")

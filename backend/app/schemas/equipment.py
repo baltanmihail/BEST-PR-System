@@ -72,12 +72,15 @@ class EquipmentRequestBatchItem(BaseModel):
     equipment_id: UUID
     start_date: date
     end_date: date
+    quantity: int = Field(1, ge=1, le=10, description="Количество единиц")
+    comment: Optional[str] = Field(None, description="Комментарий к позиции")
 
 
 class EquipmentRequestBatchCreate(BaseModel):
     """Batch-заявка из корзины: несколько позиций с общим purpose"""
     items: list[EquipmentRequestBatchItem] = Field(..., min_length=1, max_length=20)
     purpose: Optional[str] = Field(None, description="Общая цель / название мероприятия")
+    attachments: Optional[list[str]] = Field(None, description="URL загруженных файлов")
 
 
 class EquipmentRequestUpdate(BaseModel):
@@ -91,8 +94,11 @@ class EquipmentRequestResponse(EquipmentRequestBase):
     """Схема ответа с заявкой"""
     id: UUID
     user_id: UUID
+    quantity: int = 1
     status: EquipmentRequestStatus
     rejection_reason: Optional[str] = None
+    notes: Optional[str] = None
+    attachments: Optional[list[str]] = None
     equipment_name: Optional[str] = Field(None, description="Название оборудования")
     user_name: Optional[str] = Field(None, description="Имя пользователя")
     created_at: datetime
