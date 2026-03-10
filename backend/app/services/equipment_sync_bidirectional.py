@@ -48,11 +48,13 @@ class EquipmentBidirectionalSync:
         """
         try:
             sheets_id = self.sheets_sync._get_equipment_sheets_id()
-            logger.info(f"Bidirectional sync: reading sheets_id={sheets_id}")
+            eq_sheet_name = self.sheets_sync.EQUIPMENT_SHEET  # "Вся оборудка"
+            logger.info(f"Bidirectional sync: sheets_id={sheets_id}, eq_sheet='{eq_sheet_name}'")
 
-            # Read equipment list to resolve names when formula cells are empty
-            eq_name_map = self._load_equipment_name_map(sheets_id)
+            # 1) Read equipment names from "Вся оборудка" (same API as equipment_sheets_sync)
+            eq_name_map = self._load_equipment_name_map(sheets_id, eq_sheet_name)
 
+            # 2) Read requests data (displayed values)
             values = self.google_service.read_sheet(
                 "Заявки на оборудку!A:K",
                 sheet_id=sheets_id,
@@ -76,7 +78,7 @@ class EquipmentBidirectionalSync:
             if col_idx is None:
                 return {"status": "error", "error": "missing_columns"}
 
-            # Also read formulas to resolve equipment references like ='Вся оборудка'!C2
+            # 3) Read formulas to resolve equipment references like ='Вся оборудка'!C2
             formulas = None
             try:
                 formulas = self.google_service.read_sheet_formulas(
@@ -84,10 +86,26 @@ class EquipmentBidirectionalSync:
                     sheet_id=sheets_id,
                     background=True,
                 )
+                logger.info(f"Bidirectional sync: read {len(formulas) if formulas else 0} formula rows")
+                if formulas and len(formulas) > 1:
+                    eq_col = col_idx.get("Что берёт", -1)
+                    if eq_col >= 0:
+                        for fi, frow in enumerate(formulas[1:]):
+                            if eq_col < len(frow):
+                                logger.info(f"  Formula row {fi}: col[{eq_col}] = '{frow[eq_col]}'")
             except Exception as e:
-                logger.warning(f"Could not read formulas: {e}")
+                logger.warning(f"Could not read formulas: {e}", exc_info=True)
 
-            sheets_rows = self._parse_sheet_rows(values[1:], col_idx, eq_name_map, formulas[1:] if formulas and len(formulas) > 1 else None)
+            # 4) Also log raw data rows for debugging
+            for di, drow in enumerate(values[1:]):
+                eq_col = col_idx.get("Что берёт", -1)
+                eq_val = drow[eq_col] if eq_col >= 0 and eq_col < len(drow) else "N/A"
+                logger.info(f"  Data row {di}: col[{eq_col}]='Что берёт' = '{eq_val}' (len={len(drow)})")
+
+            sheets_rows = self._parse_sheet_rows(
+                values[1:], col_idx, eq_name_map,
+                formulas[1:] if formulas and len(formulas) > 1 else None,
+            )
             logger.info(f"Bidirectional sync: parsed {len(sheets_rows)} valid rows from sheets")
 
             if not sheets_rows:
@@ -143,10 +161,22 @@ class EquipmentBidirectionalSync:
                     if not sr.get("start_date") or not sr.get("end_date"):
                         logger.info(f"Row #{sr['app_num']}: no dates, skipping creation")
                         continue
-                    equipment = await self._find_equipment_by_name(db, sr.get("equipment_name", ""))
+                    eq_name = sr.get("equipment_name", "")
+                    equipment = await self._find_equipment_by_name(db, eq_name) if eq_name else None
+                    if not equipment and not eq_name:
+                        # Fallback: if eq name is empty and eq_name_map has it by row index
+                        # try reading from name_map using request row position
+                        logger.info(f"Row #{sr['app_num']}: eq name empty, trying fallback from name_map")
+                        # The request number often corresponds to the equipment row in "Вся оборудка"
+                        # But this isn't reliable. Instead, just log and try all DB equipment.
+                        all_eq = await db.execute(select(Equipment))
+                        all_equipment = all_eq.scalars().all()
+                        logger.info(f"Row #{sr['app_num']}: {len(all_equipment)} equipment in DB")
+                        for eq in all_equipment:
+                            logger.info(f"  DB equipment: '{eq.name}' (id={str(eq.id)[:8]})")
                     if not equipment:
                         logger.warning(
-                            f"Row #{sr['app_num']}: equipment '{sr.get('equipment_name')}' "
+                            f"Row #{sr['app_num']}: equipment '{eq_name}' "
                             f"not found in DB, skipping"
                         )
                         continue
@@ -202,60 +232,48 @@ class EquipmentBidirectionalSync:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _load_equipment_name_map(self, sheets_id: str) -> Dict[int, str]:
+    def _load_equipment_name_map(self, sheets_id: str, eq_sheet_name: str) -> Dict[int, str]:
         """
-        Read 'Вся оборудка' sheet and build row_number -> equipment_name map.
-        Tries columns A and B to find the equipment name column.
-        Row 1 is header, row 2+ is equipment data.
+        Read equipment sheet and build row_number -> equipment_name map.
+        Uses the SAME sheet name and range as equipment_sheets_sync (A:D).
+        Column B (index 1) = equipment name (text).
+        Row 1 = header, row 2+ = data.
         """
-        SHEET_NAMES = ["Вся оборудка", "Вся оборудку"]
-        for sheet_name in SHEET_NAMES:
-            try:
-                values = self.google_service.read_sheet(
-                    f"'{sheet_name}'!A:B",
-                    sheet_id=sheets_id,
-                    background=True,
-                )
-                if values:
-                    break
-            except Exception:
-                continue
-        else:
-            logger.warning("_load_equipment_name_map: could not read any equipment sheet")
-            return {}
-
         name_map: Dict[int, str] = {}
-        # Determine which column has the name (not a number)
-        name_col = 1  # default: column B
-        if len(values) > 1:
-            header = values[0]
-            for ci, h in enumerate(header):
-                h_lower = str(h).strip().lower()
-                if h_lower in ("оборудование", "название", "name", "наименование"):
-                    name_col = ci
-                    break
+        try:
+            # Use exactly the same range as equipment_sheets_sync
+            values = self.google_service.read_sheet(
+                f"{eq_sheet_name}!A:D",
+                sheet_id=sheets_id,
+                background=True,
+            )
+            if not values:
+                logger.warning(f"_load_equipment_name_map: '{eq_sheet_name}' returned empty")
+                return name_map
 
-        for i, row in enumerate(values):
-            row_num = i + 1
-            if row_num == 1:
-                continue
-            name = ""
-            if name_col < len(row):
-                name = str(row[name_col]).strip()
-            if not name and len(row) >= 1:
-                # fallback: first non-number cell
-                for cell in row:
-                    val = str(cell).strip()
-                    if val and not val.isdigit():
-                        name = val
-                        break
-            if name:
-                name_map[row_num] = name
-        logger.info(f"Equipment name map loaded: {len(name_map)} items")
-        if name_map:
-            sample = list(name_map.items())[:3]
-            logger.info(f"  Sample: {sample}")
-        return name_map
+            logger.info(f"_load_equipment_name_map: read {len(values)} rows from '{eq_sheet_name}'")
+            if values:
+                logger.info(f"  Header: {values[0]}")
+
+            for i, row in enumerate(values):
+                row_num = i + 1  # 1-based
+                if row_num == 1:
+                    continue  # skip header
+                if len(row) < 2:
+                    continue
+                raw_name = str(row[1]).strip()
+                name = " ".join(raw_name.replace("\r", " ").replace("\n", " ").split())
+                if name and len(name) >= 3:
+                    name_map[row_num] = name
+
+            logger.info(f"Equipment name map: {len(name_map)} items")
+            for rn, nm in name_map.items():
+                logger.info(f"  row {rn} -> '{nm}'")
+            return name_map
+
+        except Exception as e:
+            logger.error(f"_load_equipment_name_map error: {e}", exc_info=True)
+            return name_map
 
     @staticmethod
     def _resolve_columns(headers: List[str]) -> Optional[Dict[str, int]]:
@@ -501,27 +519,29 @@ def _resolve_eq_from_formula(
     eq_name_map: Dict[int, str],
 ) -> str:
     """Extract equipment name from a formula like ='Вся оборудка'!C2."""
-    if eq_col < 0 or row_i >= len(formula_rows):
+    if eq_col < 0:
+        logger.info(f"_resolve_eq_from_formula: eq_col={eq_col}, skipping")
+        return ""
+    if row_i >= len(formula_rows):
+        logger.info(f"_resolve_eq_from_formula: row_i={row_i} >= len(formula_rows)={len(formula_rows)}")
         return ""
     frow = formula_rows[row_i]
     if eq_col >= len(frow):
+        logger.info(f"_resolve_eq_from_formula: eq_col={eq_col} >= len(frow)={len(frow)}, frow={frow}")
         return ""
     formula = str(frow[eq_col]).strip()
+    logger.info(f"_resolve_eq_from_formula: formula='{formula}'")
     if not formula:
         return ""
 
-    # Try to find the row number in the formula
     m = _FORMULA_ROW_RE2.search(formula)
     if not m:
         m = _FORMULA_ROW_RE.search(formula)
     if m:
         ref_row = int(m.group(1))
         name = eq_name_map.get(ref_row, "")
-        if name:
-            logger.debug(f"Formula '{formula}' -> row {ref_row} -> '{name}'")
-            return name
-        else:
-            logger.warning(f"Formula '{formula}' -> row {ref_row}, but no name in map")
+        logger.info(f"_resolve_eq_from_formula: '{formula}' -> row {ref_row} -> '{name}' (map keys: {list(eq_name_map.keys())[:5]})")
+        return name
     else:
-        logger.debug(f"Could not parse formula: '{formula}'")
+        logger.warning(f"_resolve_eq_from_formula: could not parse formula '{formula}'")
     return ""
