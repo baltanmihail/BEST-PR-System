@@ -30,6 +30,7 @@ export interface EquipmentRequestResponse {
   equipment_id: string
   equipment_name?: string
   user_id: string
+  user_name?: string
   start_date: string
   end_date: string
   purpose?: string

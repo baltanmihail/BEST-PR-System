@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Camera, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw, HardDrive, Headphones, Lightbulb, Box, ShoppingCart, Minus } from 'lucide-react'
+import { Camera, Loader2, AlertCircle, CheckCircle2, Calendar, ArrowLeft, Plus, X, Trash2, Edit2, RefreshCw, HardDrive, Headphones, Lightbulb, Box, ShoppingCart, Minus, Check, XCircle, Clock, ClipboardList } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
-import { equipmentApi, type Equipment, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate } from '../services/equipment'
+import { equipmentApi, type Equipment, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate, type EquipmentRequestResponse } from '../services/equipment'
 import { UserRole } from '../types/user'
 import EquipmentCalendar from '../components/EquipmentCalendar'
 
@@ -114,6 +114,11 @@ export default function EquipmentPage() {
 
   const isInCart = (equipmentId: string) => cart.some(c => c.equipment.id === equipmentId)
 
+  const [activeTab, setActiveTab] = useState<'catalog' | 'requests'>('catalog')
+  const [requestStatusFilter, setRequestStatusFilter] = useState<string>('all')
+  const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+
   const isCoordinator = user && (
     user.role === UserRole.COORDINATOR_SMM ||
     user.role === UserRole.COORDINATOR_DESIGN ||
@@ -132,6 +137,39 @@ export default function EquipmentPage() {
       alert(error.response?.data?.detail || 'Ошибка удаления оборудования')
     }
   })
+
+  // Все заявки (для координаторов)
+  const { data: allRequestsData } = useQuery({
+    queryKey: ['equipment', 'requests', 'all'],
+    queryFn: () => equipmentApi.getAllRequests({ limit: 100 }),
+    enabled: !!isCoordinator,
+    refetchInterval: 30000,
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: (requestId: string) => equipmentApi.approveRequest(requestId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'requests'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'timeline'] })
+    },
+    onError: (error: any) => alert(error.response?.data?.detail || 'Ошибка одобрения'),
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ requestId, reason }: { requestId: string; reason: string }) =>
+      equipmentApi.rejectRequest(requestId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'requests'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment', 'timeline'] })
+      setRejectingRequestId(null)
+      setRejectReason('')
+    },
+    onError: (error: any) => alert(error.response?.data?.detail || 'Ошибка отклонения'),
+  })
+
+  const filteredRequests = (allRequestsData?.items || []).filter((r: EquipmentRequestResponse) =>
+    requestStatusFilter === 'all' || r.status === requestStatusFilter
+  )
 
   const API_ORIGIN = import.meta.env.VITE_API_URL
     ? import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, '')
@@ -293,7 +331,41 @@ export default function EquipmentPage() {
         </div>
       </div>
 
+      {/* Вкладки для координаторов */}
+      {isCoordinator && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setActiveTab('catalog')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'catalog'
+                ? 'bg-best-primary text-white shadow-lg shadow-best-primary/20'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+            }`}
+          >
+            <Camera className="h-4 w-4" />
+            <span>Каталог</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all relative ${
+              activeTab === 'requests'
+                ? 'bg-best-primary text-white shadow-lg shadow-best-primary/20'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+            }`}
+          >
+            <ClipboardList className="h-4 w-4" />
+            <span>Заявки</span>
+            {(allRequestsData?.items || []).filter((r: EquipmentRequestResponse) => r.status === 'pending').length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-yellow-500 text-black text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">
+                {(allRequestsData?.items || []).filter((r: EquipmentRequestResponse) => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Фильтры по категориям */}
+      {activeTab === 'catalog' && (
       <div className="flex flex-wrap gap-2 mb-6">
         {allCategories.map(cat => (
           <button
@@ -309,7 +381,152 @@ export default function EquipmentPage() {
           </button>
         ))}
       </div>
+      )}
 
+      {/* ======= ПАНЕЛЬ ЗАЯВОК (для координаторов) ======= */}
+      {activeTab === 'requests' && isCoordinator && (
+        <div>
+          {/* Фильтры статусов */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[
+              { key: 'all', label: 'Все' },
+              { key: 'pending', label: 'На рассмотрении' },
+              { key: 'approved', label: 'Одобрено' },
+              { key: 'active', label: 'Выдано' },
+              { key: 'completed', label: 'Возвращено' },
+              { key: 'rejected', label: 'Отклонено' },
+            ].map(s => (
+              <button
+                key={s.key}
+                onClick={() => setRequestStatusFilter(s.key)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  requestStatusFilter === s.key
+                    ? 'bg-best-primary text-white shadow-lg shadow-best-primary/20'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20 border border-white/10'
+                }`}
+              >
+                {s.label}
+                {s.key === 'pending' && (allRequestsData?.items || []).filter((r: EquipmentRequestResponse) => r.status === 'pending').length > 0 && (
+                  <span className="ml-1.5 bg-yellow-500 text-black text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                    {(allRequestsData?.items || []).filter((r: EquipmentRequestResponse) => r.status === 'pending').length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Список заявок */}
+          {filteredRequests.length === 0 ? (
+            <div className={`glass-enhanced ${theme} rounded-xl p-8 text-center`}>
+              <ClipboardList className="h-12 w-12 mx-auto mb-3 text-white/20" />
+              <p className="text-white/50">Нет заявок с выбранным статусом</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredRequests.map((request: EquipmentRequestResponse) => (
+                <div
+                  key={request.id}
+                  className={`glass-enhanced ${theme} rounded-xl p-4 border ${
+                    request.status === 'pending' ? 'border-yellow-500/40' : 'border-white/10'
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-white font-semibold text-readable ${theme}`}>
+                          {request.equipment_name || 'Оборудование'}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wide border ${getStatusColor(request.status)}`}>
+                          {getStatusText(request.status)}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-white/60 text-sm">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {new Date(request.start_date).toLocaleDateString('ru-RU')} — {new Date(request.end_date).toLocaleDateString('ru-RU')}
+                        </span>
+                        {request.user_name && (
+                          <span className="text-white/50">
+                            {request.user_name}
+                          </span>
+                        )}
+                        {request.purpose && (
+                          <span className="text-white/40 italic truncate max-w-[200px]" title={request.purpose}>
+                            {request.purpose}
+                          </span>
+                        )}
+                      </div>
+                      {request.rejection_reason && (
+                        <p className="text-red-400/80 text-xs mt-1">Причина: {request.rejection_reason}</p>
+                      )}
+                    </div>
+
+                    {/* Кнопки действий */}
+                    {request.status === 'pending' && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => approveMutation.mutate(request.id)}
+                          disabled={approveMutation.isPending}
+                          className="flex items-center gap-1 px-3 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-all text-sm font-medium border border-green-500/30"
+                        >
+                          <Check className="h-4 w-4" />
+                          <span>Одобрить</span>
+                        </button>
+                        {rejectingRequestId === request.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Причина..."
+                              autoFocus
+                              className={`bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 text-sm w-40 focus:outline-none focus:ring-1 focus:ring-red-500 text-readable ${theme}`}
+                            />
+                            <button
+                              onClick={() => {
+                                if (!rejectReason.trim()) { alert('Укажите причину'); return }
+                                rejectMutation.mutate({ requestId: request.id, reason: rejectReason })
+                              }}
+                              disabled={rejectMutation.isPending}
+                              className="px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all text-sm font-medium border border-red-500/30"
+                            >
+                              Отклонить
+                            </button>
+                            <button
+                              onClick={() => { setRejectingRequestId(null); setRejectReason('') }}
+                              className="p-2 text-white/40 hover:text-white transition-colors"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setRejectingRequestId(request.id)}
+                            className="flex items-center gap-1 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-all text-sm font-medium border border-red-500/30"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            <span>Отклонить</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {request.status === 'approved' && (
+                      <div className="flex items-center gap-1 text-green-400 text-sm">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Одобрено</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======= КАТАЛОГ ======= */}
+      {activeTab === 'catalog' && (
+      <>
       {/* Предупреждение для незарегистрированных */}
       {!isRegistered && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mb-6 border-2 border-yellow-500/50 bg-yellow-500/10`}>
@@ -612,6 +829,9 @@ export default function EquipmentPage() {
         </div>
       )}
       
+      </>
+      )}
+
       {/* Календарь занятости */}
       {isRegistered && equipmentData?.items && equipmentData.items.length > 0 && (
         <EquipmentCalendar equipmentList={equipmentData.items} />
@@ -620,34 +840,52 @@ export default function EquipmentPage() {
       {/* Мои заявки */}
       {isRegistered && Array.isArray(myRequests) && myRequests.length > 0 && (
         <div className={`glass-enhanced ${theme} rounded-xl p-6 mt-6`}>
-          <h2 className={`text-xl font-semibold text-white mb-4 text-readable ${theme}`}>
+          <h2 className={`text-xl font-semibold text-white mb-4 flex items-center gap-2 text-readable ${theme}`}>
+            <ClipboardList className="h-5 w-5 text-best-primary" />
             Мои заявки
           </h2>
           <div className="space-y-3">
             {myRequests.map((request: any) => (
               <div
                 key={request.id}
-                className={`p-4 bg-white/10 rounded-lg border border-white/20`}
+                className={`p-4 rounded-lg border ${
+                  request.status === 'pending'
+                    ? 'bg-yellow-500/5 border-yellow-500/30'
+                    : request.status === 'approved'
+                    ? 'bg-green-500/5 border-green-500/30'
+                    : request.status === 'rejected'
+                    ? 'bg-red-500/5 border-red-500/30'
+                    : 'bg-white/5 border-white/10'
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
                     <p className={`text-white font-medium text-readable ${theme}`}>
                       {request.equipment_name || 'Оборудование'}
                     </p>
-                    <div className="flex items-center space-x-4 mt-1 text-white/70 text-sm">
-                      <span className="flex items-center space-x-1">
-                        <Calendar className="h-4 w-4" />
-                        <span>
-                          {new Date(request.start_date).toLocaleDateString('ru-RU')} -{' '}
-                          {new Date(request.end_date).toLocaleDateString('ru-RU')}
-                        </span>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-white/60 text-sm">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {new Date(request.start_date).toLocaleDateString('ru-RU')} — {new Date(request.end_date).toLocaleDateString('ru-RU')}
                       </span>
+                      {request.purpose && (
+                        <span className="text-white/40 italic">
+                          {request.purpose}
+                        </span>
+                      )}
                     </div>
+                    {request.status === 'pending' && (
+                      <div className="flex items-center gap-1 mt-2 text-yellow-400/80 text-xs">
+                        <Clock className="h-3 w-3" />
+                        <span>Ожидает согласования координатором</span>
+                      </div>
+                    )}
+                    {request.status === 'rejected' && request.rejection_reason && (
+                      <p className="text-red-400/80 text-xs mt-2">Причина отказа: {request.rejection_reason}</p>
+                    )}
                   </div>
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                      request.status
-                    )}`}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border flex-shrink-0 ${getStatusColor(request.status)}`}
                   >
                     {getStatusText(request.status)}
                   </span>

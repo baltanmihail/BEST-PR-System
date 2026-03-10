@@ -4093,20 +4093,20 @@ async def process_equipment_rental_end(message: Message, state: FSMContext):
             available_equipment = []
         
         if not available_equipment:
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text="➡️ Продолжить без оборудования", callback_data="equipment_selection_skip"),
-                ],
-                [
-                    InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel"),
-                ],
-            ])
-            
+            try:
+                all_eq_response = await call_api("GET", "/equipment", headers=headers)
+                all_items = all_eq_response.get("items", []) if isinstance(all_eq_response, dict) else []
+                available_equipment = all_items
+            except Exception:
+                pass
+
+        if not available_equipment:
             await message.answer(
-                f"✅ Дата возврата сохранена: <b>{rental_end.strftime('%d.%m.%Y')}</b>\n\n"
-                f"⚠️ <b>На указанные даты нет доступного оборудования.</b>\n\n"
-                f"Можешь продолжить без выбора оборудования или отменить заявку.",
-                reply_markup=keyboard,
+                f"⚠️ <b>В системе нет оборудования.</b>\n\n"
+                f"Обратись к координатору или подай заявку через сайт.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="❌ Отменить", callback_data="equipment_request_cancel")],
+                ]),
                 parse_mode="HTML"
             )
             await state.set_state(EquipmentRequestStates.waiting_for_equipment_selection)

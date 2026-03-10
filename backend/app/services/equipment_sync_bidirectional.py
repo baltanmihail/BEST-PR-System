@@ -68,48 +68,78 @@ class EquipmentBidirectionalSync:
             db_requests = await self._load_db_requests(db)
 
             updated_count = 0
+            created_count = 0
             status_changes: List[Dict] = []
 
             for sr in sheets_rows:
                 match = self._find_matching_db_request(sr, db_requests)
-                if not match:
-                    continue
 
-                req, old_enum = match
-                new_enum = STATUS_RU_TO_ENUM.get(sr["status"])
-                if not new_enum:
-                    continue
+                if match:
+                    req, old_enum = match
+                    new_enum = STATUS_RU_TO_ENUM.get(sr["status"])
+                    if not new_enum:
+                        continue
 
-                old_value = old_enum.value if isinstance(old_enum, EquipmentRequestStatus) else str(old_enum)
-                if old_value == new_enum.value:
-                    continue
+                    old_value = old_enum.value if isinstance(old_enum, EquipmentRequestStatus) else str(old_enum)
+                    if old_value == new_enum.value:
+                        continue
 
-                req.status = new_enum.value
-                if new_enum == EquipmentRequestStatus.REJECTED and sr.get("rejection_reason"):
-                    req.rejection_reason = sr["rejection_reason"]
+                    req.status = new_enum.value
+                    if new_enum == EquipmentRequestStatus.REJECTED and sr.get("rejection_reason"):
+                        req.rejection_reason = sr["rejection_reason"]
 
-                updated_count += 1
-                status_changes.append({
-                    "request_id": req.id,
-                    "old_status": old_value,
-                    "new_status": new_enum.value,
-                    "user_id": req.user_id,
-                })
-                logger.info(
-                    f"Sync: заявка {str(req.id)[:8]} статус '{old_value}' -> '{new_enum.value}'"
-                )
+                    updated_count += 1
+                    status_changes.append({
+                        "request_id": req.id,
+                        "old_status": old_value,
+                        "new_status": new_enum.value,
+                        "user_id": req.user_id,
+                    })
+                    logger.info(
+                        f"Sync: заявка {str(req.id)[:8]} статус '{old_value}' -> '{new_enum.value}'"
+                    )
+                else:
+                    if not sr.get("start_date") or not sr.get("end_date"):
+                        continue
+                    equipment = await self._find_equipment_by_name(db, sr.get("equipment_name", ""))
+                    if not equipment:
+                        logger.warning(f"Sheets row #{sr['app_num']}: equipment '{sr.get('equipment_name')}' not found in DB, skipping")
+                        continue
+                    user = await self._find_user_by_identifier(db, sr.get("who_raw", ""))
+                    if not user:
+                        logger.warning(f"Sheets row #{sr['app_num']}: user '{sr.get('who_raw')}' not found in DB, skipping")
+                        continue
+                    new_enum = STATUS_RU_TO_ENUM.get(sr["status"], EquipmentRequestStatus.PENDING)
+                    purpose_parts = [sr.get("purpose", ""), sr.get("comment", "")]
+                    purpose = " | ".join(p for p in purpose_parts if p)
 
-            if updated_count:
+                    new_req = EquipmentRequest(
+                        equipment_id=equipment.id,
+                        user_id=user.id if user else None,
+                        start_date=sr["start_date"],
+                        end_date=sr["end_date"],
+                        status=new_enum.value,
+                        purpose=purpose or None,
+                    )
+                    db.add(new_req)
+                    created_count += 1
+                    logger.info(
+                        f"Sync: создана заявка из Sheets #{sr['app_num']} "
+                        f"на '{sr.get('equipment_name')}' статус='{new_enum.value}'"
+                    )
+
+            if updated_count or created_count:
                 await db.commit()
 
             logger.info(
-                f"✅ Bidirectional sync: обновлено {updated_count}, "
+                f"✅ Bidirectional sync: обновлено {updated_count}, создано {created_count}, "
                 f"изменений статуса: {len(status_changes)}"
             )
 
             return {
                 "status": "success",
                 "updated": updated_count,
+                "created": created_count,
                 "status_changes": status_changes,
             }
 
@@ -133,6 +163,40 @@ class EquipmentBidirectionalSync:
             logger.error(f"Не найдены колонки: {missing}, заголовки: {headers}")
             return None
         return idx
+
+    @staticmethod
+    async def _find_equipment_by_name(db: AsyncSession, name: str) -> Optional[Equipment]:
+        """Find equipment by name (fuzzy)."""
+        if not name:
+            return None
+        result = await db.execute(select(Equipment))
+        all_eq = result.scalars().all()
+        name_lower = name.lower().strip()
+        for eq in all_eq:
+            if eq.name.lower().strip() == name_lower:
+                return eq
+        for eq in all_eq:
+            if name_lower in eq.name.lower() or eq.name.lower() in name_lower:
+                return eq
+        return None
+
+    @staticmethod
+    async def _find_user_by_identifier(db: AsyncSession, who: str) -> Optional[User]:
+        """Find user by username or name from 'Кто берёт' cell."""
+        if not who:
+            return None
+        result = await db.execute(select(User))
+        users = result.scalars().all()
+        who_lower = who.lower().strip()
+        for u in users:
+            if u.telegram_username and u.telegram_username.lstrip("@").lower() in who_lower:
+                return u
+            if u.full_name and u.full_name.lower() in who_lower:
+                return u
+            name = f"{u.first_name or ''} {u.last_name or ''}".strip().lower()
+            if name and name in who_lower:
+                return u
+        return None
 
     @staticmethod
     def _parse_sheet_rows(
@@ -162,8 +226,12 @@ class EquipmentBidirectionalSync:
                 "app_num": app_num,
                 "status": status,
                 "who": who.lower(),
+                "who_raw": who,
                 "start_date": start_date,
                 "end_date": end_date,
+                "equipment_name": _cell("Что берёт"),
+                "purpose": _cell("Название мероприятия"),
+                "comment": _cell("Комментарий"),
                 "rejection_reason": _cell("Причина отказа") if "Причина отказа" in col_idx else None,
             })
         return parsed
