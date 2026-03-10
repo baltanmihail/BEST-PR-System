@@ -128,6 +128,11 @@ SYNC_EQUIPMENT_INTERVAL_ACTIVE = 120   # 2 мин при активности
 SYNC_EQUIPMENT_INTERVAL_IDLE = 300     # 5 мин без активности
 SYNC_EQUIPMENT_INTERVAL_INITIAL = 60   # 1 мин первый запуск
 
+# Интервалы двусторонней синхронизации (Sheets <-> БД)
+BIDIRECTIONAL_SYNC_INTERVAL = 180      # 3 мин — основной интервал
+BIDIRECTIONAL_SYNC_INITIAL_DELAY = 30  # 30с — задержка после старта
+BIDIRECTIONAL_SYNC_QUOTA_ERROR = 600   # 10 мин при превышении квоты
+
 
 async def run_equipment_sync_scheduler():
     """
@@ -162,6 +167,79 @@ async def run_equipment_sync_scheduler():
         except Exception as e:
             logger.error(f"❌ Equipment sync error: {e}")
         
+        await asyncio.sleep(interval)
+
+
+async def run_bidirectional_sync_scheduler():
+    """
+    Периодическая двусторонняя синхронизация заявок Sheets <-> PostgreSQL.
+    Аналог periodic_sync() из BEST Channel Bot:
+    1. Читает статусы заявок из Google Sheets
+    2. Сравнивает с БД и обновляет при расхождении
+    3. Отправляет уведомления пользователям об изменении статуса
+    4. Обновляет календарь занятости и статусы оборудования
+    """
+    environment = os.getenv("ENVIRONMENT", "development")
+    if environment != "production":
+        logger.info("Bidirectional sync scheduler не запускается вне production")
+        return
+
+    await wait_for_api()
+    await asyncio.sleep(BIDIRECTIONAL_SYNC_INITIAL_DELAY)
+
+    interval = BIDIRECTIONAL_SYNC_INTERVAL
+    logger.info(f"Bidirectional sync scheduler: interval={interval}s")
+
+    while True:
+        try:
+            from app.database import AsyncSessionLocal
+            from app.services.google_service import GoogleService
+            from app.services.equipment_sync_bidirectional import EquipmentBidirectionalSync
+            from app.services.equipment_notifications import EquipmentNotifications
+
+            async with AsyncSessionLocal() as db:
+                google_service = GoogleService()
+                sync_service = EquipmentBidirectionalSync(google_service)
+
+                result = await sync_service.sync_from_sheets(db)
+
+                status_changes = result.get("status_changes", [])
+                if status_changes:
+                    logger.info(
+                        f"Bidirectional sync: {len(status_changes)} status change(s), sending notifications"
+                    )
+                    notifications = EquipmentNotifications()
+                    await notifications.send_status_change_notifications(
+                        db=db, status_changes=status_changes
+                    )
+
+                updated = result.get("updated", 0)
+                if updated > 0:
+                    try:
+                        from app.services.equipment_calendar_sync import EquipmentCalendarSync
+                        calendar_sync = EquipmentCalendarSync(google_service)
+                        await calendar_sync.create_or_update_calendar_sheet(db)
+                        logger.info("Bidirectional sync: calendar updated")
+                    except Exception as e:
+                        logger.warning(f"Calendar update failed: {e}")
+
+                    try:
+                        from app.services.equipment_status_sync import EquipmentStatusSync
+                        status_sync = EquipmentStatusSync(google_service)
+                        await status_sync.update_equipment_statuses_by_date(db)
+                        logger.info("Bidirectional sync: equipment statuses updated")
+                    except Exception as e:
+                        logger.warning(f"Equipment status update failed: {e}")
+
+                if result.get("status") == "error" and "429" in str(result.get("error", "")):
+                    interval = BIDIRECTIONAL_SYNC_QUOTA_ERROR
+                    logger.warning(f"Quota exceeded, next sync in {interval}s")
+                else:
+                    interval = BIDIRECTIONAL_SYNC_INTERVAL
+
+        except Exception as e:
+            logger.error(f"Bidirectional sync error: {e}")
+
         await asyncio.sleep(interval)
 
 
@@ -280,12 +358,16 @@ async def main():
     # Запускаем периодическую синхронизацию оборудования Sheets → PostgreSQL
     equipment_sync_task = asyncio.create_task(run_equipment_sync_scheduler())
     
+    # Запускаем двустороннюю синхронизацию заявок Sheets <-> БД (как periodic_sync в BEST Channel Bot)
+    bidirectional_sync_task = asyncio.create_task(run_bidirectional_sync_scheduler())
+    
     # Ждём завершения всех задач
     await asyncio.gather(
         api_task,
         bot_task,
         reminders_task,
         equipment_sync_task,
+        bidirectional_sync_task,
         return_exceptions=True
     )
 
