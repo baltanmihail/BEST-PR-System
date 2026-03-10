@@ -202,7 +202,7 @@ class EquipmentSheetsSync:
             
             if best_match:
                 file_id = best_match['id']
-                photo_url = f"/api/v1/public/drive-photo/{file_id}"
+                photo_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w600"
                 logger.info(f"Photo matched for '{equipment_name}': {best_match['name']}")
                 return photo_url
             
@@ -357,16 +357,19 @@ class EquipmentSheetsSync:
                         existing = result2.scalar_one_or_none()
                     
                     if existing:
-                        existing.name = name  # нормализуем имя (убираем \n)
+                        existing.name = name
                         existing.status = status
                         existing.quantity = quantity
-                        existing.category = category  # ОБНОВЛЯЕМ категорию
-                        specs = existing.specs or {}
+                        existing.category = category
+                        # Копируем specs чтобы SQLAlchemy обнаружил изменение JSONB
+                        specs = dict(existing.specs or {})
                         if number:
                             specs["number"] = number
                         if photo_url:
                             specs["photo_url"] = photo_url
                         existing.specs = specs
+                        from sqlalchemy.orm.attributes import flag_modified
+                        flag_modified(existing, "specs")
                         updated_count += 1
                     else:
                         specs = {}
@@ -495,17 +498,17 @@ class EquipmentSheetsSync:
             "64 гб", "1 тб"
         ]):
             return "storage"
-        # Стабилизаторы / гимбалы / держатели
+        # Стабилизаторы / гимбалы
         elif any(word in name_lower for word in [
             "стабилизатор", "stabilizer", "gimbal", "steadicam", "zhiyun",
-            "dji rs", "dji osmo", "dji om", "ronin",
-            "держатель смартфона", "держатель телефона"
+            "dji rs", "dji osmo", "dji om", "ronin"
         ]):
             return "stabilizer"
-        # Аксессуары
+        # Аксессуары (включая держатели)
         elif any(word in name_lower for word in [
             "аксессуар", "accessories", "переходник", "кабель", "батарея",
-            "зарядка", "фильтр", "бленда", "адаптер", "ремень", "чехол"
+            "зарядка", "фильтр", "бленда", "адаптер", "ремень", "чехол",
+            "держатель"
         ]):
             return "accessories"
         else:

@@ -124,6 +124,52 @@ async def send_telegram_message(
         return (False, None) if return_message_id else False
 
 
+async def create_chat_invite_link(chat_id: int, name: str = "PR System") -> Optional[str]:
+    """Создать одноразовую ссылку-приглашение в группу"""
+    try:
+        bot = await get_bot()
+        if not bot:
+            return None
+        link = await bot.create_chat_invite_link(
+            chat_id=chat_id,
+            name=name,
+            member_limit=1,
+        )
+        return link.invite_link
+    except Exception as e:
+        logger.error(f"Failed to create invite link for chat {chat_id}: {e}")
+        return None
+
+
+async def invite_user_to_chat(user_telegram_id: int, chat_id: int) -> bool:
+    """
+    Пригласить пользователя в групповой чат.
+    Создаёт invite link и отправляет его пользователю.
+    """
+    try:
+        if not chat_id:
+            return False
+
+        invite_link = await create_chat_invite_link(chat_id)
+        if not invite_link:
+            logger.warning(f"Could not create invite link for chat {chat_id}")
+            return False
+
+        await send_telegram_message(
+            chat_id=user_telegram_id,
+            message=(
+                "🎉 <b>Добро пожаловать в команду PR-отдела!</b>\n\n"
+                "Твоя заявка одобрена! Присоединяйся к общему чату:\n\n"
+                f"👉 <a href=\"{invite_link}\">Вступить в чат PR-отдела</a>"
+            ),
+        )
+        logger.info(f"Invite link sent to user {user_telegram_id} for chat {chat_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to invite user {user_telegram_id} to chat {chat_id}: {e}")
+        return False
+
+
 async def close_bot():
     """Закрыть соединение с ботом (для cleanup)"""
     global _bot_instance
