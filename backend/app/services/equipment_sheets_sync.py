@@ -5,7 +5,7 @@
 from datetime import datetime, date, timedelta
 from typing import Optional, List, Dict, Set, Any
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, cast, String, func
 import logging
 import re
 from collections import defaultdict
@@ -202,7 +202,7 @@ class EquipmentSheetsSync:
             
             if best_match:
                 file_id = best_match['id']
-                photo_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+                photo_url = f"https://lh3.googleusercontent.com/d/{file_id}=w400"
                 logger.info(f"Photo matched for '{equipment_name}': {best_match['name']}")
                 return photo_url
             
@@ -268,16 +268,10 @@ class EquipmentSheetsSync:
         db: AsyncSession
     ) -> dict:
         """
-        Синхронизировать оборудование из Google Sheets в БД
-        
-        Читает список оборудования из листа "Вся оборудка" и создаёт/обновляет записи в БД.
-        Использует ORM с правильно настроенными TypeDecorators для PostgreSQL ENUM.
-        
-        Returns:
-            Словарь с результатами синхронизации
+        Синхронизировать оборудование из Google Sheets в БД.
+        Sheets — источник истины: оборудование, которого нет в Sheets, удаляется из БД.
         """
         try:
-            # Читаем лист "Вся оборудка"
             values = self.google_service.read_sheet(
                 f"{self.EQUIPMENT_SHEET}!A:D",
                 sheet_id=self._get_equipment_sheets_id(),
@@ -285,33 +279,30 @@ class EquipmentSheetsSync:
             )
             
             if not values or len(values) < 2:
-                return {
-                    "status": "skipped",
-                    "reason": "no_data",
-                    "synced": 0
-                }
+                return {"status": "skipped", "reason": "no_data", "synced": 0}
             
             synced_count = 0
             updated_count = 0
             created_count = 0
+            deleted_count = 0
+            synced_names = set()
             
-            # Используем no_autoflush чтобы контролировать когда происходит flush
             async with db.begin_nested():
-                # Обрабатываем строки (пропускаем заголовок)
                 for row in values[1:]:
                     if len(row) < 2:
                         continue
                     
-                    # Колонки: A=Номер, B=Оборудование, C=Фото (URL), D=Статус
                     number = row[0].strip() if len(row) > 0 else ""
-                    name = row[1].strip() if len(row) > 1 else ""
+                    raw_name = row[1].strip() if len(row) > 1 else ""
                     photo_url = row[2].strip() if len(row) > 2 else ""
                     status_ru = row[3].strip() if len(row) > 3 else "На складе"
+                    
+                    # Убираем переносы строк (Google Sheets может вставлять \n)
+                    name = " ".join(raw_name.replace("\r", " ").replace("\n", " ").split())
                     
                     if not name:
                         continue
                     
-                    # Пропускаем служебные строки (пометки, комментарии и т.д.)
                     skip_keywords = [
                         "позже", "появится", "скоро", "планируется", 
                         "примечание", "комментарий", "итого", "всего",
@@ -320,26 +311,21 @@ class EquipmentSheetsSync:
                         "...", "---", "***"
                     ]
                     name_lower = name.lower()
-                    if any(keyword in name_lower for keyword in skip_keywords):
+                    if any(kw in name_lower for kw in skip_keywords):
                         logger.info(f"Skipping service row: {name}")
                         continue
                     
-                    # Пропускаем строки с именами людей (формат: "... оборудование Фамилия Имя")
                     if re.search(r'оборудовани[ея]\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+', name):
                         logger.info(f"Skipping person reference row: {name}")
                         continue
                     
-                    # Пропускаем если название слишком короткое (менее 3 символов)
                     if len(name) < 3:
-                        logger.info(f"Skipping short name: {name}")
                         continue
                     
-                    # Пропускаем если номер не числовой (заголовки, разделители)
                     if number and not number.replace(".", "").isdigit():
                         logger.info(f"Skipping non-numeric row: {number} - {name}")
                         continue
                     
-                    # Конвертируем статус в lowercase строку для PostgreSQL ENUM
                     status_map = {
                         "На складе": "available",
                         "Выдано": "rented",
@@ -347,30 +333,34 @@ class EquipmentSheetsSync:
                         "Сломано": "broken"
                     }
                     status = status_map.get(status_ru, "available")
-                    
-                    # Парсим количество (2шт, 2 штуки) из названия
                     quantity = self._parse_quantity_from_name(name)
-                    # name остаётся как в Sheets — для сопоставления при следующей синхронизации
-                    
-                    # Определяем категорию по названию
                     category = self._detect_category(name)
                     
-                    # Если фото нет в таблице — ищем в папке Equipment/Photo
                     if not photo_url:
                         photo_url = self._get_equipment_photo_url(name) or ""
                     
                     logger.info(f"Processing: {name}, qty: {quantity}, category: {category}, status: {status}")
                     
-                    # Проверяем, есть ли уже в базе (по названию из Sheets)
+                    synced_names.add(name)
+                    
+                    # Ищем по точному имени ИЛИ по старому имени с переносом строки
                     result = await db.execute(
                         select(Equipment).where(Equipment.name == name)
                     )
                     existing = result.scalar_one_or_none()
                     
+                    # Если не нашли — ищем по raw_name (мог быть с \n раньше)
+                    if not existing and raw_name != name:
+                        result2 = await db.execute(
+                            select(Equipment).where(Equipment.name == raw_name)
+                        )
+                        existing = result2.scalar_one_or_none()
+                    
                     if existing:
-                        # Обновляем статус, quantity и specs
+                        existing.name = name  # нормализуем имя (убираем \n)
                         existing.status = status
                         existing.quantity = quantity
+                        existing.category = category  # ОБНОВЛЯЕМ категорию
                         specs = existing.specs or {}
                         if number:
                             specs["number"] = number
@@ -379,7 +369,6 @@ class EquipmentSheetsSync:
                         existing.specs = specs
                         updated_count += 1
                     else:
-                        # Создаём новое оборудование через ORM
                         specs = {}
                         if number:
                             specs["number"] = number
@@ -389,7 +378,7 @@ class EquipmentSheetsSync:
                         new_equipment = Equipment(
                             name=name,
                             category=category,
-                            quantity=quantity,  # Парсится из названия (2шт и т.д.)
+                            quantity=quantity,
                             specs=specs if specs else None,
                             status=status
                         )
@@ -397,26 +386,51 @@ class EquipmentSheetsSync:
                         created_count += 1
                     
                     synced_count += 1
+                
+                # Удаляем оборудование, которого больше нет в Sheets
+                # (только если нет активных заявок)
+                all_eq_result = await db.execute(select(Equipment))
+                all_equipment = all_eq_result.scalars().all()
+                
+                for eq in all_equipment:
+                    if eq.name not in synced_names:
+                        active_count_r = await db.execute(
+                            select(func.count(EquipmentRequest.id)).where(
+                                EquipmentRequest.equipment_id == eq.id,
+                                cast(EquipmentRequest.status, String).in_([
+                                    EquipmentRequestStatus.PENDING.value,
+                                    EquipmentRequestStatus.APPROVED.value,
+                                    EquipmentRequestStatus.ACTIVE.value,
+                                ])
+                            )
+                        )
+                        active_count = active_count_r.scalar_one() or 0
+                        
+                        if active_count == 0:
+                            await db.delete(eq)
+                            deleted_count += 1
+                            logger.info(f"Deleted absent equipment: {eq.name}")
+                        else:
+                            logger.info(f"Keeping absent equipment with active requests: {eq.name}")
             
-            # Commit транзакции
             await db.commit()
-            logger.info(f"✅ Синхронизировано оборудования из Google Sheets: создано {created_count}, обновлено {updated_count}, всего {synced_count}")
+            logger.info(
+                f"✅ Sync: создано {created_count}, обновлено {updated_count}, "
+                f"удалено {deleted_count}, всего {synced_count}"
+            )
             
             return {
                 "status": "success",
                 "synced": synced_count,
                 "created": created_count,
-                "updated": updated_count
+                "updated": updated_count,
+                "deleted": deleted_count
             }
             
         except Exception as e:
             await db.rollback()
             logger.error(f"❌ Ошибка синхронизации оборудования из Sheets: {e}", exc_info=True)
-            return {
-                "status": "error",
-                "error": str(e),
-                "synced": 0
-            }
+            return {"status": "error", "error": str(e), "synced": 0}
     
     def _parse_quantity_from_name(self, name: str) -> int:
         """
@@ -444,7 +458,7 @@ class EquipmentSheetsSync:
         """Определить категорию оборудования по названию"""
         name_lower = name.lower()
         
-        # Камеры
+        # Камеры (высокий приоритет)
         if any(word in name_lower for word in [
             "камера", "camera", "видеокамера", "фотоаппарат", "фотокамера",
             "беззеркальн", "зеркальн", "mirrorless", "dslr",
@@ -455,6 +469,17 @@ class EquipmentSheetsSync:
         # Объективы
         elif any(word in name_lower for word in ["объектив", "lens", "линза"]):
             return "lens"
+        # Аудио (микрофоны, рекордеры, DJI Mic) — до стабилизаторов, чтобы DJI Mic не попал в accessories
+        elif any(word in name_lower for word in [
+            "микрофон", "audio", "аудио", "рекордер", "mic ",
+            "dji mic", "rode", "boya", "saramonic", "zoom h"
+        ]):
+            return "audio"
+        # Штативы, стойки и треноги — ПЕРЕД светом, чтобы "Стойка Falcon Eyes" была штативом
+        elif any(word in name_lower for word in [
+            "штатив", "tripod", "стойка", "монопод", "тренога"
+        ]):
+            return "tripod"
         # Свет (Aputure amaran, световые палки, панели и т.д.)
         elif any(word in name_lower for word in [
             "свет", "lighting", "ламп", "софтбокс", "led панель", "кольцев",
@@ -462,25 +487,7 @@ class EquipmentSheetsSync:
             "falcon eyes", "nanlite", "yongnuo"
         ]):
             return "lighting"
-        # Аудио (микрофоны, рекордеры, DJI Mic)
-        elif any(word in name_lower for word in [
-            "микрофон", "audio", "аудио", "рекордер", "mic ",
-            "dji mic", "rode", "boya", "saramonic", "zoom h"
-        ]):
-            return "audio"
-        # Стабилизаторы / гимбалы
-        elif any(word in name_lower for word in [
-            "стабилизатор", "stabilizer", "gimbal", "steadicam", "zhiyun",
-            "dji rs", "dji osmo", "dji om", "ronin",
-            "держатель телефона"
-        ]):
-            return "accessories"
-        # Штативы и стойки
-        elif any(word in name_lower for word in [
-            "штатив", "tripod", "стойка", "монопод", "тренога"
-        ]):
-            return "tripod"
-        # Накопители (SD-карты, SSD, USB)
+        # Накопители (SD-карты, SSD, USB) — до стабилизаторов
         elif any(word in name_lower for word in [
             "накопитель", "storage", "ssd", "карта памяти", "sd card",
             "cf card", "sd ", "sd samsung", "microsd", "usb flash",
@@ -488,6 +495,13 @@ class EquipmentSheetsSync:
             "64 гб", "1 тб"
         ]):
             return "storage"
+        # Стабилизаторы / гимбалы / держатели
+        elif any(word in name_lower for word in [
+            "стабилизатор", "stabilizer", "gimbal", "steadicam", "zhiyun",
+            "dji rs", "dji osmo", "dji om", "ronin",
+            "держатель смартфона", "держатель телефона"
+        ]):
+            return "accessories"
         # Аксессуары
         elif any(word in name_lower for word in [
             "аксессуар", "accessories", "переходник", "кабель", "батарея",
