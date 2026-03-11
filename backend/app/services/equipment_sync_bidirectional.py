@@ -122,6 +122,9 @@ class EquipmentBidirectionalSync:
             db_requests = await self._load_db_requests(db)
             logger.info(f"Bidirectional sync: {len(db_requests)} requests in DB")
 
+            # Clean up duplicates (same equipment+user+dates)
+            await self._cleanup_duplicates(db)
+
             updated_count = 0
             created_count = 0
             status_changes: List[Dict] = []
@@ -180,6 +183,20 @@ class EquipmentBidirectionalSync:
                         if not user:
                             logger.warning(f"Row #{sr['app_num']}: user '{sr.get('who_raw')}' not found/created")
                             continue
+
+                        # Dedup: check if identical request already exists
+                        existing = await db.execute(
+                            select(EquipmentRequest).where(
+                                EquipmentRequest.equipment_id == equipment.id,
+                                EquipmentRequest.user_id == user.id,
+                                EquipmentRequest.start_date == sr["start_date"],
+                                EquipmentRequest.end_date == sr["end_date"],
+                            )
+                        )
+                        if existing.scalars().first():
+                            logger.info(f"Row #{sr['app_num']}: request already exists, skipping")
+                            continue
+
                         new_enum = STATUS_RU_TO_ENUM.get(
                             sr["status"].lower(), EquipmentRequestStatus.PENDING
                         )
@@ -228,6 +245,28 @@ class EquipmentBidirectionalSync:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _cleanup_duplicates(db: AsyncSession):
+        """Remove duplicate equipment requests (same equipment+user+start+end).
+        Keeps the oldest one (by created_at).
+        """
+        from sqlalchemy import func as sa_func
+        result = await db.execute(select(EquipmentRequest))
+        all_reqs = result.scalars().all()
+        seen = {}
+        to_delete = []
+        for req in sorted(all_reqs, key=lambda r: r.created_at):
+            key = (str(req.equipment_id), str(req.user_id), str(req.start_date), str(req.end_date))
+            if key in seen:
+                to_delete.append(req)
+            else:
+                seen[key] = req
+        if to_delete:
+            for dup in to_delete:
+                await db.delete(dup)
+            await db.flush()
+            logger.info(f"Cleaned up {len(to_delete)} duplicate request(s)")
 
     def _load_equipment_name_map(self, sheets_id: str, eq_sheet_name: str) -> Dict[int, str]:
         """

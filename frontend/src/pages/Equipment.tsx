@@ -480,17 +480,17 @@ export default function EquipmentPage() {
                             {request.user_name}
                           </span>
                         )}
-                        {request.purpose && (
-                          <span className="text-white/40 italic truncate max-w-[200px]" title={request.purpose}>
-                            {request.purpose}
-                          </span>
-                        )}
                         {request.quantity > 1 && (
                           <span className="text-best-primary/70 font-medium">{request.quantity} шт.</span>
                         )}
                       </div>
+                      {request.purpose && (
+                        <p className="text-white/40 text-xs mt-1 italic whitespace-pre-wrap break-words">
+                          {request.purpose}
+                        </p>
+                      )}
                       {request.notes && (
-                        <p className="text-white/40 text-xs mt-0.5 italic">{request.notes}</p>
+                        <p className="text-white/40 text-xs mt-0.5 italic whitespace-pre-wrap break-words">{request.notes}</p>
                       )}
                       {request.attachments && request.attachments.length > 0 && (
                         <div className="flex gap-1 mt-1 flex-wrap">
@@ -971,17 +971,17 @@ export default function EquipmentPage() {
                         <Calendar className="h-3.5 w-3.5" />
                         {new Date(request.start_date).toLocaleDateString('ru-RU')} — {new Date(request.end_date).toLocaleDateString('ru-RU')}
                       </span>
-                      {request.purpose && (
-                        <span className="text-white/40 italic">
-                          {request.purpose}
-                        </span>
-                      )}
                       {request.quantity > 1 && (
                         <span className="text-best-primary/70 font-medium">{request.quantity} шт.</span>
                       )}
                     </div>
+                    {request.purpose && (
+                      <p className="text-white/40 text-xs mt-1 italic whitespace-pre-wrap break-words">
+                        {request.purpose}
+                      </p>
+                    )}
                     {request.notes && (
-                      <p className="text-white/40 text-xs mt-1 italic">{request.notes}</p>
+                      <p className="text-white/40 text-xs mt-1 italic whitespace-pre-wrap break-words">{request.notes}</p>
                     )}
                     {request.attachments && request.attachments.length > 0 && (
                       <div className="flex gap-1 mt-1 flex-wrap">
