@@ -574,8 +574,8 @@ class EquipmentSheetsSync:
             status_ru = status_map.get(request.status, "На рассмотрении")
             
             # Формируем строку "Кто берёт"
-            username = user.telegram_username or ""
-            full_name = user.full_name or f"{user.first_name} {user.last_name}".strip()
+            username = user.username or ""
+            full_name = user.full_name or ""
             
             if username:
                 who_takes = f"https://t.me/{username.lstrip('@')} - {full_name}"
@@ -801,13 +801,10 @@ class EquipmentSheetsSync:
             start_str = request.start_date.strftime("%d.%m.%Y")
             end_str = request.end_date.strftime("%d.%m.%Y")
             user_identifiers = []
-            if user.telegram_username:
-                user_identifiers.append(user.telegram_username.lstrip('@'))
+            if user.username:
+                user_identifiers.append(user.username.lstrip('@'))
             if user.full_name:
                 user_identifiers.append(user.full_name)
-            name = f"{user.first_name or ''} {user.last_name or ''}".strip()
-            if name:
-                user_identifiers.append(name)
             
             row_index = None  # 0-based row index в values
             for i, row in enumerate(values[1:], start=1):
@@ -874,7 +871,7 @@ class EquipmentSheetsSync:
                 [
                     str(equipment_number),
                     equipment.name,
-                    user.full_name or f"{user.first_name} {user.last_name}".strip(),
+                    user.full_name or "",
                     request.start_date.strftime("%d.%m.%Y"),
                     request.end_date.strftime("%d.%m.%Y"),
                     ""  # Комментарий

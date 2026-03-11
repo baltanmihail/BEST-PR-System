@@ -165,15 +165,15 @@ class EquipmentReminders:
             if req.task:
                 shooting_name = req.task.title if req.task.title else "Не указано"
             
-            short_msg = f"Завтра выдача: {equipment_name} — {user.full_name or f'{user.first_name} {user.last_name}'.strip()}"
+            short_msg = f"Завтра выдача: {equipment_name} — {user.full_name or '—'}"
             message_text = (
                 f"🔔 <b>Напоминание о выдаче оборудования</b>\n\n"
                 f"📋 <b>Заявка #{str(req.id)[:8]}</b>\n\n"
-                f"👤 <b>ФИО:</b> {user.full_name or f'{user.first_name} {user.last_name}'.strip()}\n"
+                f"👤 <b>ФИО:</b> {user.full_name or '—'}\n"
             )
             
-            if user.telegram_username:
-                message_text += f"📱 <b>Telegram:</b> <a href=\"https://t.me/{user.telegram_username.lstrip('@')}\">@{user.telegram_username.lstrip('@')}</a>\n"
+            if user.username:
+                message_text += f"📱 <b>Telegram:</b> <a href=\"https://t.me/{user.username.lstrip('@')}\">@{user.username.lstrip('@')}</a>\n"
             
             message_text += (
                 f"🎬 <b>Съёмка:</b> {shooting_name}\n"
@@ -236,7 +236,7 @@ class EquipmentReminders:
         for req in requests:
             if not req.user or not req.equipment:
                 continue
-            fio = (req.user.full_name or f"{req.user.first_name or ''} {req.user.last_name or ''}".strip()) or "—"
+            fio = req.user.full_name or "—"
             eq = req.equipment.name if req.equipment else "?"
             if (req.start_date - today).days == 1:
                 by_user_issue[fio].append(eq)
@@ -279,15 +279,15 @@ class EquipmentReminders:
             if req.task:
                 shooting_name = req.task.title if req.task.title else "Не указано"
             
-            short_msg = f"Завтра возврат: {equipment_name} — {user.full_name or f'{user.first_name} {user.last_name}'.strip()}"
+            short_msg = f"Завтра возврат: {equipment_name} — {user.full_name or '—'}"
             message_text = (
                 f"🔔 <b>Напоминание о возврате оборудования</b>\n\n"
                 f"📋 <b>Заявка #{str(req.id)[:8]}</b>\n\n"
-                f"👤 <b>ФИО:</b> {user.full_name or f'{user.first_name} {user.last_name}'.strip()}\n"
+                f"👤 <b>ФИО:</b> {user.full_name or '—'}\n"
             )
             
-            if user.telegram_username:
-                message_text += f"📱 <b>Telegram:</b> <a href=\"https://t.me/{user.telegram_username.lstrip('@')}\">@{user.telegram_username.lstrip('@')}</a>\n"
+            if user.username:
+                message_text += f"📱 <b>Telegram:</b> <a href=\"https://t.me/{user.username.lstrip('@')}\">@{user.username.lstrip('@')}</a>\n"
             
             message_text += (
                 f"🎬 <b>Съёмка:</b> {shooting_name}\n"

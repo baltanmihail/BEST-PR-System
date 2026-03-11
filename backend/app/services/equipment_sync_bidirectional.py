@@ -162,29 +162,21 @@ class EquipmentBidirectionalSync:
                         logger.info(f"Row #{sr['app_num']}: no dates, skipping creation")
                         continue
                     eq_name = sr.get("equipment_name", "")
-                    equipment = await self._find_equipment_by_name(db, eq_name) if eq_name else None
-                    if not equipment and not eq_name:
-                        # Fallback: if eq name is empty and eq_name_map has it by row index
-                        # try reading from name_map using request row position
-                        logger.info(f"Row #{sr['app_num']}: eq name empty, trying fallback from name_map")
-                        # The request number often corresponds to the equipment row in "Вся оборудка"
-                        # But this isn't reliable. Instead, just log and try all DB equipment.
-                        all_eq = await db.execute(select(Equipment))
-                        all_equipment = all_eq.scalars().all()
-                        logger.info(f"Row #{sr['app_num']}: {len(all_equipment)} equipment in DB")
-                        for eq in all_equipment:
-                            logger.info(f"  DB equipment: '{eq.name}' (id={str(eq.id)[:8]})")
+                    if not eq_name:
+                        logger.info(f"Row #{sr['app_num']}: eq name empty, skipping")
+                        continue
+                    equipment = await self._find_or_create_equipment(db, eq_name)
                     if not equipment:
                         logger.warning(
                             f"Row #{sr['app_num']}: equipment '{eq_name}' "
-                            f"not found in DB, skipping"
+                            f"could not be found or created, skipping"
                         )
                         continue
-                    user = await self._find_user_by_identifier(db, sr.get("who_raw", ""))
+                    user = await self._find_or_create_user(db, sr.get("who_raw", ""))
                     if not user:
                         logger.warning(
                             f"Row #{sr['app_num']}: user '{sr.get('who_raw')}' "
-                            f"not found in DB, skipping"
+                            f"could not be found or created, skipping"
                         )
                         continue
                     new_enum = STATUS_RU_TO_ENUM.get(
@@ -331,6 +323,35 @@ class EquipmentBidirectionalSync:
         return None
 
     @staticmethod
+    async def _find_or_create_equipment(db: AsyncSession, name: str) -> Optional[Equipment]:
+        """Find equipment by name or auto-create from sheet data."""
+        if not name:
+            return None
+        eq = await EquipmentBidirectionalSync._find_equipment_by_name(db, name)
+        if eq:
+            return eq
+        from app.models.equipment import EquipmentCategory
+        cat_map = {
+            "микрофон": "audio", "mic": "audio",
+            "камер": "camera", "sony": "camera", "canon": "camera",
+            "штатив": "tripod", "hama": "tripod", "star": "tripod",
+            "стабилизатор": "stabilizer", "dji rs": "stabilizer", "gimbal": "stabilizer",
+            "свет": "lighting", "aputure": "lighting", "falcon": "lighting", "amaran": "lighting",
+            "карт": "other", "samsung": "other", "evo": "other",
+        }
+        category = "other"
+        name_l = name.lower()
+        for keyword, cat in cat_map.items():
+            if keyword in name_l:
+                category = cat
+                break
+        new_eq = Equipment(name=name, category=category, quantity=1, status="available")
+        db.add(new_eq)
+        await db.flush()
+        logger.info(f"Auto-created equipment from sheet: '{name}', category='{category}'")
+        return new_eq
+
+    @staticmethod
     async def _find_user_by_identifier(db: AsyncSession, who: str) -> Optional[User]:
         """Find user by username or name from 'Кто берёт' cell.
         User model fields: username, full_name (no first_name/last_name/telegram_username).
@@ -358,9 +379,56 @@ class EquipmentBidirectionalSync:
                 if uname and f"t.me/{uname}" in who_clean:
                     return u
         logger.warning(f"_find_user_by_identifier: no match for '{who}' among {len(users)} users")
-        for u in users:
-            logger.info(f"  User: username='{u.username}', full_name='{u.full_name}'")
         return None
+
+    @staticmethod
+    def _parse_who_cell(who: str) -> tuple:
+        """Extract (username, full_name) from 'Кто берёт' cell like 'https://t.me/Ptchelin - Пчелин Иван'."""
+        username = None
+        full_name = who.strip()
+        tme_match = re.search(r't\.me/(\w+)', who)
+        if tme_match:
+            username = tme_match.group(1)
+        if " - " in who:
+            full_name = who.split(" - ", 1)[1].strip()
+        elif " — " in who:
+            full_name = who.split(" — ", 1)[1].strip()
+        return username, full_name
+
+    @staticmethod
+    async def _find_or_create_user(db: AsyncSession, who: str) -> Optional[User]:
+        """Find user by identifier or auto-create from sheet data.
+        This ensures requests from Google Sheets always get imported even if user is not registered.
+        """
+        user = await EquipmentBidirectionalSync._find_user_by_identifier(db, who)
+        if user:
+            return user
+        if not who:
+            return None
+
+        username, full_name = EquipmentBidirectionalSync._parse_who_cell(who)
+        if not full_name or len(full_name) < 2:
+            full_name = username or "Unknown"
+
+        import hashlib
+        hash_val = int(hashlib.md5(who.encode()).hexdigest()[:15], 16)
+        synthetic_tid = -(hash_val % 10**12)
+
+        existing = await db.execute(select(User).where(User.telegram_id == synthetic_tid))
+        existing_user = existing.scalar_one_or_none()
+        if existing_user:
+            return existing_user
+
+        new_user = User(
+            telegram_id=synthetic_tid,
+            username=username,
+            full_name=full_name,
+            is_active=True,
+        )
+        db.add(new_user)
+        await db.flush()
+        logger.info(f"Auto-created user from sheet: username='{username}', full_name='{full_name}', tid={synthetic_tid}")
+        return new_user
 
     @staticmethod
     def _parse_sheet_rows(

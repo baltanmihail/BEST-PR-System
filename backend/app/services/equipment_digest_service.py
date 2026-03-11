@@ -32,8 +32,7 @@ def _full_fio(user) -> str:
     fn = (user.full_name or "").strip()
     if fn and len(fn) >= 3:
         return fn
-    parts = [p for p in [(user.first_name or "").strip(), (user.last_name or "").strip()] if p]
-    return " ".join(parts) if parts else (fn or "—")
+    return fn or "—"
 
 
 class EquipmentDigestService:

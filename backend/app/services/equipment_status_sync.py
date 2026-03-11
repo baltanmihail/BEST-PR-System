@@ -73,8 +73,8 @@ class EquipmentStatusSync:
 
                 who_takes = ""
                 if req.user:
-                    username = req.user.telegram_username or ""
-                    full_name = req.user.full_name or f"{req.user.first_name or ''} {req.user.last_name or ''}".strip()
+                    username = req.user.username or ""
+                    full_name = req.user.full_name or ""
                     who_takes = f"https://t.me/{username.lstrip('@')} - {full_name}" if username else full_name
 
                 equipment_apps.setdefault(eq_number, []).append({
