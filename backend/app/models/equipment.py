@@ -56,6 +56,12 @@ equipment_status_enum = PG_ENUM(
     create_type=False  # НЕ создавать тип, он уже есть в БД
 )
 
+equipment_request_status_enum = PG_ENUM(
+    'pending', 'approved', 'rejected', 'active', 'completed', 'cancelled',
+    name='equipment_request_status',
+    create_type=False
+)
+
 
 class EquipmentCategoryType(TypeDecorator):
     """
@@ -140,7 +146,7 @@ class Equipment(Base):
 
 class EquipmentRequestStatusType(TypeDecorator):
     """TypeDecorator для EquipmentRequestStatus - всегда lowercase"""
-    impl = String(50)
+    impl = equipment_request_status_enum
     cache_ok = True
     
     def process_bind_param(self, value, dialect):

@@ -190,7 +190,7 @@ class EquipmentBidirectionalSync:
                         user_id=user.id,
                         start_date=sr["start_date"],
                         end_date=sr["end_date"],
-                        status=new_enum.value,
+                        status=new_enum,
                         purpose=purpose or None,
                     )
                     db.add(new_req)
