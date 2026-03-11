@@ -140,23 +140,28 @@ class EquipmentBidirectionalSync:
                     if old_value == new_enum.value:
                         continue
 
-                    req.status = new_enum.value
-                    if new_enum == EquipmentRequestStatus.REJECTED and sr.get("rejection_reason"):
-                        req.rejection_reason = sr["rejection_reason"]
+                    try:
+                        req.status = new_enum
+                        if new_enum == EquipmentRequestStatus.REJECTED and sr.get("rejection_reason"):
+                            req.rejection_reason = sr["rejection_reason"]
+                        await db.flush()
 
-                    updated_count += 1
-                    eq_item = next((d for d in db_requests if d["request"] is req), None)
-                    eq_name = eq_item["equipment"].name if eq_item and eq_item.get("equipment") else ""
-                    status_changes.append({
-                        "request_id": req.id,
-                        "old_status": old_value,
-                        "new_status": new_enum.value,
-                        "user_id": req.user_id,
-                        "equipment_name": eq_name,
-                    })
-                    logger.info(
-                        f"Sync: request {str(req.id)[:8]} status '{old_value}' -> '{new_enum.value}'"
-                    )
+                        updated_count += 1
+                        eq_item = next((d for d in db_requests if d["request"] is req), None)
+                        eq_name = eq_item["equipment"].name if eq_item and eq_item.get("equipment") else ""
+                        status_changes.append({
+                            "request_id": req.id,
+                            "old_status": old_value,
+                            "new_status": new_enum.value,
+                            "user_id": req.user_id,
+                            "equipment_name": eq_name,
+                        })
+                        logger.info(
+                            f"Sync: request {str(req.id)[:8]} status '{old_value}' -> '{new_enum.value}'"
+                        )
+                    except Exception as row_err:
+                        logger.error(f"Row #{sr['app_num']}: update error: {row_err}")
+                        await db.rollback()
                 else:
                     if not sr.get("start_date") or not sr.get("end_date"):
                         logger.info(f"Row #{sr['app_num']}: no dates, skipping creation")
@@ -165,41 +170,41 @@ class EquipmentBidirectionalSync:
                     if not eq_name:
                         logger.info(f"Row #{sr['app_num']}: eq name empty, skipping")
                         continue
-                    equipment = await self._find_or_create_equipment(db, eq_name)
-                    if not equipment:
-                        logger.warning(
-                            f"Row #{sr['app_num']}: equipment '{eq_name}' "
-                            f"could not be found or created, skipping"
-                        )
-                        continue
-                    user = await self._find_or_create_user(db, sr.get("who_raw", ""))
-                    if not user:
-                        logger.warning(
-                            f"Row #{sr['app_num']}: user '{sr.get('who_raw')}' "
-                            f"could not be found or created, skipping"
-                        )
-                        continue
-                    new_enum = STATUS_RU_TO_ENUM.get(
-                        sr["status"].lower(), EquipmentRequestStatus.PENDING
-                    )
-                    purpose_parts = [sr.get("purpose", ""), sr.get("comment", "")]
-                    purpose = " | ".join(p for p in purpose_parts if p)
 
-                    new_req = EquipmentRequest(
-                        equipment_id=equipment.id,
-                        user_id=user.id,
-                        start_date=sr["start_date"],
-                        end_date=sr["end_date"],
-                        status=new_enum,
-                        purpose=purpose or None,
-                    )
-                    db.add(new_req)
-                    created_count += 1
-                    logger.info(
-                        f"Sync: created request from Sheets #{sr['app_num']} "
-                        f"for '{sr.get('equipment_name')}' user='{sr.get('who_raw')}' "
-                        f"status='{new_enum.value}'"
-                    )
+                    try:
+                        equipment = await self._find_or_create_equipment(db, eq_name)
+                        if not equipment:
+                            logger.warning(f"Row #{sr['app_num']}: equipment '{eq_name}' not found/created")
+                            continue
+                        user = await self._find_or_create_user(db, sr.get("who_raw", ""))
+                        if not user:
+                            logger.warning(f"Row #{sr['app_num']}: user '{sr.get('who_raw')}' not found/created")
+                            continue
+                        new_enum = STATUS_RU_TO_ENUM.get(
+                            sr["status"].lower(), EquipmentRequestStatus.PENDING
+                        )
+                        purpose_parts = [sr.get("purpose", ""), sr.get("comment", "")]
+                        purpose = " | ".join(p for p in purpose_parts if p)
+
+                        new_req = EquipmentRequest(
+                            equipment_id=equipment.id,
+                            user_id=user.id,
+                            start_date=sr["start_date"],
+                            end_date=sr["end_date"],
+                            status=new_enum,
+                            purpose=purpose or None,
+                        )
+                        db.add(new_req)
+                        await db.flush()
+                        created_count += 1
+                        logger.info(
+                            f"Sync: created request from Sheets #{sr['app_num']} "
+                            f"for '{sr.get('equipment_name')}' user='{sr.get('who_raw')}' "
+                            f"status='{new_enum.value}'"
+                        )
+                    except Exception as row_err:
+                        logger.error(f"Row #{sr['app_num']}: create error: {row_err}")
+                        await db.rollback()
 
             if updated_count or created_count:
                 await db.commit()

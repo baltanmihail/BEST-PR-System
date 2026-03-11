@@ -1,7 +1,7 @@
 """
 Модели оборудования
 """
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, CheckConstraint, Integer, TypeDecorator
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, CheckConstraint, Integer, TypeDecorator, cast
 from sqlalchemy.dialects.postgresql import UUID, JSONB, ENUM as PG_ENUM
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -70,13 +70,15 @@ class EquipmentCategoryType(TypeDecorator):
     """
     impl = equipment_category_enum
     cache_ok = True
-    
+
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self.impl)
+
     def process_bind_param(self, value, dialect):
-        """При записи в БД — всегда lowercase строка"""
         if value is None:
             return 'other'
         if isinstance(value, EquipmentCategory):
-            return value.value  # value уже lowercase
+            return value.value
         if isinstance(value, str):
             return value.lower()
         return str(value).lower()
@@ -98,13 +100,15 @@ class EquipmentStatusType(TypeDecorator):
     """
     impl = equipment_status_enum
     cache_ok = True
-    
+
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self.impl)
+
     def process_bind_param(self, value, dialect):
-        """При записи в БД — всегда lowercase строка"""
         if value is None:
             return 'available'
         if isinstance(value, EquipmentStatus):
-            return value.value  # value уже lowercase
+            return value.value
         if isinstance(value, str):
             return value.lower()
         return str(value).lower()
@@ -148,7 +152,10 @@ class EquipmentRequestStatusType(TypeDecorator):
     """TypeDecorator для EquipmentRequestStatus - всегда lowercase"""
     impl = equipment_request_status_enum
     cache_ok = True
-    
+
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self.impl)
+
     def process_bind_param(self, value, dialect):
         if value is None:
             return None
