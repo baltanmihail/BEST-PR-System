@@ -332,28 +332,34 @@ class EquipmentBidirectionalSync:
 
     @staticmethod
     async def _find_user_by_identifier(db: AsyncSession, who: str) -> Optional[User]:
-        """Find user by username or name from 'Кто берёт' cell."""
+        """Find user by username or name from 'Кто берёт' cell.
+        User model fields: username, full_name (no first_name/last_name/telegram_username).
+        """
         if not who:
             return None
         result = await db.execute(select(User))
         users = result.scalars().all()
         who_lower = who.lower().strip()
+        # Match by Telegram username
         for u in users:
-            if u.telegram_username:
-                uname = u.telegram_username.lstrip("@").lower()
+            if u.username:
+                uname = u.username.lstrip("@").lower()
                 if uname and uname in who_lower:
                     return u
+        # Match by full name
+        for u in users:
             if u.full_name and u.full_name.lower() in who_lower:
                 return u
-            name = f"{u.first_name or ''} {u.last_name or ''}".strip().lower()
-            if name and name in who_lower:
-                return u
-        # Also try matching if a Telegram link is in the cell
+        # Match by t.me link
+        who_clean = who_lower.replace("https://", "").replace("http://", "")
         for u in users:
-            if u.telegram_username:
-                uname = u.telegram_username.lstrip("@").lower()
-                if uname and f"t.me/{uname}" in who_lower.replace("https://", "").replace("http://", ""):
+            if u.username:
+                uname = u.username.lstrip("@").lower()
+                if uname and f"t.me/{uname}" in who_clean:
                     return u
+        logger.warning(f"_find_user_by_identifier: no match for '{who}' among {len(users)} users")
+        for u in users:
+            logger.info(f"  User: username='{u.username}', full_name='{u.full_name}'")
         return None
 
     @staticmethod
@@ -466,16 +472,13 @@ class EquipmentBidirectionalSync:
                 if req.start_date != sr_start:
                     continue
 
-            # Match user
+            # Match user (User model: username, full_name)
             if user and sr_who:
                 identifiers = []
-                if user.telegram_username:
-                    identifiers.append(user.telegram_username.lstrip("@").lower())
+                if user.username:
+                    identifiers.append(user.username.lstrip("@").lower())
                 if user.full_name:
                     identifiers.append(user.full_name.lower())
-                name = f"{user.first_name or ''} {user.last_name or ''}".strip().lower()
-                if name:
-                    identifiers.append(name)
 
                 if not any(ident and ident in sr_who for ident in identifiers):
                     continue
