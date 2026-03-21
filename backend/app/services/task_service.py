@@ -226,20 +226,41 @@ class TaskService:
           - final/
           - drafts/
         """
-        # Извлекаем equipment_available из данных
         task_dict = task_data.model_dump()
         equipment_available = task_dict.pop('equipment_available', False)
-        
+        stages_data = task_dict.pop('stages', None)
+        # Remove fields that map to ORM relationships or don't exist on Task columns
+        for key in ('questions', 'script_ready'):
+            task_dict.pop(key, None)
+        # Remove None values to avoid setting relationship fields to None
+        task_dict = {k: v for k, v in task_dict.items() if v is not None}
+
         task = Task(
             **task_dict,
             created_by=created_by,
-            status=TaskStatus.DRAFT,  # Новые задачи создаются как черновики
+            status=TaskStatus.DRAFT,
             equipment_available=equipment_available
         )
-        
+
         db.add(task)
         await db.commit()
         await db.refresh(task)
+
+        # Create stages if provided
+        if stages_data:
+            from app.models.task import TaskStage
+            for i, stage in enumerate(stages_data):
+                stage_obj = TaskStage(
+                    task_id=task.id,
+                    title=stage.get('title', f'Этап {i+1}'),
+                    description=stage.get('description'),
+                    stage_order=stage.get('stage_order', i + 1),
+                    deadline=stage.get('deadline'),
+                    status_color=stage.get('status_color', 'green'),
+                )
+                db.add(stage_obj)
+            await db.commit()
+            await db.refresh(task)
         
         # Создаём структуру папок в Google Drive (асинхронно, в фоне)
         # Не ждём завершения - это не критично для создания задачи

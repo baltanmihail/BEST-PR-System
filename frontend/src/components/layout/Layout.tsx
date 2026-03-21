@@ -3,8 +3,6 @@ import { useLocation } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import Background3DModels from '../Background3DModels'
-import StaticCursor3D from '../StaticCursor3D'
-import Cursor2 from '../Cursor2'
 import TourGuide from '../TourGuide'
 import ChatWidget from '../ChatWidget'
 import { useThemeStore } from '../../store/themeStore'
@@ -60,10 +58,6 @@ export default function Layout({ children }: LayoutProps) {
       <div className="absolute top-1/2 left-1/2 w-[700px] h-[700px] bg-best-primary/12 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 animate-pulse" style={{ animationDelay: '2s' }}></div>
       <div className="absolute bottom-1/4 left-1/4 w-[400px] h-[400px] bg-best-accent/6 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
       
-      {/* Статичная 3D модель курсора (отключена на мобильных) */}
-      {!isMobile && <StaticCursor3D />}
-      {/* Cursor-2: кастомный курсор пользователя (отключен на мобильных) */}
-      {!isMobile && <Cursor2 />}
       
       <Header onMenuToggle={() => setIsMobileMenuOpen(!isMobileMenuOpen)} />
       <div className="flex flex-col md:flex-row relative z-10">

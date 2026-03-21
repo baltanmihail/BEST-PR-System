@@ -480,6 +480,54 @@ async def publish_task(
     return TaskResponse.model_validate(task)
 
 
+class AssignUserRequest(BaseModel):
+    user_id: UUID = Field(..., description="ID пользователя для назначения")
+    role: Optional[str] = Field(None, description="Роль в задаче (smm, design, channel, prfr)")
+
+
+@router.post("/{task_id}/assign-user", response_model=dict)
+async def assign_user_to_task(
+    task_id: UUID,
+    body: AssignUserRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator)
+):
+    """Назначить конкретного пользователя на задачу (только координаторы/VP4PR)"""
+    from app.models.task import TaskAssignment, AssignmentStatus, Task
+    from sqlalchemy import select
+
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    target_user = await db.get(User, body.user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = await db.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.task_id == task_id,
+            TaskAssignment.user_id == body.user_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User already assigned to this task")
+
+    assignment = TaskAssignment(
+        task_id=task_id,
+        user_id=body.user_id,
+        role_in_task=body.role or 'executor',
+        status=AssignmentStatus.ASSIGNED,
+    )
+    db.add(assignment)
+
+    if task.status in (TaskStatus.DRAFT, TaskStatus.OPEN):
+        task.status = TaskStatus.ASSIGNED
+
+    await db.commit()
+    return {"status": "assigned", "user_id": str(body.user_id), "task_id": str(task_id)}
+
+
 @router.post("/{task_id}/assign", response_model=dict)
 async def assign_task(
     task_id: UUID,

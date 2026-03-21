@@ -9,6 +9,8 @@ import { tasksApi } from '../services/tasks'
 import { taskTemplatesApi } from '../services/taskTemplates'
 import { galleryApi } from '../services/gallery'
 import { fileUploadsApi } from '../services/fileUploads'
+import { usersApi } from '../services/users'
+import api from '../services/api'
 import FileUploadDragDrop, { type FilePreview } from '../components/FileUploadDragDrop'
 import { TaskCreate, TaskType, TaskPriority, TaskStageCreate } from '../types/task'
 
@@ -30,6 +32,7 @@ export default function CreateTask() {
   const [exampleProjectIds, setExampleProjectIds] = useState<string[]>([])
   const [uploadedFiles, setUploadedFiles] = useState<FilePreview[]>([])
   const [questions, setQuestions] = useState<string[]>([''])
+  const [assignedUserIds, setAssignedUserIds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
@@ -50,6 +53,13 @@ export default function CreateTask() {
     queryKey: ['gallery', 'examples'],
     queryFn: () => galleryApi.getGallery({ limit: 100 }),
     enabled: isCoordinator === true,
+  })
+
+  // Загружаем пользователей для назначения
+  const { data: usersData } = useQuery({
+    queryKey: ['users-for-assign'],
+    queryFn: () => usersApi.getUsers({ limit: 100, is_active: true }),
+    enabled: roleStr === 'vp4pr',
   })
 
   // Загрузка шаблона и заполнение формы
@@ -143,7 +153,7 @@ export default function CreateTask() {
       description: description.trim() || undefined,
       type: taskType,
       priority: priority,
-      due_date: dueDate ? new Date(dueDate).toISOString() : undefined,
+      due_date: dueDate ? dueDate + ':00' : undefined,
       equipment_available: taskType === 'channel' ? equipmentAvailable : false,
       stages: validStages.length > 0 ? validStages : undefined,
       role_specific_requirements: Object.keys(validRoleRequirements).length > 0 ? validRoleRequirements : undefined,
@@ -171,7 +181,18 @@ export default function CreateTask() {
         }
       }
 
-      // 3. Успех и редирект
+      // 3. Назначаем пользователей (если выбраны)
+      if (assignedUserIds.length > 0) {
+        for (const userId of assignedUserIds) {
+          try {
+            await api.post(`/tasks/${task.id}/assign-user`, { user_id: userId })
+          } catch (err) {
+            console.error(`Ошибка назначения пользователя ${userId}:`, err)
+          }
+        }
+      }
+
+      // 4. Успех и редирект
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       navigate('/tasks')
       
@@ -538,10 +559,10 @@ export default function CreateTask() {
                       <label className={`block text-white/80 mb-1 text-xs text-readable ${theme}`}>Дедлайн этапа</label>
                       <input
                         type="datetime-local"
-                        value={stage.due_date ? new Date(stage.due_date).toISOString().slice(0, 16) : ''}
+                        value={stage.due_date ? stage.due_date.slice(0, 16) : ''}
                         onChange={(e) => {
                           const newStages = [...stages]
-                          newStages[index] = { ...stage, due_date: e.target.value ? new Date(e.target.value).toISOString() : undefined }
+                          newStages[index] = { ...stage, due_date: e.target.value ? e.target.value + ':00' : undefined }
                           setStages(newStages)
                         }}
                         className={`w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} text-sm [&::-webkit-calendar-picker-indicator]:filter [&::-webkit-calendar-picker-indicator]:invert`}
@@ -653,6 +674,43 @@ export default function CreateTask() {
               ))}
             </div>
           </div>
+
+          {/* Назначение пользователей (только VP4PR) */}
+          {roleStr === 'vp4pr' && usersData?.items && (
+            <div>
+              <label className={`block text-white/80 mb-2 font-medium text-readable ${theme}`}>
+                Назначить на задачу
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 bg-white/5 rounded-lg border border-white/10">
+                {usersData.items
+                  .filter(u => u.id !== user?.id)
+                  .map(u => (
+                    <label key={u.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/10 cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={assignedUserIds.includes(u.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setAssignedUserIds([...assignedUserIds, u.id])
+                          } else {
+                            setAssignedUserIds(assignedUserIds.filter(id => id !== u.id))
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-white/30 text-best-primary focus:ring-best-primary bg-white/10"
+                        disabled={isSubmitting}
+                      />
+                      <span className={`text-white text-sm text-readable ${theme}`}>
+                        {u.full_name}{u.username ? ` (@${u.username})` : ''}
+                      </span>
+                      <span className="text-white/40 text-xs ml-auto">{u.role}</span>
+                    </label>
+                  ))}
+              </div>
+              {assignedUserIds.length > 0 && (
+                <p className="text-white/50 text-xs mt-1">Выбрано: {assignedUserIds.length}</p>
+              )}
+            </div>
+          )}
 
           {/* Кнопки */}
           <div className="flex flex-col sm:flex-row gap-4 pt-4">
