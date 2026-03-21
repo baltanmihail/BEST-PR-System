@@ -1,7 +1,7 @@
 """
 Модели задач
 """
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Enum, Integer, Boolean, CheckConstraint, TypeDecorator
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, Boolean, CheckConstraint, TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID, ENUM as PG_ENUM, JSON
 from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
@@ -41,6 +41,40 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 
+class TaskTypeType(TypeDecorator):
+    """TypeDecorator для TaskType -> task_type ENUM в PostgreSQL"""
+    impl = String
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(length=50)
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_ENUM(
+                TaskType, name='task_type', create_type=False,
+                values_callable=lambda x: [e.value for e in TaskType]
+            ))
+        return dialect.type_descriptor(String(50))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, TaskType):
+            return value.value
+        return str(value).lower() if value else None
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return TaskType(value.lower())
+            except ValueError:
+                return TaskType.SMM
+        return value
+
+
 class TaskPriorityType(TypeDecorator):
     """TypeDecorator для правильной конвертации TaskPriority в строку"""
     impl = String
@@ -50,17 +84,12 @@ class TaskPriorityType(TypeDecorator):
         super().__init__(length=50)
     
     def load_dialect_impl(self, dialect):
-        """Используем PostgreSQL ENUM для PostgreSQL"""
         if dialect.name == 'postgresql':
-            # Используем правильное имя типа из базы данных: task_priority (с подчеркиванием)
             return dialect.type_descriptor(PG_ENUM(
-                TaskPriority, 
-                name='task_priority', 
-                create_type=False, 
+                TaskPriority, name='task_priority', create_type=False,
                 values_callable=lambda x: [e.value for e in TaskPriority]
             ))
-        else:
-            return dialect.type_descriptor(String(50))
+        return dialect.type_descriptor(String(50))
     
     def process_bind_param(self, value, dialect):
         """Конвертируем enum в его значение (строку)"""
@@ -131,6 +160,40 @@ class StageStatus(str, enum.Enum):
     COMPLETED = "completed"
 
 
+class StageStatusType(TypeDecorator):
+    """TypeDecorator для StageStatus -> stage_status ENUM в PostgreSQL"""
+    impl = String
+    cache_ok = True
+
+    def __init__(self):
+        super().__init__(length=50)
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(PG_ENUM(
+                StageStatus, name='stage_status', create_type=False,
+                values_callable=lambda x: [e.value for e in StageStatus]
+            ))
+        return dialect.type_descriptor(String(50))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, StageStatus):
+            return value.value
+        return str(value) if value else None
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                return StageStatus(value)
+            except ValueError:
+                return StageStatus.PENDING
+        return value
+
+
 class AssignmentStatus(str, enum.Enum):
     """Статусы назначений"""
     ASSIGNED = "assigned"
@@ -188,7 +251,7 @@ class Task(Base):
     task_number = Column(Integer, nullable=True, unique=True, index=True)  # Автоинкремент: TASK-001, TASK-002, ...
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    type = Column(Enum(TaskType), nullable=False, index=True)
+    type = Column(TaskTypeType(), nullable=False, index=True)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id", ondelete="SET NULL"), nullable=True, index=True)
     priority = Column(TaskPriorityType(), nullable=False, default=TaskPriority.MEDIUM, server_default='medium', index=True)
     status = Column(TaskStatusType(), nullable=False, default=TaskStatus.DRAFT, server_default='draft', index=True)
@@ -258,7 +321,7 @@ class TaskStage(Base):
     stage_name = Column(String, nullable=False)  # 'script', 'shooting', 'editing', 'review', 'publication'
     stage_order = Column(Integer, nullable=False)
     due_date = Column(DateTime(timezone=True), nullable=True, index=True)
-    status = Column(Enum(StageStatus), nullable=False, default=StageStatus.PENDING, index=True)
+    status = Column(StageStatusType(), nullable=False, default=StageStatus.PENDING, index=True)
     status_color = Column(String, nullable=False, default="green")  # 'green', 'yellow', 'red', 'purple', 'blue'
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

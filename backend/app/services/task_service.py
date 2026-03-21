@@ -246,16 +246,14 @@ class TaskService:
         await db.commit()
         await db.refresh(task)
 
-        # Create stages if provided
         if stages_data:
             from app.models.task import TaskStage
             for i, stage in enumerate(stages_data):
                 stage_obj = TaskStage(
                     task_id=task.id,
-                    title=stage.get('title', f'Этап {i+1}'),
-                    description=stage.get('description'),
+                    stage_name=stage.get('stage_name', f'Этап {i+1}'),
                     stage_order=stage.get('stage_order', i + 1),
-                    deadline=stage.get('deadline'),
+                    due_date=stage.get('due_date'),
                     status_color=stage.get('status_color', 'green'),
                 )
                 db.add(stage_obj)
