@@ -1,8 +1,8 @@
 """
 Pydantic схемы для задач
 """
-from pydantic import BaseModel, Field
-from typing import Optional, List, TYPE_CHECKING
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Any, TYPE_CHECKING
 from datetime import datetime
 from uuid import UUID
 from app.models.task import TaskType, TaskPriority, TaskStatus, StageStatus, AssignmentStatus
@@ -61,7 +61,38 @@ class TaskResponse(TaskBase):
     updated_at: datetime
     drive_folder_id: Optional[str] = None
     drive_file_id: Optional[str] = None
-    
+    questions: Optional[List[str]] = None
+    example_project_ids: Optional[List[Any]] = None
+
+    @field_validator('questions', mode='before')
+    @classmethod
+    def coerce_questions(cls, v: Any) -> Optional[List[str]]:
+        if v is None:
+            return None
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, str):
+                    result.append(item)
+                elif hasattr(item, 'question'):
+                    result.append(item.question)
+                else:
+                    result.append(str(item))
+            return result if result else None
+        return None
+
+    @field_validator('example_project_ids', mode='before')
+    @classmethod
+    def coerce_example_ids(cls, v: Any) -> Optional[List[Any]]:
+        if v is None:
+            return None
+        try:
+            if isinstance(v, list):
+                return v if v else None
+        except Exception:
+            pass
+        return None
+
     class Config:
         from_attributes = True
 
@@ -141,12 +172,10 @@ class TaskDetailResponse(TaskResponse):
     """Детальная схема задачи (карточка задачи) с этапами, назначениями и материалами"""
     stages: List[TaskStageResponse] = []
     assignments: List[TaskAssignmentResponse] = []
-    files: List[TaskFileResponse] = []  # Файлы (материалы задачи) из Google Drive
+    files: List[TaskFileResponse] = []
     thumbnail_image_url: Optional[str] = None
-    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям: {'smm': '...', 'design': '...', 'channel': '...', 'prfr': '...'}")
-    questions: Optional[List[str]] = Field(None, description="Список вопросов по задаче")
-    example_project_ids: Optional[List[UUID]] = Field(None, description="ID примеров прошлых работ")
-    
+    role_specific_requirements: Optional[dict] = Field(None, description="ТЗ по ролям")
+
     class Config:
         from_attributes = True
 

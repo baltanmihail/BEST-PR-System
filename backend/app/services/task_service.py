@@ -170,11 +170,11 @@ class TaskService:
         # Применяем пагинацию
         query = query.offset(skip).limit(limit)
         
-        # Загружаем связанные данные (опционально, в зависимости от view_mode)
         if view_mode in ["normal", "detailed"]:
             query = query.options(
                 selectinload(Task.stages),
-                selectinload(Task.assignments).selectinload(TaskAssignment.user)
+                selectinload(Task.assignments).selectinload(TaskAssignment.user),
+                selectinload(Task.questions)
             )
         elif view_mode == "compact":
             # В упрощённом виде не загружаем связанные данные для производительности
@@ -193,10 +193,12 @@ class TaskService:
         """Получить задачу по ID с загруженными связанными данными"""
         from app.models.file import File
         
+        from app.models.task import TaskQuestion
         query = select(Task).where(Task.id == task_id)
         query = query.options(
             selectinload(Task.stages),
-            selectinload(Task.assignments).selectinload(TaskAssignment.user)
+            selectinload(Task.assignments).selectinload(TaskAssignment.user),
+            selectinload(Task.questions)
         )
         
         result = await db.execute(query)

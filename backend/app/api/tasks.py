@@ -273,16 +273,19 @@ async def create_task(
     # Логируем создание задачи (публично, без имени координатора)
     from app.services.activity_service import ActivityService
     try:
+        task_type_val = task.type.value if hasattr(task.type, 'value') else str(task.type)
         await ActivityService.log_task_created(
             db=db,
             task_id=task.id,
             task_title=task.title,
-            task_type=task.type.value
+            task_type=task_type_val
         )
     except Exception as e:
         import logging
         logging.error(f"Failed to log activity: {e}")
     
+    # Reload with eager-loaded relationships to avoid MissingGreenlet on serialization
+    task = await TaskService.get_task_by_id(db, task.id)
     return TaskResponse.model_validate(task)
 
 
