@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera, UserPlus, UserMinus, RefreshCw, CheckCircle } from 'lucide-react'
+import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera, UserPlus, UserMinus, RefreshCw, CheckCircle, Pencil, Trash2, X, Save } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
-import { Task } from '../types/task'
+import { Task, TaskUpdate } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -13,7 +13,7 @@ import TaskQuestions from './TaskQuestions'
 import TaskFiles from './TaskFiles'
 import StageFileUpload from './StageFileUpload'
 
-const typeLabels = {
+const typeLabels: Record<string, string> = {
   smm: 'SMM',
   design: 'Дизайн',
   channel: 'Channel',
@@ -21,7 +21,7 @@ const typeLabels = {
   multitask: 'Многозадачная',
 }
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   draft: 'Черновик',
   open: 'Открыта',
   assigned: 'Назначена',
@@ -31,7 +31,7 @@ const statusLabels = {
   cancelled: 'Отменена',
 }
 
-const priorityColors = {
+const priorityColors: Record<string, string> = {
   low: 'bg-gray-100 text-gray-700',
   medium: 'bg-status-yellow/20 text-status-yellow',
   high: 'bg-status-red/20 text-status-red',
@@ -51,7 +51,10 @@ export default function TaskCard({ task }: TaskCardProps) {
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
   const [showReassign, setShowReassign] = useState(false)
   const [reassignUserId, setReassignUserId] = useState('')
-  
+  const [isEditing, setIsEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editData, setEditData] = useState<TaskUpdate>({})
+
   const { data: taskChat } = useQuery<TaskChatResponse>({
     queryKey: ['task-chat', task.id],
     queryFn: () => telegramChatsApi.getTaskChat(task.id),
@@ -73,9 +76,9 @@ export default function TaskCard({ task }: TaskCardProps) {
   const { data: activeUsers } = useQuery({
     queryKey: ['users-active'],
     queryFn: () => usersApi.getUsers({ is_active: true, limit: 100 }),
-    enabled: showReassign,
+    enabled: showReassign || isEditing,
   })
-  
+
   const isRegistered = !!user?.is_active
   const isCoordinator = user?.role === 'vp4pr' || (typeof user?.role === 'string' && user.role.includes('coordinator'))
   const isVP4PR = user?.role === 'vp4pr'
@@ -111,6 +114,54 @@ export default function TaskCard({ task }: TaskCardProps) {
     onSuccess: invalidateTaskQueries,
   })
 
+  const updateMutation = useMutation({
+    mutationFn: (data: TaskUpdate) => tasksApi.updateTask(task.id, data),
+    onSuccess: () => {
+      invalidateTaskQueries()
+      setIsEditing(false)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => tasksApi.deleteTask(task.id),
+    onSuccess: () => {
+      invalidateTaskQueries()
+      setConfirmDelete(false)
+    },
+  })
+
+  const startEditing = () => {
+    setEditData({
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority as TaskUpdate['priority'],
+      status: task.status as TaskUpdate['status'],
+      due_date: task.due_date || undefined,
+    })
+    setIsEditing(true)
+  }
+
+  const saveEdit = () => {
+    const changes: TaskUpdate = {}
+    if (editData.title !== task.title) changes.title = editData.title
+    if (editData.description !== (task.description || '')) changes.description = editData.description
+    if (editData.priority !== task.priority) changes.priority = editData.priority
+    if (editData.status !== task.status) changes.status = editData.status
+    if (editData.due_date !== task.due_date) changes.due_date = editData.due_date
+    if (Object.keys(changes).length > 0) {
+      updateMutation.mutate(changes)
+    } else {
+      setIsEditing(false)
+    }
+  }
+
+  const formatDateForInput = (dateStr?: string) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
   // Deadline countdown
   const [countdown, setCountdown] = useState('')
   const [countdownColor, setCountdownColor] = useState('text-white/60')
@@ -144,12 +195,7 @@ export default function TaskCard({ task }: TaskCardProps) {
   }, [task.due_date])
 
   const getRoleName = (role: string) => {
-    const names: Record<string, string> = {
-      smm: 'SMM',
-      design: 'Design',
-      channel: 'Channel',
-      prfr: 'PR-FR',
-    }
+    const names: Record<string, string> = { smm: 'SMM', design: 'Design', channel: 'Channel', prfr: 'PR-FR' }
     return names[role] || role
   }
 
@@ -172,50 +218,185 @@ export default function TaskCard({ task }: TaskCardProps) {
     return statusMap[status] || 'bg-white/10 text-white border-white/20'
   }
 
+  const getUserDisplayName = (assignment: { user_id: string; user_name?: string }) => {
+    return assignment.user_name || assignment.user_id.slice(0, 8) + '...'
+  }
+
   return (
     <div
       ref={parallax.ref}
       style={{ transform: parallax.transform }}
       className={`glass-enhanced ${theme} rounded-xl p-6 card-3d text-white parallax-hover touch-manipulation`}
     >
-      {/* Превью изображения */}
-      {task.thumbnail_image_url && (
-        <img
-          src={task.thumbnail_image_url}
-          alt={task.title}
-          className="w-full h-48 object-cover rounded-lg mb-4"
-        />
-      )}
-
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <div className="flex items-center space-x-3 mb-2">
-            <span className="px-3 py-1 bg-best-primary/10 text-best-primary rounded-full text-sm font-medium">
-              {typeLabels[task.type as keyof typeof typeLabels]}
-            </span>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${priorityColors[task.priority as keyof typeof priorityColors]}`}>
-              {task.priority === 'critical' ? 'Критично' : 
-               task.priority === 'high' ? 'Высокий' :
-               task.priority === 'medium' ? 'Средний' : 'Низкий'}
-            </span>
-            {task.equipment_available && (
-              <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium flex items-center space-x-1">
-                <Camera className="h-3 w-3" />
-                <span>Оборудование</span>
-              </span>
-            )}
-          </div>
-          <h3 className={`text-xl font-semibold text-white mb-2 text-readable ${theme}`}>
-            {task.title}
-          </h3>
-          {task.description && (
-            <p className={`text-white mb-4 text-readable ${theme}`}>{task.description}</p>
+      {/* Toolbar VP4PR: Edit / Delete */}
+      {isCoordinator && !isEditing && (
+        <div className="flex items-center justify-end gap-2 mb-3">
+          <button
+            onClick={startEditing}
+            className="text-white/60 hover:text-white text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-all"
+            title="Редактировать задачу"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span>Редактировать</span>
+          </button>
+          {isVP4PR && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="text-red-400/70 hover:text-red-400 text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10 transition-all"
+              title="Удалить задачу"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Удалить</span>
+            </button>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Confirmation dialog for delete */}
+      {confirmDelete && (
+        <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg">
+          <p className="text-white text-sm mb-3">Удалить задачу «{task.title}»? Это действие нельзя отменить.</p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+              className="bg-red-600 text-white text-sm px-4 py-1.5 rounded hover:bg-red-500 disabled:opacity-50"
+            >
+              {deleteMutation.isPending ? 'Удаляю...' : 'Да, удалить'}
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="bg-white/10 text-white text-sm px-4 py-1.5 rounded hover:bg-white/20"
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit mode */}
+      {isEditing ? (
+        <div className="space-y-4 mb-4">
+          <div>
+            <label className="text-white/60 text-xs mb-1 block">Название</label>
+            <input
+              type="text"
+              value={editData.title || ''}
+              onChange={e => setEditData({ ...editData, title: e.target.value })}
+              className="w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary"
+            />
+          </div>
+          <div>
+            <label className="text-white/60 text-xs mb-1 block">Описание</label>
+            <textarea
+              value={editData.description || ''}
+              onChange={e => setEditData({ ...editData, description: e.target.value })}
+              rows={3}
+              className="w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary resize-y"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-white/60 text-xs mb-1 block">Дедлайн</label>
+              <input
+                type="datetime-local"
+                value={formatDateForInput(editData.due_date)}
+                onChange={e => setEditData({ ...editData, due_date: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
+                className="w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary [color-scheme:dark]"
+              />
+            </div>
+            <div>
+              <label className="text-white/60 text-xs mb-1 block">Приоритет</label>
+              <select
+                value={editData.priority || ''}
+                onChange={e => setEditData({ ...editData, priority: e.target.value as TaskUpdate['priority'] })}
+                className="w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary [&>option]:bg-gray-800"
+              >
+                <option value="low">Низкий</option>
+                <option value="medium">Средний</option>
+                <option value="high">Высокий</option>
+                <option value="critical">Критичный</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-white/60 text-xs mb-1 block">Статус</label>
+              <select
+                value={editData.status || ''}
+                onChange={e => setEditData({ ...editData, status: e.target.value as TaskUpdate['status'] })}
+                className="w-full bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary [&>option]:bg-gray-800"
+              >
+                <option value="draft">Черновик</option>
+                <option value="open">Открыта</option>
+                <option value="assigned">Назначена</option>
+                <option value="in_progress">В работе</option>
+                <option value="review">На проверке</option>
+                <option value="completed">Завершена</option>
+                <option value="cancelled">Отменена</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={saveEdit}
+              disabled={updateMutation.isPending}
+              className="bg-best-primary text-white px-4 py-2 rounded-lg hover:bg-best-primary/80 flex items-center gap-2 disabled:opacity-50 text-sm"
+            >
+              <Save className="h-4 w-4" />
+              {updateMutation.isPending ? 'Сохраняю...' : 'Сохранить'}
+            </button>
+            <button
+              onClick={() => setIsEditing(false)}
+              className="bg-white/10 text-white px-4 py-2 rounded-lg hover:bg-white/20 flex items-center gap-2 text-sm"
+            >
+              <X className="h-4 w-4" />
+              Отмена
+            </button>
+          </div>
+          {updateMutation.isError && (
+            <p className="text-red-400 text-xs">{(updateMutation.error as Error)?.message || 'Ошибка сохранения'}</p>
+          )}
+        </div>
+      ) : (
+        <>
+          {task.thumbnail_image_url && (
+            <img
+              src={task.thumbnail_image_url}
+              alt={task.title}
+              className="w-full h-48 object-cover rounded-lg mb-4"
+            />
+          )}
+
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <div className="flex items-center space-x-3 mb-2 flex-wrap gap-y-2">
+                <span className="px-3 py-1 bg-best-primary/10 text-best-primary rounded-full text-sm font-medium">
+                  {typeLabels[task.type] || task.type}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${priorityColors[task.priority] || ''}`}>
+                  {task.priority === 'critical' ? 'Критично' :
+                   task.priority === 'high' ? 'Высокий' :
+                   task.priority === 'medium' ? 'Средний' : 'Низкий'}
+                </span>
+                {task.equipment_available && (
+                  <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium flex items-center space-x-1">
+                    <Camera className="h-3 w-3" />
+                    <span>Оборудование</span>
+                  </span>
+                )}
+              </div>
+              <h3 className={`text-xl font-semibold text-white mb-2 text-readable ${theme}`}>
+                {task.title}
+              </h3>
+              {task.description && (
+                <p className={`text-white mb-4 text-readable ${theme}`}>{task.description}</p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ТЗ по ролям */}
-      {task.role_specific_requirements && Object.keys(task.role_specific_requirements).length > 0 && (
+      {!isEditing && task.role_specific_requirements && Object.keys(task.role_specific_requirements).length > 0 && (
         <div className="mb-4">
           <div className="flex items-center space-x-2 mb-2">
             <span className={`text-white font-semibold text-readable ${theme}`}>ТЗ по ролям:</span>
@@ -236,7 +417,7 @@ export default function TaskCard({ task }: TaskCardProps) {
             </div>
           </div>
           {selectedRole && task.role_specific_requirements[selectedRole as keyof typeof task.role_specific_requirements] && (
-            <div className={`p-3 bg-white/10 rounded-lg border border-white/20 mb-2`}>
+            <div className="p-3 bg-white/10 rounded-lg border border-white/20 mb-2">
               <p className={`text-white text-readable ${theme}`}>
                 {task.role_specific_requirements[selectedRole as keyof typeof task.role_specific_requirements]}
               </p>
@@ -246,7 +427,7 @@ export default function TaskCard({ task }: TaskCardProps) {
       )}
 
       {/* Контрольные точки */}
-      {task.stages && task.stages.length > 0 && (
+      {!isEditing && task.stages && task.stages.length > 0 && (
         <div className="mb-4">
           <h4 className={`text-white font-semibold mb-2 text-readable ${theme}`}>
             Контрольные точки:
@@ -261,10 +442,7 @@ export default function TaskCard({ task }: TaskCardProps) {
                 >
                   <div className="flex items-center space-x-2">
                     <span
-                      className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(
-                        stage.status,
-                        stage.status_color
-                      )}`}
+                      className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(stage.status, stage.status_color)}`}
                     >
                       {stage.stage_name}
                     </span>
@@ -273,20 +451,12 @@ export default function TaskCard({ task }: TaskCardProps) {
                         {new Date(stage.due_date).toLocaleDateString('ru-RU')}
                       </span>
                     )}
-                    {/* Кнопка загрузки файла для этапа */}
                     {isRegistered && (
-                      <StageFileUpload 
-                        taskId={task.id} 
-                        stageId={stage.id} 
-                        stageName={stage.stage_name} 
-                      />
+                      <StageFileUpload taskId={task.id} stageId={stage.id} stageName={stage.stage_name} />
                     )}
                   </div>
                   <span
-                    className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(
-                      stage.status,
-                      stage.status_color
-                    )}`}
+                    className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(stage.status, stage.status_color)}`}
                   >
                     {stage.status === 'completed' ? '✅ Выполнено' :
                      stage.status === 'in_progress' ? '🔄 В работе' : '⏳ Не начато'}
@@ -297,14 +467,11 @@ export default function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      {/* Вопросы к задаче */}
-      <TaskQuestions taskId={task.id} />
-
-      {/* Файлы задачи */}
-      <TaskFiles taskId={task.id} />
+      {!isEditing && <TaskQuestions taskId={task.id} />}
+      {!isEditing && <TaskFiles taskId={task.id} />}
 
       {/* Примеры прошлых работ */}
-      {exampleProjects && exampleProjects.length > 0 && (
+      {!isEditing && exampleProjects && exampleProjects.length > 0 && (
         <div className="mb-4">
           <h4 className={`text-white font-semibold mb-2 flex items-center space-x-2 text-readable ${theme}`}>
             <ImageIcon className="h-4 w-4" />
@@ -312,16 +479,9 @@ export default function TaskCard({ task }: TaskCardProps) {
           </h4>
           <div className="grid grid-cols-2 gap-2">
             {exampleProjects.map((project) => (
-              <div
-                key={project.id}
-                className="p-2 bg-white/10 rounded-lg cursor-pointer hover:bg-white/20 transition-all"
-              >
+              <div key={project.id} className="p-2 bg-white/10 rounded-lg cursor-pointer hover:bg-white/20 transition-all">
                 {project.thumbnail_url && (
-                  <img
-                    src={project.thumbnail_url}
-                    alt={project.title}
-                    className="w-full h-20 object-cover rounded mb-1"
-                  />
+                  <img src={project.thumbnail_url} alt={project.title} className="w-full h-20 object-cover rounded mb-1" />
                 )}
                 <p className={`text-white text-xs text-readable ${theme}`}>{project.title}</p>
               </div>
@@ -338,12 +498,14 @@ export default function TaskCard({ task }: TaskCardProps) {
             {task.assignments.filter(a => a.status !== 'cancelled').map(a => (
               <div key={a.id} className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <span className="text-white text-sm">{a.user_id.slice(0, 8)}...</span>
+                  <span className="text-white text-sm">{getUserDisplayName(a)}</span>
                   <span className={`text-xs px-2 py-0.5 rounded ${
                     a.status === 'completed' ? 'bg-green-500/20 text-green-400' :
                     a.status === 'in_progress' ? 'bg-yellow-500/20 text-yellow-400' :
                     'bg-blue-500/20 text-blue-400'
-                  }`}>{a.status === 'assigned' ? 'Назначен' : a.status === 'in_progress' ? 'В работе' : a.status === 'completed' ? 'Завершил' : a.status}</span>
+                  }`}>
+                    {a.status === 'assigned' ? 'Назначен' : a.status === 'in_progress' ? 'В работе' : a.status === 'completed' ? 'Завершил' : a.status}
+                  </span>
                 </div>
                 {isVP4PR && (
                   <button
@@ -373,7 +535,7 @@ export default function TaskCard({ task }: TaskCardProps) {
               <select
                 value={reassignUserId}
                 onChange={(e) => setReassignUserId(e.target.value)}
-                className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1 border border-white/20"
+                className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1 border border-white/20 [&>option]:bg-gray-800"
               >
                 <option value="">Выберите человека</option>
                 {activeUsers?.items?.map((u: UserProfile) => (
@@ -392,91 +554,92 @@ export default function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className={`flex items-center space-x-4 text-sm text-white text-readable ${theme}`}>
-          {task.due_date && (
+      {/* Footer */}
+      {!isEditing && (
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className={`flex items-center space-x-4 text-sm text-white text-readable ${theme}`}>
+            {task.due_date && (
+              <div className="flex items-center space-x-1">
+                <Clock className="h-4 w-4" />
+                <span>
+                  {new Date(task.due_date).toLocaleDateString('ru-RU')}{' '}
+                  {new Date(task.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
+            {countdown && (
+              <span className={`text-xs font-medium ${countdownColor}`}>{countdown}</span>
+            )}
             <div className="flex items-center space-x-1">
-              <Clock className="h-4 w-4" />
-              <span>
-                {new Date(task.due_date).toLocaleDateString('ru-RU')}{' '}
-                {new Date(task.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-              </span>
+              <AlertCircle className="h-4 w-4" />
+              <span>{statusLabels[task.status] || task.status}</span>
             </div>
-          )}
-          {countdown && (
-            <span className={`text-xs font-medium ${countdownColor}`}>
-              {countdown}
-            </span>
-          )}
-          <div className="flex items-center space-x-1">
-            <AlertCircle className="h-4 w-4" />
-            <span>{statusLabels[task.status as keyof typeof statusLabels]}</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            {isCoordinator && task.drive_folder_id && (
+              <a
+                href={`https://drive.google.com/drive/folders/${task.drive_folder_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all text-white/70 hover:text-white"
+                title="Открыть папку в Google Drive"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12.01 1.485c-2.082 0-3.754.02-5.143.123-1.404.104-2.536.37-3.46 1.293-.924.923-1.19 2.055-1.293 3.459-.104 1.39-.124 3.062-.124 5.144 0 2.082.02 3.754.123 5.143.104 1.404.37 2.536 1.293 3.46.923.924 2.055 1.19 3.459 1.293 1.39.104 3.062.124 5.144.124 2.082 0 3.754-.02 5.143-.123 1.404-.104 2.536-.37 3.46-1.293.924-.923 1.19-2.055 1.293-3.459.104-1.39.124-3.062.124-5.144 0-2.082-.02-3.754-.123-5.143-.104-1.404-.37-2.536-1.293-3.46-.923-.924-2.055-1.19-3.459-1.293-1.39-.104-3.062-.124-5.144-.124zm-1.14 5.162h5.535c.87 0 1.58.71 1.58 1.58v1.58h-7.115v-3.16zm-1.58 0v3.16h-3.16v-1.58c0-.87.71-1.58 1.58-1.58h1.58zm-3.16 4.74h11.855v6.32c0 .87-.71 1.58-1.58 1.58h-8.695c-.87 0-1.58-.71-1.58-1.58v-6.32z"/>
+                </svg>
+              </a>
+            )}
+
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="p-2 rounded-lg hover:bg-white/10 transition-all"
+            >
+              {expanded ? <ChevronUp className="h-4 w-4 text-white" /> : <ChevronDown className="h-4 w-4 text-white" />}
+            </button>
+            {isRegistered && taskChat?.exists && taskChat.invite_link && (
+              <a
+                href={taskChat.invite_link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-2 bg-best-primary/20 text-white px-3 py-2 rounded-lg hover:bg-best-primary/30 transition-all card-3d border border-best-primary/50"
+                title="Чат задачи"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="text-sm">Чат</span>
+              </a>
+            )}
+            {canTakeTask && (
+              <button
+                onClick={() => assignMutation.mutate()}
+                disabled={assignMutation.isPending}
+                className="bg-best-primary text-white px-4 py-2 rounded-lg hover:bg-best-primary/80 transition-all card-3d border border-best-primary/50 flex items-center space-x-2 disabled:opacity-50"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>{assignMutation.isPending ? 'Назначаю...' : 'Взять задачу'}</span>
+              </button>
+            )}
+            {isAssignedToMe && task.status !== 'completed' && task.status !== 'cancelled' && (
+              <button
+                onClick={() => completeMutation.mutate()}
+                disabled={completeMutation.isPending}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-500 transition-all card-3d border border-green-500/50 flex items-center space-x-2 disabled:opacity-50"
+              >
+                <CheckCircle className="h-4 w-4" />
+                <span>{completeMutation.isPending ? 'Завершаю...' : 'Завершить'}</span>
+              </button>
+            )}
+            {isVP4PR && !showReassign && (
+              <button
+                onClick={() => setShowReassign(true)}
+                className="bg-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/20 transition-all flex items-center space-x-1"
+                title="Назначить человека"
+              >
+                <UserPlus className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex items-center space-x-2">
-          {isCoordinator && task.drive_folder_id && (
-            <a
-              href={`https://drive.google.com/drive/folders/${task.drive_folder_id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-2 bg-white/10 rounded-lg hover:bg-white/20 transition-all text-white/70 hover:text-white"
-              title="Открыть папку в Google Drive"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12.01 1.485c-2.082 0-3.754.02-5.143.123-1.404.104-2.536.37-3.46 1.293-.924.923-1.19 2.055-1.293 3.459-.104 1.39-.124 3.062-.124 5.144 0 2.082.02 3.754.123 5.143.104 1.404.37 2.536 1.293 3.46.923.924 2.055 1.19 3.459 1.293 1.39.104 3.062.124 5.144.124 2.082 0 3.754-.02 5.143-.123 1.404-.104 2.536-.37 3.46-1.293.924-.923 1.19-2.055 1.293-3.459.104-1.39.124-3.062.124-5.144 0-2.082-.02-3.754-.123-5.143-.104-1.404-.37-2.536-1.293-3.46-.923-.924-2.055-1.19-3.459-1.293-1.39-.104-3.062-.124-5.144-.124zm-1.14 5.162h5.535c.87 0 1.58.71 1.58 1.58v1.58h-7.115v-3.16zm-1.58 0v3.16h-3.16v-1.58c0-.87.71-1.58 1.58-1.58h1.58zm-3.16 4.74h11.855v6.32c0 .87-.71 1.58-1.58 1.58h-8.695c-.87 0-1.58-.71-1.58-1.58v-6.32z"/>
-              </svg>
-            </a>
-          )}
-          
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="p-2 rounded-lg hover:bg-white/10 transition-all"
-          >
-            {expanded ? <ChevronUp className="h-4 w-4 text-white" /> : <ChevronDown className="h-4 w-4 text-white" />}
-          </button>
-          {isRegistered && taskChat?.exists && taskChat.invite_link && (
-            <a
-              href={taskChat.invite_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center space-x-2 bg-best-primary/20 text-white px-3 py-2 rounded-lg hover:bg-best-primary/30 transition-all card-3d border border-best-primary/50"
-              title="Чат задачи"
-            >
-              <MessageSquare className="h-4 w-4" />
-              <span className="text-sm">Чат</span>
-            </a>
-          )}
-          {canTakeTask && (
-            <button
-              onClick={() => assignMutation.mutate()}
-              disabled={assignMutation.isPending}
-              className="bg-best-primary text-white px-4 py-2 rounded-lg hover:bg-best-primary/80 transition-all card-3d border border-best-primary/50 flex items-center space-x-2 disabled:opacity-50"
-            >
-              <UserPlus className="h-4 w-4" />
-              <span>{assignMutation.isPending ? 'Назначаю...' : 'Взять задачу'}</span>
-            </button>
-          )}
-          {isAssignedToMe && task.status !== 'completed' && task.status !== 'cancelled' && (
-            <button
-              onClick={() => completeMutation.mutate()}
-              disabled={completeMutation.isPending}
-              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-500 transition-all card-3d border border-green-500/50 flex items-center space-x-2 disabled:opacity-50"
-            >
-              <CheckCircle className="h-4 w-4" />
-              <span>{completeMutation.isPending ? 'Завершаю...' : 'Завершить'}</span>
-            </button>
-          )}
-          {isVP4PR && !showReassign && (
-            <button
-              onClick={() => setShowReassign(true)}
-              className="bg-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/20 transition-all flex items-center space-x-1"
-              title="Назначить человека"
-            >
-              <UserPlus className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      </div>
+      )}
       {assignMutation.isError && (
         <p className="text-red-400 text-xs mt-2">{(assignMutation.error as Error)?.message || 'Ошибка при назначении'}</p>
       )}

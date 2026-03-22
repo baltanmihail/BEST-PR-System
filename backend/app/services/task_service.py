@@ -174,7 +174,8 @@ class TaskService:
             query = query.options(
                 selectinload(Task.stages),
                 selectinload(Task.assignments).selectinload(TaskAssignment.user),
-                selectinload(Task.questions)
+                selectinload(Task.questions),
+                selectinload(Task.files),
             )
         elif view_mode == "compact":
             # В упрощённом виде не загружаем связанные данные для производительности
@@ -191,25 +192,16 @@ class TaskService:
         task_id: UUID
     ) -> Optional[Task]:
         """Получить задачу по ID с загруженными связанными данными"""
-        from app.models.file import File
-        
-        from app.models.task_question import TaskQuestion
         query = select(Task).where(Task.id == task_id)
         query = query.options(
             selectinload(Task.stages),
             selectinload(Task.assignments).selectinload(TaskAssignment.user),
-            selectinload(Task.questions)
+            selectinload(Task.questions),
+            selectinload(Task.files),
         )
         
         result = await db.execute(query)
         task = result.scalar_one_or_none()
-        
-        if task:
-            # Загружаем файлы, связанные с задачей (материалы задачи)
-            files_query = select(File).where(File.task_id == task_id).order_by(File.created_at.desc())
-            files_result = await db.execute(files_query)
-            # Устанавливаем файлы как атрибут задачи (для использования в API)
-            task.files = list(files_result.scalars().all())
         
         return task
     

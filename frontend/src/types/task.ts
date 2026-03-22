@@ -47,6 +47,7 @@ export interface TaskAssignment {
   id: string
   task_id: string
   user_id: string
+  user_name?: string
   role_in_task: string
   status: 'assigned' | 'in_progress' | 'completed' | 'cancelled'
   rating?: number

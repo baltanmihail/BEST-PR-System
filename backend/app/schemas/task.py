@@ -1,7 +1,7 @@
 """
 Pydantic схемы для задач
 """
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional, List, Any, TYPE_CHECKING
 from datetime import datetime
 from uuid import UUID
@@ -145,6 +145,7 @@ class TaskAssignmentResponse(TaskAssignmentBase):
     id: UUID
     task_id: UUID
     user_id: UUID
+    user_name: Optional[str] = None
     status: AssignmentStatus
     rating: Optional[int] = Field(None, ge=1, le=5)
     feedback: Optional[str] = None
@@ -153,6 +154,25 @@ class TaskAssignmentResponse(TaskAssignmentBase):
     
     class Config:
         from_attributes = True
+    
+    @model_validator(mode='before')
+    @classmethod
+    def extract_user_info(cls, data):
+        if not isinstance(data, dict) and hasattr(data, 'user') and data.user:
+            d = {
+                'id': data.id,
+                'task_id': data.task_id,
+                'user_id': data.user_id,
+                'role_in_task': data.role_in_task,
+                'status': data.status,
+                'rating': getattr(data, 'rating', None),
+                'feedback': getattr(data, 'feedback', None),
+                'assigned_at': data.assigned_at,
+                'completed_at': getattr(data, 'completed_at', None),
+                'user_name': data.user.full_name if data.user else None,
+            }
+            return d
+        return data
 
 
 class TaskFileResponse(BaseModel):
