@@ -362,7 +362,14 @@ class NotificationService:
         admins_result = await db.execute(admins_query)
         admins = admins_result.scalars().all()
         
-        # Отправляем уведомление всем админам
+        # Отправляем уведомление всем админам (in-app + Telegram)
+        from app.utils.telegram_sender import send_telegram_message
+        tg_text = (
+            f"👤 <b>Новая заявка на регистрацию</b>\n\n"
+            f"Имя: <b>{user_name}</b>\n"
+            f"Telegram ID: <code>{user_telegram_id}</code>\n\n"
+            f"Подтвердите или отклоните заявку на сайте."
+        )
         for admin in admins:
             await NotificationService.create_notification(
                 db=db,
@@ -376,6 +383,16 @@ class NotificationService:
                     "user_telegram_id": user_telegram_id
                 }
             )
+            if admin.telegram_id and admin.telegram_id > 0:
+                try:
+                    await send_telegram_message(
+                        chat_id=admin.telegram_id,
+                        message=tg_text,
+                        parse_mode="HTML",
+                        silent_fail=True,
+                    )
+                except Exception:
+                    pass
     
     @staticmethod
     async def notify_moderation_rejected(

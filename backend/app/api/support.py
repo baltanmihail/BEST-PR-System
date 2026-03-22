@@ -3,17 +3,18 @@ API endpoints для системы поддержки
 """
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+import json
 import logging
 
 from app.database import get_db
 from app.models.user import User, UserRole
-from app.models.notification import NotificationType
+from app.models.notification import Notification, NotificationType
 from app.services.notification_service import NotificationService
-from app.utils.permissions import get_current_user, OptionalUser
+from app.utils.permissions import get_current_user, require_coordinator, OptionalUser
 
 router = APIRouter(prefix="/support", tags=["support"])
 logger = logging.getLogger(__name__)
@@ -22,9 +23,16 @@ logger = logging.getLogger(__name__)
 class SupportRequest(BaseModel):
     """Запрос в поддержку"""
     message: str
-    contact: Optional[str] = None  # Telegram username или email для неавторизованных
-    category: Optional[str] = None  # Тип вопроса (опционально)
-    link: Optional[str] = None  # Ссылка (для предложений)
+    contact: Optional[str] = None
+    category: Optional[str] = None
+    link: Optional[str] = None
+
+
+class SupportReply(BaseModel):
+    """Ответ VP4PR на запрос в поддержку"""
+    user_telegram_id: int
+    user_name: str
+    message: str
 
 
 @router.post("/request", response_model=dict)
@@ -195,3 +203,92 @@ async def create_support_request(
         "message": "Ваш запрос отправлен. Мы свяжемся с вами в ближайшее время.",
         "file_id": uploaded_file_id
     }
+
+
+@router.get("/tickets")
+async def get_support_tickets(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator()),
+):
+    """Получить запросы в поддержку (для VP4PR / координаторов)"""
+    query = (
+        select(Notification)
+        .where(
+            Notification.user_id == current_user.id,
+            Notification.type == NotificationType.SUPPORT_REQUEST,
+            Notification.title == "Новый запрос в поддержку",
+        )
+        .order_by(desc(Notification.created_at))
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    notifications = result.scalars().all()
+
+    tickets = []
+    for n in notifications:
+        data = {}
+        if n.data:
+            try:
+                data = json.loads(n.data) if isinstance(n.data, str) else n.data
+            except Exception:
+                pass
+        tickets.append({
+            "id": str(n.id),
+            "user_name": data.get("user_name", "Неизвестный"),
+            "user_telegram_id": data.get("user_telegram_id"),
+            "contact": data.get("contact", ""),
+            "category": data.get("category", ""),
+            "message": data.get("message", n.message),
+            "is_read": n.is_read,
+            "created_at": n.created_at.isoformat() if n.created_at else None,
+        })
+    return {"items": tickets}
+
+
+@router.post("/reply")
+async def reply_to_support(
+    body: SupportReply,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator()),
+):
+    """VP4PR / координатор отвечает пользователю через Telegram"""
+    from app.utils.telegram_sender import send_telegram_message
+
+    if not body.user_telegram_id:
+        raise HTTPException(status_code=400, detail="telegram_id пользователя не указан")
+
+    text = (
+        f"💬 <b>Ответ от поддержки</b>\n\n"
+        f"👤 <b>От:</b> {current_user.full_name}\n\n"
+        f"{body.message}"
+    )
+
+    ok = await send_telegram_message(
+        chat_id=body.user_telegram_id,
+        message=text,
+        parse_mode="HTML",
+        silent_fail=True,
+    )
+
+    if not ok:
+        raise HTTPException(status_code=500, detail="Не удалось отправить сообщение в Telegram")
+
+    # Сохраняем уведомление для пользователя (если он есть в базе)
+    user_query = select(User).where(User.telegram_id == body.user_telegram_id)
+    user_result = await db.execute(user_query)
+    target_user = user_result.scalar_one_or_none()
+    if target_user:
+        await NotificationService.create_notification(
+            db=db,
+            user_id=target_user.id,
+            notification_type=NotificationType.SUPPORT_REQUEST,
+            title="Ответ от поддержки",
+            message=f"От: {current_user.full_name}\n\n{body.message}",
+            data=json.dumps({
+                "from_admin": str(current_user.id),
+                "admin_name": current_user.full_name,
+            }),
+        )
+
+    return {"status": "success", "message": "Ответ отправлен"}

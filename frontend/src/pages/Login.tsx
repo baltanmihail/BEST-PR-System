@@ -34,34 +34,36 @@ export default function Login() {
     }
   }, [user, navigate])
 
-  // Проверяем, открыт ли сайт через Telegram WebApp (для зарегистрированных пользователей)
+  // Авто-вход: Telegram WebApp или ?from=bot&telegram_id=...
   useEffect(() => {
-    const isTelegramWebApp = window.Telegram?.WebApp
-    
-    // Если открыт через Telegram WebApp и пользователь не авторизован
-    if (isTelegramWebApp && !user && window.Telegram) {
-      const tg = window.Telegram.WebApp
-      const initDataUnsafe = tg.initDataUnsafe
-      
-      // Если есть данные пользователя из Telegram WebApp
-      if (initDataUnsafe?.user?.id) {
-        const telegramId = initDataUnsafe.user.id
-        
-        // Пытаемся автоматически войти через бота (для зарегистрированных пользователей)
-        import('../services/auth').then(({ authApi }) => {
-          authApi.botLogin(telegramId)
-            .then((response) => {
-              // Успешный вход - автоматически авторизуем
-              login(response.access_token)
-              navigate('/')
-            })
-            .catch((error) => {
-              // Пользователь не зарегистрирован или неактивен
-              // Показываем QR-код для входа/регистрации
-              console.log('Bot login failed, showing QR code:', error)
-            })
-        })
+    if (user) return
+
+    let tgId: number | null = null
+
+    // WebApp initData
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user
+    if (tgUser?.id) tgId = tgUser.id
+
+    // URL param from bot (fallback on mobile in-app browser)
+    if (!tgId) {
+      const params = new URLSearchParams(window.location.search)
+      const idParam = params.get('telegram_id')
+      if (params.get('from') === 'bot' && idParam) {
+        tgId = Number(idParam)
       }
+    }
+
+    if (tgId) {
+      import('../services/auth').then(({ authApi }) => {
+        authApi.botLogin(tgId!)
+          .then((response) => {
+            login(response.access_token)
+            navigate('/')
+          })
+          .catch(() => {
+            console.log('Auto-login failed, showing QR')
+          })
+      })
     }
   }, [user, login, navigate])
 

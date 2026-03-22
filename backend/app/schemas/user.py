@@ -27,6 +27,9 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    telegram_id: Optional[int] = None
+    telegram_username: Optional[str] = None
+    email: Optional[str] = None
 
 
 class UserResponse(UserBase):

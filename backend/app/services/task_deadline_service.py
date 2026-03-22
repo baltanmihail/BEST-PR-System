@@ -294,6 +294,50 @@ class TaskDeadlineService:
         return msg
 
     @staticmethod
+    async def cleanup_old_messages(db: AsyncSession, keep_days: int = 2):
+        """Удалить старые сообщения бота и записи из bot_message_tracking."""
+        from app.utils.telegram_sender import delete_telegram_message
+
+        now_msk = datetime.now(MSK)
+        cutoff_date = (now_msk - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+
+        try:
+            result = await db.execute(text(
+                "SELECT telegram_chat_id, message_key, message_id FROM bot_message_tracking"
+            ))
+            rows = result.fetchall()
+        except Exception:
+            return
+
+        deleted_keys = []
+        for chat_id, key, msg_id in rows:
+            date_part = key.replace("vp_", "")
+            try:
+                datetime.strptime(date_part, "%Y-%m-%d")
+            except ValueError:
+                continue
+            if date_part < cutoff_date:
+                try:
+                    await delete_telegram_message(chat_id=chat_id, message_id=msg_id, silent_fail=True)
+                except Exception:
+                    pass
+                deleted_keys.append((chat_id, key))
+
+        if deleted_keys:
+            for cid, k in deleted_keys:
+                try:
+                    await db.execute(text(
+                        "DELETE FROM bot_message_tracking WHERE telegram_chat_id = :cid AND message_key = :key"
+                    ), {"cid": cid, "key": k})
+                except Exception:
+                    pass
+            try:
+                await db.commit()
+                logger.info(f"Cleaned up {len(deleted_keys)} old bot messages")
+            except Exception:
+                await db.rollback()
+
+    @staticmethod
     async def _send_or_update(db: AsyncSession, telegram_id: int, key: str, message: str):
         """Отправить новое или отредактировать существующее сообщение.
         

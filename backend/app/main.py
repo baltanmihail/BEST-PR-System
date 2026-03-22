@@ -475,13 +475,22 @@ async def startup_event():
         import asyncio
         from app.database import AsyncSessionLocal
 
+        _last_cleanup_day = None
+
         async def periodic_deadline_check():
+            nonlocal _last_cleanup_day
             await asyncio.sleep(60 * 10)  # 10 min after startup
             while True:
                 try:
                     from app.services.task_deadline_service import TaskDeadlineService
+                    from datetime import date as _date
                     async with AsyncSessionLocal() as db:
                         await TaskDeadlineService.check_and_send_reminders(db)
+
+                        today = _date.today()
+                        if _last_cleanup_day != today:
+                            await TaskDeadlineService.cleanup_old_messages(db, keep_days=2)
+                            _last_cleanup_day = today
                     logger.info("Deadline check completed")
                 except Exception as e:
                     logger.error(f"Deadline check error: {e}")

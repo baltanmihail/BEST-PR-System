@@ -84,57 +84,48 @@ function AppContent() {
   }, [theme])
 
   useEffect(() => {
-    // Проверяем, есть ли токен в URL (после регистрации через QR или авто-вход из бота)
     const urlParams = new URLSearchParams(window.location.search)
     const tokenFromUrl = urlParams.get('token')
-    
-    if (tokenFromUrl && !user) {
-      // Сохраняем токен и авторизуем пользователя (авто-вход из бота или после регистрации)
+
+    // 1. Токен в URL — высший приоритет (авто-вход из бота / QR)
+    if (tokenFromUrl) {
       localStorage.setItem('access_token', tokenFromUrl)
-      login(tokenFromUrl)
-      
-      // Удаляем token из URL для безопасности
+
       urlParams.delete('token')
       urlParams.delete('registered')
       const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '')
       window.history.replaceState({}, '', newUrl)
-      
-      // Редирект на главную если на странице логина
-      if (location.pathname === '/login') {
-        navigate('/')
-      }
+
+      login(tokenFromUrl)
+        .then(() => {
+          if (location.pathname === '/login') navigate('/')
+        })
+        .catch(() => {
+          localStorage.removeItem('access_token')
+        })
       return
     }
-    
-    // Проверяем, открыт ли сайт через Telegram WebApp
-    const isTelegramWebApp = window.Telegram?.WebApp
-    
-    if (isTelegramWebApp && !user && window.Telegram) {
-      const tg = window.Telegram.WebApp
-      const initDataUnsafe = tg.initDataUnsafe
-      
-      // Если есть данные пользователя из Telegram WebApp
-      if (initDataUnsafe?.user?.id) {
-        const telegramId = initDataUnsafe.user.id
-        
-        // Пытаемся автоматически войти через бота (для зарегистрированных пользователей)
-        authApi.botLogin(telegramId)
+
+    // 2. Telegram WebApp — initData с user.id
+    const tg = window.Telegram?.WebApp
+    if (tg && !user) {
+      const tgUser = tg.initDataUnsafe?.user
+      if (tgUser?.id) {
+        authApi.botLogin(tgUser.id)
           .then((response) => {
-            // Успешный вход
             login(response.access_token)
-            // Если мы на странице входа, перенаправляем на главную
-            if (location.pathname === '/login') {
-              navigate('/')
-            }
+            if (location.pathname === '/login') navigate('/')
           })
-          .catch((error) => {
-            // Пользователь не зарегистрирован или неактивен
-            // Оставляем на текущей странице (Login покажет QR-код)
-            console.log('Bot login failed (user not registered or inactive):', error)
+          .catch(() => {
+            console.log('WebApp bot-login failed, trying saved token')
+            fetchUser()
           })
+        return
       }
-    } else if (!user) {
-      // Если не в Telegram WebApp, проверяем сохранённый токен
+    }
+
+    // 3. Сохранённый токен в localStorage
+    if (!user) {
       fetchUser()
     }
   }, []) // Выполняется только при монтировании
