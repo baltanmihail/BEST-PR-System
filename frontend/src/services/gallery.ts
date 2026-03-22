@@ -1,11 +1,15 @@
 import api from './api'
 
 export interface GalleryFile {
-  id: string
+  id?: string
+  drive_id: string
   file_name: string
   file_type: string
-  drive_id: string
-  version: number
+  thumbnail_url?: string | null
+  drive_url?: string | null
+  mime_type?: string
+  file_size?: number
+  version?: number
   uploaded_at?: string
 }
 

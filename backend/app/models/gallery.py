@@ -1,10 +1,11 @@
 """
 Модель галереи проектов
 """
-from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, CheckConstraint, Enum, ARRAY
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, CheckConstraint, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, JSON, ENUM as PG_ENUM
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from sqlalchemy import TypeDecorator
 import uuid
 from enum import Enum as PyEnum
 
@@ -13,10 +14,41 @@ from app.database import Base
 
 class GalleryCategory(PyEnum):
     """Категории работ в галерее"""
-    PHOTO = "photo"  # Фото
-    VIDEO = "video"  # Видео
-    FINAL = "final"  # Финальные работы
-    WIP = "wip"  # Work in Progress (черновики/в процессе)
+    PHOTO = "photo"
+    VIDEO = "video"
+    FINAL = "final"
+    WIP = "wip"
+
+
+class GalleryCategoryType(TypeDecorator):
+    """TypeDecorator для правильной конвертации GalleryCategory enum → строку"""
+    impl = String
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == 'postgresql':
+            return dialect.type_descriptor(
+                PG_ENUM(GalleryCategory, name='gallery_category', create_type=False,
+                        values_callable=lambda x: [e.value for e in GalleryCategory])
+            )
+        return dialect.type_descriptor(String(20))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, GalleryCategory):
+            return value.value
+        if isinstance(value, str):
+            return value.lower()
+        return str(value).lower()
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        try:
+            return GalleryCategory(value)
+        except (ValueError, KeyError):
+            return GalleryCategory.FINAL
 
 
 class GalleryItem(Base):
@@ -24,11 +56,10 @@ class GalleryItem(Base):
     __tablename__ = "gallery_items"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String, nullable=False)  # Название проекта/работы
-    description = Column(Text, nullable=True)  # Описание проекта
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
     
-    # Категория и теги
-    category = Column(Enum(GalleryCategory, name="gallery_category"), nullable=False, default=GalleryCategory.FINAL, index=True)
+    category = Column(GalleryCategoryType(), nullable=False, default=GalleryCategory.FINAL, index=True)
     tags = Column(ARRAY(String), nullable=True)  # Дополнительные теги
     
     # Связи
