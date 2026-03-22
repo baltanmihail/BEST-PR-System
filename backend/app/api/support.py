@@ -129,7 +129,19 @@ async def create_support_request(
     admins_result = await db.execute(admins_query)
     admins = admins_result.scalars().all()
     
-    # Отправляем уведомление всем админам
+    # Отправляем уведомление всем админам (в систему + Telegram)
+    from app.utils.telegram_sender import send_telegram_message
+    
+    tg_text = (
+        f"💬 <b>Новый запрос в поддержку</b>\n\n"
+        f"👤 <b>От:</b> {user_name}\n"
+        f"📞 <b>Контакт:</b> {contact_info}\n"
+        f"📁 <b>Категория:</b> {category or 'не указана'}\n\n"
+        f"💭 {message[:500]}"
+    )
+    if link:
+        tg_text += f"\n\n🔗 {link}"
+    
     for admin in admins:
         await NotificationService.create_notification(
             db=db,
@@ -147,6 +159,17 @@ async def create_support_request(
                 "file_id": uploaded_file_id,
             }
         )
+        # Отправляем в Telegram каждому админу
+        if admin.telegram_id and admin.telegram_id > 0:
+            try:
+                await send_telegram_message(
+                    chat_id=admin.telegram_id,
+                    message=tg_text,
+                    parse_mode="HTML",
+                    silent_fail=True,
+                )
+            except Exception:
+                pass
     
     # Если пользователь авторизован, отправляем ему подтверждение
     if current_user:

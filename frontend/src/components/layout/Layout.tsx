@@ -31,16 +31,27 @@ export default function Layout({ children }: LayoutProps) {
     }
   }, [])
 
-  // Определяем, мобильное ли устройство для оптимизации
-  const [isMobile, setIsMobile] = useState(false)
+  // Определяем, мобильное ли устройство для оптимизации (с debounce)
+  const [isMobile, setIsMobile] = useState(() => 
+    typeof window !== 'undefined' ? (window.innerWidth < 768 || 'ontouchstart' in window) : false
+  )
   
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window)
+      // Отключаем transitions на время ресайза
+      document.documentElement.classList.add('resizing')
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window)
+        document.documentElement.classList.remove('resizing')
+      }, 150)
     }
-    checkMobile()
     window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
+    return () => {
+      window.removeEventListener('resize', checkMobile)
+      clearTimeout(timer)
+    }
   }, [])
 
   return (

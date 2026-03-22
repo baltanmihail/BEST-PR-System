@@ -291,6 +291,9 @@ class Task(Base):
     # ПРИМЕЧАНИЕ: questions теперь через relationship к TaskQuestion, старое JSON поле удалено
     example_project_ids = Column(JSON, nullable=True)  # JSON список ID примеров прошлых работ (как строки UUID): ["task_id1", "task_id2", ...]
     
+    # Telegram forum topic
+    forum_topic_id = Column(Integer, nullable=True)
+    
     # Google Drive интеграция
     drive_folder_id = Column(String, nullable=True, index=True)  # ID папки задачи в Google Drive
     drive_file_id = Column(String, nullable=True)  # ID Google Doc файла с описанием задачи

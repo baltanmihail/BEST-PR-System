@@ -170,6 +170,50 @@ async def invite_user_to_chat(user_telegram_id: int, chat_id: int) -> bool:
         return False
 
 
+async def create_forum_topic(
+    chat_id: int,
+    name: str,
+    icon_color: Optional[int] = None,
+) -> Optional[int]:
+    """Создать forum topic в группе и вернуть message_thread_id."""
+    try:
+        bot = await get_bot()
+        if not bot:
+            return None
+        kwargs = {"chat_id": chat_id, "name": name[:128]}
+        if icon_color:
+            kwargs["icon_color"] = icon_color
+        topic = await bot.create_forum_topic(**kwargs)
+        logger.info(f"Forum topic created: {topic.message_thread_id} in chat {chat_id}")
+        return topic.message_thread_id
+    except Exception as e:
+        logger.error(f"Failed to create forum topic in chat {chat_id}: {e}")
+        return None
+
+
+async def send_to_forum_topic(
+    chat_id: int,
+    message_thread_id: int,
+    text: str,
+    parse_mode: str = "HTML",
+) -> bool:
+    """Отправить сообщение в forum topic."""
+    try:
+        bot = await get_bot()
+        if not bot:
+            return False
+        await bot.send_message(
+            chat_id=chat_id,
+            message_thread_id=message_thread_id,
+            text=text,
+            parse_mode=parse_mode,
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send to forum topic {message_thread_id}: {e}")
+        return False
+
+
 async def close_bot():
     """Закрыть соединение с ботом (для cleanup)"""
     global _bot_instance

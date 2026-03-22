@@ -202,6 +202,65 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
     if message.text and len(message.text.split()) > 1:
         start_param = message.text.split()[1]
     
+    # Deep link: /start register → сразу запускаем регистрацию в боте
+    if start_param == "register":
+        auth_data = {
+            "id": user.id,
+            "first_name": user.first_name or "User",
+            "auth_date": int(message.date.timestamp()),
+        }
+        if user.last_name:
+            auth_data["last_name"] = user.last_name
+        if user.username:
+            auth_data["username"] = user.username
+        auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+
+        response = await call_api("POST", "/auth/telegram", data=auth_data)
+        if "error" not in response:
+            access_token = response.get("access_token")
+            await state.update_data(access_token=access_token)
+            user_data = response.get("user", {})
+            if user_data.get("is_active"):
+                await message.answer(
+                    "✅ Ты уже зарегистрирован и активен!\n\n"
+                    "💡 Используй /start для доступа к функциям."
+                )
+                return
+        await start_registration_flow(message, state, user, auth_data)
+        return
+
+    # Deep link: /start login → авто-вход и перенаправление на сайт
+    if start_param == "login":
+        auth_data = {
+            "id": user.id,
+            "first_name": user.first_name or "User",
+            "auth_date": int(message.date.timestamp()),
+        }
+        if user.last_name:
+            auth_data["last_name"] = user.last_name
+        if user.username:
+            auth_data["username"] = user.username
+        auth_data["hash"] = generate_telegram_hash(auth_data, settings.TELEGRAM_BOT_TOKEN)
+
+        response = await call_api("POST", "/auth/telegram", data=auth_data)
+        if "error" not in response:
+            access_token = response.get("access_token")
+            await state.update_data(access_token=access_token)
+            site_url = f"{settings.FRONTEND_URL}/?token={access_token}"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Открыть сайт", url=site_url)],
+            ])
+            await message.answer(
+                "✅ <b>Авторизация прошла успешно!</b>\n\nНажми кнопку ниже, чтобы перейти на сайт:",
+                reply_markup=keyboard,
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(
+                "❌ Не удалось авторизоваться. Попробуйте /start снова."
+            )
+        return
+
     # Если параметр начинается с "qr_", это QR-код авторизация/регистрация
     if start_param and start_param.startswith("qr_"):
         # Парсим параметр: qr_TOKEN или qr_TOKEN_TELEGRAM_ID_USERNAME
@@ -555,6 +614,9 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
             
             keyboard.inline_keyboard = [
                 [
+                    InlineKeyboardButton(text="📝 Зарегистрироваться в боте", callback_data="register_in_bot"),
+                ],
+                [
                     InlineKeyboardButton(
                         text="🌐 Зарегистрироваться (WebApp)", 
                         web_app=WebAppInfo(url=f"{settings.FRONTEND_URL}/register?from=bot&telegram_id={user.id}&username={user.username or ''}&first_name={user.first_name or ''}")
@@ -671,6 +733,12 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                     InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
                     InlineKeyboardButton(text="📦 Оборудование", callback_data="equipment"),
                 ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Перейти на сайт",
+                        url=f"{settings.FRONTEND_URL}/?token={access_token}"
+                    ),
+                ],
             ]
         elif "coordinator" in user_role:
             welcome_text = (
@@ -697,6 +765,12 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 ],
                 [
                     InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Перейти на сайт",
+                        url=f"{settings.FRONTEND_URL}/?token={access_token}"
+                    ),
                 ],
             ]
         else:
@@ -725,6 +799,12 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                 ],
                 [
                     InlineKeyboardButton(text="🔔 Уведомления", callback_data="notifications"),
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="🌐 Перейти на сайт",
+                        url=f"{settings.FRONTEND_URL}/?token={access_token}"
+                    ),
                 ],
             ]
     

@@ -17,6 +17,7 @@ import Equipment from './pages/Equipment'
 import Settings from './pages/Settings'
 import UserMonitoring from './pages/UserMonitoring'
 import Calendar from './pages/Calendar'
+import DailyPlanner from './pages/DailyPlanner'
 import MobileConceptPage from './pages/MobileConcept'
 import { useAuthStore } from './store/authStore'
 import { useThemeStore } from './store/themeStore'
@@ -83,22 +84,22 @@ function AppContent() {
   }, [theme])
 
   useEffect(() => {
-    // Проверяем, есть ли токен в URL (после регистрации через QR)
+    // Проверяем, есть ли токен в URL (после регистрации через QR или авто-вход из бота)
     const urlParams = new URLSearchParams(window.location.search)
     const tokenFromUrl = urlParams.get('token')
-    const registered = urlParams.get('registered') === 'true'
     
-    if (tokenFromUrl && registered && !user) {
-      // Сохраняем токен и авторизуем пользователя
+    if (tokenFromUrl && !user) {
+      // Сохраняем токен и авторизуем пользователя (авто-вход из бота или после регистрации)
       localStorage.setItem('access_token', tokenFromUrl)
       login(tokenFromUrl)
       
       // Удаляем token из URL для безопасности
       urlParams.delete('token')
+      urlParams.delete('registered')
       const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '')
       window.history.replaceState({}, '', newUrl)
       
-      // Редирект на главную
+      // Редирект на главную если на странице логина
       if (location.pathname === '/login') {
         navigate('/')
       }
@@ -156,6 +157,7 @@ function AppContent() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/users" element={<UserMonitoring />} />
             <Route path="/calendar" element={<Calendar />} />
+            <Route path="/planner" element={<DailyPlanner />} />
             <Route path="/mobile-concept" element={<MobileConceptPage />} />
           </Routes>
         </Layout>

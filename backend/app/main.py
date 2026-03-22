@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from app.config import settings
-from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth, onboarding, tour, telegram_chats, drive, users, task_templates, file_uploads
+from app.api import auth, tasks, stages, events, equipment, calendar, gamification, moderation, notifications, public, support, task_suggestions, registration, ai_assistant, activity, gallery, qr_auth, onboarding, tour, telegram_chats, drive, users, task_templates, file_uploads, daily_tasks
 
 # Настройка логирования
 logging.basicConfig(
@@ -55,6 +55,7 @@ app.include_router(drive.router, prefix=settings.API_V1_PREFIX)
 app.include_router(users.router, prefix=settings.API_V1_PREFIX)
 app.include_router(task_templates.router, prefix=settings.API_V1_PREFIX)
 app.include_router(file_uploads.router, prefix=settings.API_V1_PREFIX)
+app.include_router(daily_tasks.router, prefix=settings.API_V1_PREFIX)
 
 @app.get("/")
 async def root():
@@ -493,6 +494,27 @@ async def google_oauth_health():
         from app.services.google_service import GoogleService
         gs = GoogleService()
         return gs.check_oauth_health()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/v1/health/google-oauth/refresh-token")
+async def update_oauth_refresh_token(
+    new_token: str,
+    current_user = None,
+):
+    """
+    Обновить GOOGLE_OAUTH_REFRESH_TOKEN на лету без перезапуска.
+    VP4PR может вызвать этот endpoint, чтобы обновить протухший токен.
+    """
+    try:
+        import os
+        os.environ["GOOGLE_OAUTH_REFRESH_TOKEN"] = new_token
+        from app.services.google_service import GoogleService
+        gs = GoogleService()
+        result = gs.try_reinitialize_oauth()
+        health = gs.check_oauth_health()
+        return {"reinit": result, "health": health}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

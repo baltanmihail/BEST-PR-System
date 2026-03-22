@@ -219,53 +219,103 @@ class GoogleService:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def _get_oauth_drive_service(self):
-        """
-        Получить Drive сервис на основе OAuth (для создания файлов от имени пользователя)
+    _oauth_alert_sent: bool = False
+
+    def _refresh_oauth_if_needed(self) -> bool:
+        """Попытаться обновить OAuth токен. Возвращает True если OK.
         
-        Returns:
-            Drive service или None если OAuth не настроен
+        НЕ отключаем OAuth при ошибке — SA имеют ограниченную квоту (15ГБ),
+        а OAuth нужен для загрузки больших файлов (видео и т.д.).
+        При fatal-ошибке (invalid_grant) пробуем переинициализировать и шлём алерт.
         """
+        if not self._oauth_credentials:
+            return False
+        if not self._oauth_credentials.expired and self._oauth_credentials.token:
+            return True
+        try:
+            self._oauth_credentials.refresh(Request())
+            logger.debug("🔄 OAuth токен обновлён")
+            self.__class__._oauth_alert_sent = False
+            return True
+        except Exception as e:
+            err_str = str(e).lower()
+            logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
+
+            if 'invalid_grant' in err_str or 'revoked' in err_str:
+                # Пробуем переинициализировать с нуля
+                reinit = self.try_reinitialize_oauth()
+                if reinit.get('status') == 'ok':
+                    logger.info("✅ OAuth переинициализирован успешно")
+                    return True
+
+                # Не отключаем! Просто возвращаем False для этого вызова.
+                # Следующий вызов снова попробует refresh.
+                if not self.__class__._oauth_alert_sent:
+                    self.__class__._oauth_alert_sent = True
+                    self._send_oauth_alert_async(str(e))
+
+            return False
+
+    def _send_oauth_alert_async(self, error_msg: str):
+        """Отправить Telegram-алерт VP4PR о проблеме с OAuth."""
+        import asyncio
+        async def _send():
+            try:
+                from app.utils.telegram_sender import send_telegram_message
+                from app.config import settings as _s
+                admin_ids = getattr(_s, 'TELEGRAM_ADMIN_IDS', [])
+                if not admin_ids:
+                    return
+                vp_id = admin_ids[0] if isinstance(admin_ids, list) else admin_ids
+                await send_telegram_message(
+                    chat_id=int(vp_id),
+                    message=(
+                        "🚨 <b>OAuth Google сломан!</b>\n\n"
+                        f"Ошибка: <code>{error_msg[:200]}</code>\n\n"
+                        "⚠️ <b>Загрузка файлов на Google Drive временно недоступна.</b>\n"
+                        "SA имеют лимит 15ГБ, OAuth нужен для больших файлов.\n\n"
+                        "🔧 <b>Как исправить:</b>\n"
+                        "1. Откройте Google Cloud Console → OAuth consent screen\n"
+                        "2. Переведите приложение из <b>Testing</b> в <b>Published</b>\n"
+                        "   (в Testing режиме refresh token живёт только 7 дней!)\n"
+                        "3. Или получите новый refresh token и обновите\n"
+                        "   <code>GOOGLE_OAUTH_REFRESH_TOKEN</code> в Railway"
+                    ),
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(_send())
+            else:
+                loop.run_until_complete(_send())
+        except Exception:
+            pass
+
+    def _get_oauth_drive_service(self):
+        """Drive сервис через OAuth. None только если OAuth вообще не настроен."""
         if not self._oauth_drive_service:
             return None
-        
-        # Проверяем, не истёк ли токен
-        if self._oauth_credentials and self._oauth_credentials.expired:
-            try:
-                self._oauth_credentials.refresh(Request())
-                logger.debug("🔄 OAuth токен обновлён")
-            except Exception as e:
-                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
-                return None
-        
+        if not self._refresh_oauth_if_needed():
+            return None
         return self._oauth_drive_service
     
     def _get_oauth_sheets_service(self):
-        """Получить Sheets сервис на основе OAuth"""
+        """Sheets сервис через OAuth."""
         if not self._oauth_sheets_service:
             return None
-        
-        if self._oauth_credentials and self._oauth_credentials.expired:
-            try:
-                self._oauth_credentials.refresh(Request())
-            except Exception as e:
-                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
-                return None
-        
+        if not self._refresh_oauth_if_needed():
+            return None
         return self._oauth_sheets_service
     
     def _get_oauth_docs_service(self):
-        """Получить Docs сервис на основе OAuth"""
+        """Docs сервис через OAuth."""
         if not self._oauth_docs_service:
             return None
-        
-        if self._oauth_credentials and self._oauth_credentials.expired:
-            try:
-                self._oauth_credentials.refresh(Request())
-            except Exception as e:
-                logger.error(f"❌ Ошибка обновления OAuth токена: {e}")
-                return None
-        
+        if not self._refresh_oauth_if_needed():
+            return None
         return self._oauth_docs_service
     
     def _rate_limit_check(self, client_index: int):

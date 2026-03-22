@@ -320,6 +320,38 @@ class TaskService:
             # Логируем, но не прерываем создание задачи
             logger.warning(f"⚠️ Ошибка создания папок Google Drive для задачи {task.id}: {e}")
             logger.warning("Задача создана, но папки Drive не созданы. Их можно создать позже.")
+
+        # Создаём Telegram forum topic для задачи
+        try:
+            import asyncio as _asyncio
+            async def create_topic_async():
+                try:
+                    from app.utils.telegram_sender import create_forum_topic, send_to_forum_topic
+                    from app.config import settings as _s
+                    chat_id = getattr(_s, 'TELEGRAM_GENERAL_CHAT_ID', None)
+                    if not chat_id:
+                        return
+                    chat_id = int(chat_id)
+                    type_str = task.type.value if hasattr(task.type, 'value') else str(task.type)
+                    topic_name = f"[{type_str.upper()}] {task.title}"
+                    topic_id = await create_forum_topic(chat_id, topic_name)
+                    if topic_id:
+                        task.forum_topic_id = topic_id
+                        await db.commit()
+                        desc = task.description or "Описание не указано"
+                        dl = task.due_date.strftime('%d.%m.%Y %H:%M') if task.due_date else "не указан"
+                        await send_to_forum_topic(
+                            chat_id, topic_id,
+                            f"📋 <b>Новая задача:</b> {task.title}\n\n"
+                            f"📝 {desc[:300]}\n\n"
+                            f"⏰ Дедлайн: {dl}\n"
+                            f"🔗 <a href=\"{getattr(_s, 'FRONTEND_URL', '')}/tasks\">Открыть на сайте</a>",
+                        )
+                except Exception as e:
+                    logger.warning(f"Не удалось создать forum topic для задачи {task.id}: {e}")
+            _asyncio.create_task(create_topic_async())
+        except Exception:
+            pass
         
         return task
     

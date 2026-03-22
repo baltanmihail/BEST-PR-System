@@ -4,7 +4,6 @@ import { Calendar as CalendarIcon, RefreshCw, Loader2, ChevronLeft, ChevronRight
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { calendarApi, type CalendarRole, type DetailLevel } from '../services/calendar'
-import { tasksApi } from '../services/tasks'
 import { UserRole } from '../types/user'
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
