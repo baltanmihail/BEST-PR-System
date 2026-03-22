@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Check, Trash2, ChevronLeft, ChevronRight, Users, User as UserIcon, Loader2, Send } from 'lucide-react'
-import { useThemeStore } from '../store/themeStore'
+import { Check, Trash2, ChevronLeft, ChevronRight, Users, User as UserIcon, Loader2, Send } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { dailyTasksApi, type DailyTask, type DailyTaskCreate } from '../services/dailyTasks'
 import { usersApi } from '../services/users'
@@ -10,7 +9,6 @@ import { format, addDays, subDays, isToday } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
 export default function DailyPlanner() {
-  const { theme } = useThemeStore()
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
 
