@@ -261,6 +261,31 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
             )
         return
 
+    # Deep link: /start code → генерация одноразового кода для входа на сайте
+    if start_param == "code":
+        response = await call_api(
+            "POST",
+            f"/auth/generate-code?telegram_id={user.id}",
+        )
+        if "error" not in response:
+            code = response.get("code", "------")
+            site_url = settings.FRONTEND_URL + "/login"
+            await message.answer(
+                f"🔑 <b>Код для входа на сайт:</b>\n\n"
+                f"<code>{code}</code>\n\n"
+                f"⏳ Действует <b>5 минут</b>\n\n"
+                f"📱 Введите код на сайте:\n"
+                f"<a href=\"{site_url}\">{site_url}</a>",
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(
+                "❌ Не удалось сгенерировать код.\n"
+                "Убедитесь, что вы зарегистрированы (/start).",
+                parse_mode="HTML",
+            )
+        return
+
     # Если параметр начинается с "qr_", это QR-код авторизация/регистрация
     if start_param and start_param.startswith("qr_"):
         # Парсим параметр: qr_TOKEN или qr_TOKEN_TELEGRAM_ID_USERNAME

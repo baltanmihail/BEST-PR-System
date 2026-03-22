@@ -284,6 +284,7 @@ async def run_bot():
                 BotCommand(command="leaderboard", description="Рейтинг участников"),
                 BotCommand(command="equipment", description="Мои заявки на оборудование"),
                 BotCommand(command="notifications", description="Уведомления"),
+                BotCommand(command="code", description="Код для входа на сайт"),
                 BotCommand(command="help", description="Справка"),
             ]
             

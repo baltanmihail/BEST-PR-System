@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, CheckCircle2, AlertCircle, X, KeyRound, QrCode } from 'lucide-react'
+import { Loader2, CheckCircle2, AlertCircle, X, QrCode, Send, ChevronDown, ChevronUp } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
@@ -20,6 +20,8 @@ export default function Login() {
   const [agreementContent, setAgreementContent] = useState<string>('')
   const [loginCode, setLoginCode] = useState('')
   const [codeError, setCodeError] = useState('')
+  const [showCodeInput, setShowCodeInput] = useState(false)
+  const [tgLinkClicked, setTgLinkClicked] = useState(false)
 
   // Получаем пользовательское соглашение
   const { data: agreementData } = useQuery({
@@ -232,7 +234,7 @@ export default function Login() {
           </button>
         </div>
 
-        {/* Вкладки: Код / QR */}
+        {/* Вкладки: Telegram / QR */}
         <div className="flex bg-white/10 rounded-lg p-1 mb-6">
           <button
             onClick={() => setTab('code')}
@@ -240,8 +242,8 @@ export default function Login() {
               tab === 'code' ? 'bg-best-primary text-white' : 'text-white/60 hover:text-white'
             }`}
           >
-            <KeyRound className="w-4 h-4" />
-            По коду
+            <Send className="w-4 h-4" />
+            Telegram
           </button>
           <button
             onClick={() => setTab('qr')}
@@ -254,53 +256,104 @@ export default function Login() {
           </button>
         </div>
 
-        {/* === Вкладка: Вход по коду === */}
+        {/* === Вкладка: Telegram (авто + код) === */}
         {tab === 'code' && (
           <div className="space-y-5">
-            <div className={`rounded-lg p-4 bg-white/5 border border-white/10`}>
-              <h3 className="font-semibold text-white mb-2 text-sm">Как получить код:</h3>
-              <ol className="list-decimal list-inside space-y-1.5 text-sm text-white/70">
-                <li>
-                  Откройте бота{' '}
-                  <a href="https://t.me/BESTPRSystemBot" target="_blank" rel="noopener noreferrer"
-                    className="text-blue-400 hover:underline font-medium">@BESTPRSystemBot</a>
-                </li>
-                <li>Отправьте команду <code className="bg-white/10 px-1.5 py-0.5 rounded text-white">/code</code></li>
-                <li>Введите полученный код ниже</li>
-              </ol>
-            </div>
-
-            <div>
-              <label className="block text-white/60 text-sm mb-2">Одноразовый код</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={loginCode}
-                onChange={e => { setLoginCode(e.target.value.replace(/\D/g, '')); setCodeError('') }}
-                onKeyDown={e => { if (e.key === 'Enter') handleCodeSubmit() }}
-                placeholder="000000"
-                className="w-full bg-white/10 text-white text-center text-3xl tracking-[0.5em] rounded-xl px-4 py-4 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary placeholder-white/20 font-mono"
-                autoFocus
-              />
-              {codeError && (
-                <p className="mt-2 text-red-400 text-sm flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" /> {codeError}
+            {/* Основной способ: кнопка автовхода через Telegram */}
+            {!isConfirmed ? (
+              <>
+                <p className="text-white/60 text-sm text-center">
+                  Нажмите кнопку — откроется Telegram-бот, и вы автоматически войдёте на сайт
                 </p>
-              )}
-            </div>
 
-            <button
-              onClick={handleCodeSubmit}
-              disabled={loginCode.length < 6 || codeLoginMutation.isPending}
-              className="w-full bg-best-primary text-white py-3 rounded-xl font-medium hover:bg-best-primary/80 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
-            >
-              {codeLoginMutation.isPending ? (
-                <><Loader2 className="w-5 h-5 animate-spin" /> Проверяю...</>
-              ) : (
-                'Войти'
-              )}
-            </button>
+                <a
+                  href={sessionToken
+                    ? `https://t.me/BESTPRSystemBot?start=qr_${sessionToken}`
+                    : 'https://t.me/BESTPRSystemBot?start=code'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setTgLinkClicked(true)}
+                  className="w-full flex items-center justify-center gap-3 bg-[#2AABEE] hover:bg-[#229ED9] text-white py-3.5 rounded-xl font-medium transition-all text-base shadow-lg shadow-[#2AABEE]/20"
+                >
+                  <Send className="w-5 h-5" />
+                  Войти через Telegram
+                </a>
+
+                {/* Индикатор ожидания после клика */}
+                {tgLinkClicked && isPending && (
+                  <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                    <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <p className="text-blue-300 text-sm">Ожидаю подтверждение из Telegram...</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <CheckCircle2 className="w-12 h-12 text-green-400" />
+                <p className="text-green-400 font-medium">Вход подтверждён! Перенаправление...</p>
+              </div>
+            )}
+
+            {/* Разделитель */}
+            {!isConfirmed && (
+              <>
+                <div className="relative flex items-center">
+                  <div className="flex-1 border-t border-white/10" />
+                  <span className="px-3 text-white/30 text-xs">или</span>
+                  <div className="flex-1 border-t border-white/10" />
+                </div>
+
+                {/* Сворачиваемый блок: ввод кода вручную */}
+                <button
+                  onClick={() => setShowCodeInput(!showCodeInput)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white/60 text-sm hover:bg-white/10 transition-colors"
+                >
+                  <span>Ввести код вручную</span>
+                  {showCodeInput ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {showCodeInput && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="rounded-lg p-3 bg-white/5 border border-white/10">
+                      <ol className="list-decimal list-inside space-y-1 text-xs text-white/50">
+                        <li>Откройте бота <a href="https://t.me/BESTPRSystemBot?start=code" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">@BESTPRSystemBot</a></li>
+                        <li>Отправьте <code className="bg-white/10 px-1 py-0.5 rounded text-white/70">/code</code></li>
+                        <li>Введите код ниже</li>
+                      </ol>
+                    </div>
+
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      value={loginCode}
+                      onChange={e => { setLoginCode(e.target.value.replace(/\D/g, '')); setCodeError('') }}
+                      onKeyDown={e => { if (e.key === 'Enter') handleCodeSubmit() }}
+                      placeholder="000000"
+                      className="w-full bg-white/10 text-white text-center text-3xl tracking-[0.5em] rounded-xl px-4 py-4 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary placeholder-white/20 font-mono"
+                    />
+                    {codeError && (
+                      <p className="text-red-400 text-sm flex items-center gap-1">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" /> {codeError}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={handleCodeSubmit}
+                      disabled={loginCode.length < 6 || codeLoginMutation.isPending}
+                      className="w-full bg-best-primary text-white py-3 rounded-xl font-medium hover:bg-best-primary/80 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {codeLoginMutation.isPending ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> Проверяю...</>
+                      ) : (
+                        'Войти по коду'
+                      )}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 

@@ -61,6 +61,7 @@ async def main():
             BotCommand(command="leaderboard", description="Рейтинг участников"),
             BotCommand(command="equipment", description="Заявки на оборудование"),
             BotCommand(command="notifications", description="Уведомления"),
+            BotCommand(command="code", description="Код для входа на сайт"),
             BotCommand(command="help", description="Справка"),
         ]
         
