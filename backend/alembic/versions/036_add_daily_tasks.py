@@ -10,6 +10,14 @@ depends_on = None
 
 
 def upgrade():
+    conn = op.get_bind()
+    result = conn.execute(sa.text(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_name='daily_tasks'"
+    ))
+    if result.fetchone() is not None:
+        return
+
     op.create_table(
         'daily_tasks',
         sa.Column('id', UUID(as_uuid=True), primary_key=True, server_default=sa.text('gen_random_uuid()')),

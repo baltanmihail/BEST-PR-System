@@ -99,6 +99,48 @@ async def startup_event():
     """Выполняется при запуске приложения"""
     logger.info("BEST PR System API starting up...")
     logger.info(f"🌐 CORS allowed origins: {settings.CORS_ORIGINS}")
+
+    # Fallback: проверяем и создаём недостающие столбцы/таблицы, если миграция не прошла
+    try:
+        from app.database import AsyncSessionLocal
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as db:
+            # forum_topic_id в tasks
+            r = await db.execute(text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='tasks' AND column_name='forum_topic_id'"
+            ))
+            if r.fetchone() is None:
+                await db.execute(text("ALTER TABLE tasks ADD COLUMN forum_topic_id INTEGER"))
+                await db.commit()
+                logger.info("✅ Fallback: добавлен столбец tasks.forum_topic_id")
+
+            # daily_tasks таблица
+            r = await db.execute(text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_name='daily_tasks'"
+            ))
+            if r.fetchone() is None:
+                await db.execute(text("""
+                    CREATE TABLE daily_tasks (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        title VARCHAR(500) NOT NULL,
+                        notes TEXT,
+                        date DATE NOT NULL,
+                        is_done BOOLEAN NOT NULL DEFAULT false,
+                        done_at TIMESTAMPTZ,
+                        creator_id UUID NOT NULL REFERENCES users(id),
+                        assignee_id UUID NOT NULL REFERENCES users(id),
+                        created_at TIMESTAMPTZ DEFAULT now(),
+                        updated_at TIMESTAMPTZ DEFAULT now()
+                    )
+                """))
+                await db.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_tasks_date ON daily_tasks(date)"))
+                await db.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_tasks_assignee_date ON daily_tasks(assignee_id, date)"))
+                await db.commit()
+                logger.info("✅ Fallback: создана таблица daily_tasks")
+    except Exception as e:
+        logger.warning(f"⚠️ Fallback schema check: {e}")
     
     # Проверка QR code модуля
     try:

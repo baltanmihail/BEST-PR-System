@@ -327,15 +327,25 @@ async def main():
             ["python", "-m", "alembic", "upgrade", "head"],
             capture_output=True,
             text=True,
-            cwd=Path(__file__).resolve().parent
+            cwd=Path(__file__).resolve().parent,
+            timeout=120
         )
         if result.returncode == 0:
             logger.info("✅ Database migrations completed")
+            if result.stdout:
+                logger.info(f"Migration stdout: {result.stdout[-500:]}")
         else:
-            logger.warning(f"⚠️ Migration warning: {result.stderr}")
+            logger.error(f"❌ Migration FAILED (exit code {result.returncode})")
+            if result.stdout:
+                logger.error(f"Migration stdout: {result.stdout[-1000:]}")
+            if result.stderr:
+                logger.error(f"Migration stderr: {result.stderr[-1000:]}")
+    except subprocess.TimeoutExpired:
+        logger.error("❌ Migration timed out after 120s")
     except Exception as e:
         logger.error(f"❌ Migration error: {e}")
-        # Продолжаем запуск даже если миграции не выполнились
+        import traceback
+        logger.error(traceback.format_exc())
     
     # Сначала запускаем API, затем с задержкой - бота и планировщик напоминаний
     api_task = asyncio.create_task(run_api())
