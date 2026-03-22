@@ -3010,11 +3010,33 @@ async def handle_text_message(message: Message, state: FSMContext):
         
         return
     
+    # Проверяем, не является ли это ответом на сообщение поддержки
+    if not is_group and message.reply_to_message:
+        try:
+            from app.api.support_reply_tracker import get_support_target
+            from app.utils.telegram_sender import send_telegram_message
+            target = get_support_target(message.from_user.id, message.reply_to_message.message_id)
+            if target:
+                user_tg_id, user_name = target
+                reply_text = (
+                    f"💬 <b>Ответ от поддержки</b>\n\n"
+                    f"{message.text or '(без текста)'}"
+                )
+                await send_telegram_message(
+                    chat_id=user_tg_id,
+                    message=reply_text,
+                    parse_mode="HTML",
+                )
+                await message.answer(f"✅ Ответ отправлен пользователю {user_name}")
+                return
+        except Exception as e:
+            logger.error(f"Support reply error: {e}")
+
     # Если это не онбординг и не вопрос, обрабатываем как неизвестную команду
-    # Но только в личном чате, в группах мы уже вернулись выше
     if not is_group:
         await message.answer(
-            "❓ Неизвестная команда. Используйте /help для списка доступных команд."
+            "❓ Неизвестная команда. Используйте /help для списка доступных команд.\n\n"
+            "💡 Чтобы ответить на запрос поддержки — ответьте на конкретное сообщение (reply)."
         )
 
 

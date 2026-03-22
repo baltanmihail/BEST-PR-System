@@ -159,15 +159,23 @@ async def create_support_request(
                 "file_id": uploaded_file_id,
             }
         )
-        # Отправляем в Telegram каждому админу
+        # Отправляем в Telegram каждому админу, сохраняем message_id для ответов
         if admin.telegram_id and admin.telegram_id > 0:
             try:
-                await send_telegram_message(
+                result = await send_telegram_message(
                     chat_id=admin.telegram_id,
                     message=tg_text,
                     parse_mode="HTML",
                     silent_fail=True,
+                    return_message_id=True,
                 )
+                if isinstance(result, tuple):
+                    ok, msg_id = result
+                else:
+                    ok, msg_id = result, None
+                if ok and msg_id and current_user and current_user.telegram_id:
+                    from app.api.support_reply_tracker import track_support_message
+                    track_support_message(admin.telegram_id, msg_id, current_user.telegram_id, user_name)
             except Exception:
                 pass
     

@@ -139,6 +139,22 @@ async def startup_event():
                 await db.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_tasks_assignee_date ON daily_tasks(assignee_id, date)"))
                 await db.commit()
                 logger.info("✅ Fallback: создана таблица daily_tasks")
+            # bot_message_tracking для хранения message_id планёрок
+            r = await db.execute(text(
+                "SELECT table_name FROM information_schema.tables "
+                "WHERE table_name='bot_message_tracking'"
+            ))
+            if r.fetchone() is None:
+                await db.execute(text("""
+                    CREATE TABLE bot_message_tracking (
+                        telegram_chat_id BIGINT NOT NULL,
+                        message_key VARCHAR(100) NOT NULL,
+                        message_id BIGINT NOT NULL,
+                        PRIMARY KEY (telegram_chat_id, message_key)
+                    )
+                """))
+                await db.commit()
+                logger.info("✅ Fallback: создана таблица bot_message_tracking")
     except Exception as e:
         logger.warning(f"⚠️ Fallback schema check: {e}")
     

@@ -8,12 +8,13 @@
   если есть — редактирует его (обновляет время, статусы)
 - Для VP4PR: отдельная сводка по всем задачам команды
 - Отдельные напоминания НЕ отправляются — всё в одном сообщении
+- message_id хранятся в БД (таблица bot_message_tracking) для переживания рестартов
 """
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import selectinload
 
 from app.models.task import Task, TaskStatus, TaskAssignment
@@ -23,9 +24,6 @@ from app.models.daily_task import DailyTask
 logger = logging.getLogger(__name__)
 
 MSK = timezone(timedelta(hours=3))
-
-# Хранилище message_id: {user_telegram_id: {date_str: message_id}}
-_daily_message_ids: Dict[int, Dict[str, int]] = {}
 
 
 class TaskDeadlineService:
@@ -140,7 +138,7 @@ class TaskDeadlineService:
             msg = TaskDeadlineService._build_daily_message(
                 task_list, daily_list, now_utc, now_msk, user.full_name
             )
-            await TaskDeadlineService._send_or_update(user.telegram_id, today_str, msg)
+            await TaskDeadlineService._send_or_update(db, user.telegram_id, today_str, msg)
 
         # VP4PR сводка
         vp_result = await db.execute(
@@ -152,7 +150,7 @@ class TaskDeadlineService:
             vp_msg = TaskDeadlineService._build_vp4pr_message(
                 tasks, all_overdue, daily_tasks_all, now_utc, now_msk
             )
-            await TaskDeadlineService._send_or_update(vp.telegram_id, f"vp_{today_str}", vp_msg)
+            await TaskDeadlineService._send_or_update(db, vp.telegram_id, f"vp_{today_str}", vp_msg)
 
     @staticmethod
     def _build_daily_message(
@@ -233,6 +231,8 @@ class TaskDeadlineService:
         active_count = len(all_tasks)
         overdue_count = len(overdue)
 
+        type_labels = {"smm": "SMM", "design": "Дизайн", "channel": "Channel", "prfr": "PR-FR", "multitask": "Мульти"}
+
         msg = f"📊 <b>Сводка VP4PR</b> — {now_msk.strftime('%d.%m.%Y')} ({time_str})\n\n"
         msg += f"Активных задач: <b>{active_count}</b>\n"
         msg += f"Просрочено: <b>{overdue_count}</b>\n\n"
@@ -244,15 +244,19 @@ class TaskDeadlineService:
                 if dl.tzinfo is None:
                     dl = dl.replace(tzinfo=timezone.utc)
                 ov_h = abs((now_utc - dl).total_seconds() / 3600)
-                if ov_h < 24:
-                    ov_str = f"{int(ov_h)}ч"
+                if ov_h < 1:
+                    ov_str = f"{int(ov_h * 60)}мин"
+                elif ov_h < 24:
+                    ov_str = f"{int(ov_h)}ч {int(ov_h % 1 * 60)}мин"
                 else:
-                    ov_str = f"{int(ov_h / 24)}д"
-                msg += f"  🔴 <b>{t.title}</b> — на {ov_str}\n"
+                    ov_str = f"{int(ov_h / 24)}д {int(ov_h % 24)}ч"
+                task_type = type_labels.get(str(getattr(t, 'type', '')), '')
+                type_prefix = f"[{task_type}] " if task_type else ""
+                dl_msk = dl.astimezone(MSK)
+                msg += f"  🔴 {type_prefix}<b>{t.title}</b> — просрочено на {ov_str} (DL {dl_msk.strftime('%d.%m %H:%M')})\n"
             if len(overdue) > 15:
                 msg += f"  ... и ещё {len(overdue) - 15}\n"
 
-        # Ближайшие 24 часа
         upcoming = []
         for t in all_tasks:
             dl = t.due_date
@@ -269,9 +273,10 @@ class TaskDeadlineService:
                 if dl_msk.tzinfo is None:
                     dl_msk = dl_msk.replace(tzinfo=timezone.utc)
                 dl_msk = dl_msk.astimezone(MSK)
-                msg += f"  🟡 <b>{t.title}</b> — {dl_msk.strftime('%d.%m %H:%M')}\n"
+                task_type = type_labels.get(str(getattr(t, 'type', '')), '')
+                type_prefix = f"[{task_type}] " if task_type else ""
+                msg += f"  🟡 {type_prefix}<b>{t.title}</b> — {dl_msk.strftime('%d.%m %H:%M')}\n"
 
-        # Быстрые задачи команды
         if daily_tasks_all:
             done_count = sum(1 for d in daily_tasks_all if d.is_done)
             total_count = len(daily_tasks_all)
@@ -289,11 +294,24 @@ class TaskDeadlineService:
         return msg
 
     @staticmethod
-    async def _send_or_update(telegram_id: int, key: str, message: str):
-        """Отправить новое или отредактировать существующее сообщение."""
+    async def _send_or_update(db: AsyncSession, telegram_id: int, key: str, message: str):
+        """Отправить новое или отредактировать существующее сообщение.
+        
+        message_id хранится в БД (bot_message_tracking) для устойчивости к рестартам.
+        """
         from app.utils.telegram_sender import send_telegram_message, edit_telegram_message
 
-        existing_msg_id = _daily_message_ids.get(telegram_id, {}).get(key)
+        existing_msg_id = None
+        try:
+            result = await db.execute(text(
+                "SELECT message_id FROM bot_message_tracking "
+                "WHERE telegram_chat_id = :cid AND message_key = :key"
+            ), {"cid": telegram_id, "key": key})
+            row = result.fetchone()
+            if row:
+                existing_msg_id = row[0]
+        except Exception:
+            pass
 
         if existing_msg_id:
             ok = await edit_telegram_message(
@@ -304,8 +322,8 @@ class TaskDeadlineService:
                 silent_fail=True,
             )
             if ok:
+                logger.debug(f"Edited message {existing_msg_id} for {telegram_id}/{key}")
                 return
-            # Если не удалось отредактировать (удалено и т.п.) — отправим новое
 
         result = await send_telegram_message(
             chat_id=telegram_id,
@@ -319,6 +337,18 @@ class TaskDeadlineService:
             success, msg_id = result, None
 
         if success and msg_id:
-            if telegram_id not in _daily_message_ids:
-                _daily_message_ids[telegram_id] = {}
-            _daily_message_ids[telegram_id][key] = msg_id
+            try:
+                if existing_msg_id:
+                    await db.execute(text(
+                        "UPDATE bot_message_tracking SET message_id = :mid "
+                        "WHERE telegram_chat_id = :cid AND message_key = :key"
+                    ), {"mid": msg_id, "cid": telegram_id, "key": key})
+                else:
+                    await db.execute(text(
+                        "INSERT INTO bot_message_tracking (telegram_chat_id, message_key, message_id) "
+                        "VALUES (:cid, :key, :mid)"
+                    ), {"cid": telegram_id, "key": key, "mid": msg_id})
+                await db.commit()
+            except Exception as e:
+                logger.warning(f"Failed to persist message_id: {e}")
+                await db.rollback()
