@@ -152,13 +152,26 @@ class NotificationService:
         return result.rowcount or 0
     
     @staticmethod
+    async def _send_task_telegram(db: AsyncSession, user_id: UUID, message: str):
+        """Helper: send Telegram message to a user by their user_id."""
+        try:
+            from app.utils.telegram_sender import send_telegram_message
+            result = await db.execute(select(User).where(User.id == user_id))
+            user = result.scalar_one_or_none()
+            if user and user.telegram_id and user.telegram_id > 0:
+                await send_telegram_message(chat_id=user.telegram_id, message=message, parse_mode="HTML")
+        except Exception as e:
+            import logging
+            logging.warning(f"TG notification to user {user_id} failed: {e}")
+
+    @staticmethod
     async def notify_task_assigned(
         db: AsyncSession,
         user_id: UUID,
         task_id: UUID,
         task_title: str
     ):
-        """Уведомить о назначении задачи"""
+        """Уведомить о назначении задачи (in-app + Telegram)"""
         await NotificationService.create_notification(
             db=db,
             user_id=user_id,
@@ -167,7 +180,11 @@ class NotificationService:
             message=f"Вам назначена задача: {task_title}",
             data={"task_id": str(task_id)}
         )
-    
+        await NotificationService._send_task_telegram(
+            db, user_id,
+            f"📋 <b>Вам назначена задача</b>\n\n<b>{task_title}</b>\n\nОткройте систему для подробностей."
+        )
+
     @staticmethod
     async def notify_task_completed(
         db: AsyncSession,
@@ -175,7 +192,7 @@ class NotificationService:
         task_id: UUID,
         task_title: str
     ):
-        """Уведомить о завершении задачи"""
+        """Уведомить о завершении задачи (in-app + Telegram)"""
         await NotificationService.create_notification(
             db=db,
             user_id=user_id,
@@ -183,6 +200,10 @@ class NotificationService:
             title="Задача завершена",
             message=f"Задача '{task_title}' завершена. Баллы начислены!",
             data={"task_id": str(task_id)}
+        )
+        await NotificationService._send_task_telegram(
+            db, user_id,
+            f"✅ <b>Задача завершена</b>\n\n<b>{task_title}</b>\n\nБаллы начислены!"
         )
     
     @staticmethod
@@ -421,7 +442,9 @@ class NotificationService:
         task_title: str,
         task_type: str
     ):
-        """Уведомить о новой задаче"""
+        """Уведомить о новой задаче (in-app + Telegram)"""
+        type_labels = {'smm': 'SMM', 'design': 'Дизайн', 'channel': 'Channel', 'prfr': 'PR-FR', 'multitask': 'Мульти'}
+        type_label = type_labels.get(task_type, task_type)
         for user_id in user_ids:
             await NotificationService.create_notification(
                 db=db,
@@ -430,6 +453,10 @@ class NotificationService:
                 title="Новая задача",
                 message=f"Доступна новая задача типа {task_type}: {task_title}",
                 data={"task_id": str(task_id), "task_type": task_type}
+            )
+            await NotificationService._send_task_telegram(
+                db, user_id,
+                f"🆕 <b>Новая задача [{type_label}]</b>\n\n<b>{task_title}</b>\n\nОткройте систему, чтобы взять задачу."
             )
     
     @staticmethod

@@ -1,12 +1,14 @@
-import { useState } from 'react'
-import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera, UserPlus, UserMinus, RefreshCw, CheckCircle } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
 import { Task } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { telegramChatsApi, TaskChatResponse } from '../services/telegramChats'
 import { galleryApi } from '../services/gallery'
+import { tasksApi } from '../services/tasks'
+import { usersApi, UserProfile } from '../services/users'
 import TaskQuestions from './TaskQuestions'
 import TaskFiles from './TaskFiles'
 import StageFileUpload from './StageFileUpload'
@@ -44,17 +46,18 @@ export default function TaskCard({ task }: TaskCardProps) {
   const parallax = useParallaxHover(8)
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
+  const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
   const [selectedRole, setSelectedRole] = useState<string | null>(null)
+  const [showReassign, setShowReassign] = useState(false)
+  const [reassignUserId, setReassignUserId] = useState('')
   
-  // Получаем информацию о чате задачи
   const { data: taskChat } = useQuery<TaskChatResponse>({
     queryKey: ['task-chat', task.id],
     queryFn: () => telegramChatsApi.getTaskChat(task.id),
     enabled: !!user?.is_active,
   })
 
-  // Загружаем примеры прошлых работ
   const { data: exampleProjects } = useQuery({
     queryKey: ['gallery', 'examples', task.example_project_ids],
     queryFn: async () => {
@@ -66,9 +69,79 @@ export default function TaskCard({ task }: TaskCardProps) {
     },
     enabled: !!task.example_project_ids && task.example_project_ids.length > 0,
   })
+
+  const { data: activeUsers } = useQuery({
+    queryKey: ['users-active'],
+    queryFn: () => usersApi.getUsers({ is_active: true, limit: 100 }),
+    enabled: showReassign,
+  })
   
   const isRegistered = !!user?.is_active
   const isCoordinator = user?.role === 'vp4pr' || (typeof user?.role === 'string' && user.role.includes('coordinator'))
+  const isVP4PR = user?.role === 'vp4pr'
+  const isAssignedToMe = task.assignments?.some(a => a.user_id === user?.id && a.status !== 'cancelled')
+  const canTakeTask = isRegistered && !isAssignedToMe && ['open', 'draft'].includes(task.status)
+
+  const invalidateTaskQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['task', task.id] })
+  }
+
+  const assignMutation = useMutation({
+    mutationFn: () => tasksApi.assignTask(task.id),
+    onSuccess: invalidateTaskQueries,
+  })
+
+  const cancelAssignmentMutation = useMutation({
+    mutationFn: (assignmentId: string) => tasksApi.cancelAssignment(task.id, assignmentId),
+    onSuccess: invalidateTaskQueries,
+  })
+
+  const reassignMutation = useMutation({
+    mutationFn: (newUserId: string) => tasksApi.reassignTask(task.id, newUserId),
+    onSuccess: () => {
+      invalidateTaskQueries()
+      setShowReassign(false)
+      setReassignUserId('')
+    },
+  })
+
+  const completeMutation = useMutation({
+    mutationFn: () => tasksApi.completeTask(task.id),
+    onSuccess: invalidateTaskQueries,
+  })
+
+  // Deadline countdown
+  const [countdown, setCountdown] = useState('')
+  const [countdownColor, setCountdownColor] = useState('text-white/60')
+  useEffect(() => {
+    if (!task.due_date) return
+    const update = () => {
+      const now = new Date().getTime()
+      const deadline = new Date(task.due_date!).getTime()
+      const diff = deadline - now
+      if (diff <= 0) {
+        const overdue = Math.abs(diff)
+        const hours = Math.floor(overdue / 3600000)
+        const mins = Math.floor((overdue % 3600000) / 60000)
+        setCountdown(`Просрочено на ${hours}ч ${mins}мин`)
+        setCountdownColor('text-red-400 animate-pulse')
+        return
+      }
+      const days = Math.floor(diff / 86400000)
+      const hours = Math.floor((diff % 86400000) / 3600000)
+      const mins = Math.floor((diff % 3600000) / 60000)
+      if (days > 0) setCountdown(`${days}д ${hours}ч`)
+      else if (hours > 0) setCountdown(`${hours}ч ${mins}мин`)
+      else setCountdown(`${mins}мин`)
+      if (days >= 3) setCountdownColor('text-green-400')
+      else if (days >= 1) setCountdownColor('text-yellow-400')
+      else setCountdownColor('text-red-400')
+    }
+    update()
+    const interval = setInterval(update, 60000)
+    return () => clearInterval(interval)
+  }, [task.due_date])
 
   const getRoleName = (role: string) => {
     const names: Record<string, string> = {
@@ -257,13 +330,83 @@ export default function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      {/* Назначения (для координаторов) */}
+      {isCoordinator && task.assignments && task.assignments.length > 0 && (
+        <div className="mb-4 p-3 bg-white/5 rounded-lg">
+          <h4 className={`text-white/80 font-semibold mb-2 text-sm text-readable ${theme}`}>Назначенные:</h4>
+          <div className="space-y-2">
+            {task.assignments.filter(a => a.status !== 'cancelled').map(a => (
+              <div key={a.id} className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="text-white text-sm">{a.user_id.slice(0, 8)}...</span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${
+                    a.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                    a.status === 'in_progress' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-blue-500/20 text-blue-400'
+                  }`}>{a.status === 'assigned' ? 'Назначен' : a.status === 'in_progress' ? 'В работе' : a.status === 'completed' ? 'Завершил' : a.status}</span>
+                </div>
+                {isVP4PR && (
+                  <button
+                    onClick={() => cancelAssignmentMutation.mutate(a.id)}
+                    disabled={cancelAssignmentMutation.isPending}
+                    className="text-red-400 hover:text-red-300 text-xs flex items-center space-x-1"
+                    title="Отменить назначение"
+                  >
+                    <UserMinus className="h-3 w-3" />
+                    <span>Снять</span>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {isVP4PR && (
+            <button
+              onClick={() => setShowReassign(!showReassign)}
+              className="mt-2 text-best-primary hover:text-best-primary/80 text-xs flex items-center space-x-1"
+            >
+              <RefreshCw className="h-3 w-3" />
+              <span>Переназначить</span>
+            </button>
+          )}
+          {showReassign && (
+            <div className="mt-2 flex items-center space-x-2">
+              <select
+                value={reassignUserId}
+                onChange={(e) => setReassignUserId(e.target.value)}
+                className="flex-1 bg-white/10 text-white text-xs rounded px-2 py-1 border border-white/20"
+              >
+                <option value="">Выберите человека</option>
+                {activeUsers?.items?.map((u: UserProfile) => (
+                  <option key={u.id} value={u.id}>{u.full_name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => reassignUserId && reassignMutation.mutate(reassignUserId)}
+                disabled={!reassignUserId || reassignMutation.isPending}
+                className="bg-best-primary text-white text-xs px-3 py-1 rounded hover:bg-best-primary/80 disabled:opacity-50"
+              >
+                OK
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className={`flex items-center space-x-4 text-sm text-white text-readable ${theme}`}>
           {task.due_date && (
             <div className="flex items-center space-x-1">
               <Clock className="h-4 w-4" />
-              <span>До {new Date(task.due_date).toLocaleDateString('ru-RU')}</span>
+              <span>
+                {new Date(task.due_date).toLocaleDateString('ru-RU')}{' '}
+                {new Date(task.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+              </span>
             </div>
+          )}
+          {countdown && (
+            <span className={`text-xs font-medium ${countdownColor}`}>
+              {countdown}
+            </span>
           )}
           <div className="flex items-center space-x-1">
             <AlertCircle className="h-4 w-4" />
@@ -271,7 +414,6 @@ export default function TaskCard({ task }: TaskCardProps) {
           </div>
         </div>
         <div className="flex items-center space-x-2">
-          {/* Ссылка на Google Drive (только для координаторов) */}
           {isCoordinator && task.drive_folder_id && (
             <a
               href={`https://drive.google.com/drive/folders/${task.drive_folder_id}`}
@@ -290,11 +432,7 @@ export default function TaskCard({ task }: TaskCardProps) {
             onClick={() => setExpanded(!expanded)}
             className="p-2 rounded-lg hover:bg-white/10 transition-all"
           >
-            {expanded ? (
-              <ChevronUp className="h-4 w-4 text-white" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-white" />
-            )}
+            {expanded ? <ChevronUp className="h-4 w-4 text-white" /> : <ChevronDown className="h-4 w-4 text-white" />}
           </button>
           {isRegistered && taskChat?.exists && taskChat.invite_link && (
             <a
@@ -308,11 +446,40 @@ export default function TaskCard({ task }: TaskCardProps) {
               <span className="text-sm">Чат</span>
             </a>
           )}
-          <button className="bg-white/20 text-white px-4 py-2 rounded-lg hover:bg-white/30 transition-all card-3d border border-white/30">
-            Взять задачу
-          </button>
+          {canTakeTask && (
+            <button
+              onClick={() => assignMutation.mutate()}
+              disabled={assignMutation.isPending}
+              className="bg-best-primary text-white px-4 py-2 rounded-lg hover:bg-best-primary/80 transition-all card-3d border border-best-primary/50 flex items-center space-x-2 disabled:opacity-50"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>{assignMutation.isPending ? 'Назначаю...' : 'Взять задачу'}</span>
+            </button>
+          )}
+          {isAssignedToMe && task.status !== 'completed' && task.status !== 'cancelled' && (
+            <button
+              onClick={() => completeMutation.mutate()}
+              disabled={completeMutation.isPending}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-500 transition-all card-3d border border-green-500/50 flex items-center space-x-2 disabled:opacity-50"
+            >
+              <CheckCircle className="h-4 w-4" />
+              <span>{completeMutation.isPending ? 'Завершаю...' : 'Завершить'}</span>
+            </button>
+          )}
+          {isVP4PR && !showReassign && (
+            <button
+              onClick={() => setShowReassign(true)}
+              className="bg-white/10 text-white px-3 py-2 rounded-lg hover:bg-white/20 transition-all flex items-center space-x-1"
+              title="Назначить человека"
+            >
+              <UserPlus className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
+      {assignMutation.isError && (
+        <p className="text-red-400 text-xs mt-2">{(assignMutation.error as Error)?.message || 'Ошибка при назначении'}</p>
+      )}
     </div>
   )
 }

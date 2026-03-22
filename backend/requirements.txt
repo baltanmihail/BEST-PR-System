@@ -62,6 +62,10 @@ mypy==1.7.1
 # AI Providers (опционально, установите нужный)
 # Для GigaChat:
 # gigachat==0.1.0  # или актуальная версия
+# Fuzzy string matching for timeline sync
+fuzzywuzzy
+python-Levenshtein
+
 # Для OpenAI:
 # openai==1.12.0
 # Для Claude (Anthropic):

@@ -374,6 +374,129 @@ async def startup_event():
         logger.warning(f"⚠️ Не удалось запустить периодическую синхронизацию Drive/Sheets: {e}")
 
 
+    # === OAuth health check — every 30 minutes ===
+    try:
+        import asyncio
+        async def periodic_oauth_health():
+            await asyncio.sleep(60 * 5)  # 5 min after startup
+            while True:
+                try:
+                    from app.services.google_service import GoogleService
+                    gs = GoogleService()
+                    result = gs.check_oauth_health()
+                    if result['status'] == 'error':
+                        logger.error(f"OAuth health check FAILED: {result['message']}")
+                        reinit = gs.try_reinitialize_oauth()
+                        logger.info(f"OAuth reinitialization: {reinit['status']}")
+                        if reinit['status'] == 'error':
+                            try:
+                                from app.utils.telegram_sender import send_telegram_message
+                                from app.config import settings as s
+                                vp4pr_chat = getattr(s, 'VP4PR_TELEGRAM_ID', None)
+                                if vp4pr_chat:
+                                    await send_telegram_message(
+                                        chat_id=int(vp4pr_chat),
+                                        message=f"⚠️ <b>BEST PR System: OAuth сломан</b>\n\n{result['message']}\n\nНужно обновить GOOGLE_OAUTH_REFRESH_TOKEN.",
+                                        parse_mode="HTML"
+                                    )
+                            except Exception:
+                                pass
+                    else:
+                        logger.debug(f"OAuth health: OK, expiry={result.get('expiry')}")
+                except Exception as e:
+                    logger.warning(f"OAuth health check error: {e}")
+                await asyncio.sleep(30 * 60)  # every 30 min
+        asyncio.create_task(periodic_oauth_health())
+        logger.info("✅ OAuth health check task started (every 30 minutes)")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not start OAuth health check: {e}")
+
+    # === Task deadline reminders — every hour ===
+    try:
+        import asyncio
+        from app.database import AsyncSessionLocal
+
+        async def periodic_deadline_check():
+            await asyncio.sleep(60 * 10)  # 10 min after startup
+            while True:
+                try:
+                    from app.services.task_deadline_service import TaskDeadlineService
+                    async with AsyncSessionLocal() as db:
+                        await TaskDeadlineService.check_and_send_reminders(db)
+                    logger.info("Deadline check completed")
+                except Exception as e:
+                    logger.error(f"Deadline check error: {e}")
+                await asyncio.sleep(60 * 60)  # every hour
+        asyncio.create_task(periodic_deadline_check())
+        logger.info("✅ Task deadline reminder task started (every hour)")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not start deadline reminders: {e}")
+
+    # === Daily/weekly digest — check every hour, send at 09:00 MSK ===
+    try:
+        import asyncio
+        from app.database import AsyncSessionLocal
+
+        async def periodic_digest():
+            await asyncio.sleep(60 * 15)  # 15 min after startup
+            while True:
+                try:
+                    from app.services.task_digest_service import TaskDigestService
+                    from datetime import datetime, timezone, timedelta
+                    msk = timezone(timedelta(hours=3))
+                    now_msk = datetime.now(msk)
+                    if now_msk.hour == 9 and now_msk.minute < 60:
+                        async with AsyncSessionLocal() as db:
+                            await TaskDigestService.send_daily_digest(db)
+                            if now_msk.weekday() == 0:  # Monday
+                                await TaskDigestService.send_weekly_digest(db)
+                        logger.info("Digest sent")
+                except Exception as e:
+                    logger.error(f"Digest error: {e}")
+                await asyncio.sleep(60 * 60)  # every hour
+        asyncio.create_task(periodic_digest())
+        logger.info("✅ Digest task started (daily 09:00 MSK)")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not start digest: {e}")
+
+
+    # === Person timeline sync with Google Sheets — every 5 minutes ===
+    try:
+        import asyncio
+        from app.database import AsyncSessionLocal
+
+        async def periodic_person_timeline_sync():
+            await asyncio.sleep(60 * 3)  # 3 min after startup
+            while True:
+                try:
+                    from app.services.google_service import GoogleService
+                    from app.services.sheets_sync import SheetsSyncService
+                    gs = GoogleService()
+                    sync_svc = SheetsSyncService(gs)
+                    async with AsyncSessionLocal() as db:
+                        r1 = await sync_svc.sync_person_timeline_from_sheets(db, "Timeline")
+                        r2 = await sync_svc.sync_person_timeline_to_sheets(db, "Timeline")
+                    logger.debug(f"Person timeline sync: from={r1.get('status')} to={r2.get('status')}")
+                except Exception as e:
+                    logger.warning(f"Person timeline sync error: {e}")
+                await asyncio.sleep(60 * 5)  # every 5 min
+        asyncio.create_task(periodic_person_timeline_sync())
+        logger.info("✅ Person timeline sync started (every 5 minutes)")
+    except Exception as e:
+        logger.warning(f"⚠️ Could not start person timeline sync: {e}")
+
+
+@app.get("/api/v1/health/google-oauth")
+async def google_oauth_health():
+    """Check Google OAuth token status"""
+    try:
+        from app.services.google_service import GoogleService
+        gs = GoogleService()
+        return gs.check_oauth_health()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Выполняется при остановке приложения"""

@@ -1802,3 +1802,269 @@ class SheetsSyncService:
                 "error": str(e),
                 "sheet": sheet_name
             }
+
+    # =========================================================================
+    # Person-row timeline sync (Gantt-style, bidirectional)
+    # =========================================================================
+
+    async def sync_person_timeline_to_sheets(
+        self,
+        db: AsyncSession,
+        sheet_name: str = "Timeline",
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> dict:
+        """
+        Write person-row timeline to Google Sheets in the user's preferred format:
+        Row 1: month names spanning their date columns
+        Row 2: day numbers
+        Row 3: day-of-week abbreviations
+        Row 4+: person name | colored cells with task stage names
+        """
+        from sqlalchemy.orm import selectinload
+        from app.models.task import TaskAssignment
+        from app.models.user import User
+
+        if not start_date:
+            start_date = date.today().replace(day=1)
+        if not end_date:
+            end_date = (start_date + timedelta(days=90))
+
+        spreadsheet_id = self._get_spreadsheet_id()
+        if not spreadsheet_id:
+            return {"status": "error", "message": "No spreadsheet configured"}
+
+        days = []
+        d = start_date
+        while d <= end_date:
+            days.append(d)
+            d += timedelta(days=1)
+        num_days = len(days)
+
+        # Build month header row
+        month_row = [""]
+        day_row = ["Days"]
+        dow_row = [""]
+        month_names_ru = {1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 5: "Май", 6: "Июнь",
+                         7: "Июль", 8: "Август", 9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"}
+        dow_names_ru = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
+
+        prev_month = -1
+        for day in days:
+            if day.month != prev_month:
+                month_row.append(month_names_ru.get(day.month, ""))
+                prev_month = day.month
+            else:
+                month_row.append("")
+            day_row.append(str(day.day))
+            dow_row.append(dow_names_ru.get(day.weekday(), ""))
+
+        # Fetch tasks with assignments
+        query = (
+            select(Task)
+            .where(
+                Task.status.notin_([TaskStatus.CANCELLED.value, 'cancelled']),
+                or_(
+                    and_(Task.due_date.isnot(None), Task.due_date >= datetime.combine(start_date, datetime.min.time())),
+                    Task.due_date.is_(None),
+                ),
+            )
+            .options(
+                selectinload(Task.stages),
+                selectinload(Task.assignments).selectinload(TaskAssignment.user),
+            )
+        )
+        result = await db.execute(query)
+        tasks = result.scalars().all()
+
+        # Group tasks by person
+        person_tasks: Dict[str, Dict] = {}
+        for task in tasks:
+            assignees = [a for a in (task.assignments or []) if hasattr(a, 'status') and str(a.status) not in ('cancelled',)]
+            if not assignees:
+                key = "__unassigned__"
+                if key not in person_tasks:
+                    person_tasks[key] = {"name": "Не назначено", "tasks": []}
+                person_tasks[key]["tasks"].append(task)
+            else:
+                for a in assignees:
+                    user = a.user if hasattr(a, 'user') and a.user else None
+                    name = user.full_name if user else str(a.user_id)[:8]
+                    key = str(a.user_id)
+                    if key not in person_tasks:
+                        person_tasks[key] = {"name": name, "tasks": []}
+                    person_tasks[key]["tasks"].append(task)
+
+        # Build data rows and color formatting
+        data_rows = [month_row, day_row, dow_row, ["Tasks"] + [""] * num_days]
+        format_requests = []
+        sheet_id = self._get_sheet_id(spreadsheet_id, sheet_name)
+
+        row_idx = 4
+        for person_key, pdata in person_tasks.items():
+            person_row = [pdata["name"]] + [""] * num_days
+            for task in pdata["tasks"]:
+                task_start = task.due_date.date() if task.due_date else start_date
+                if task.stages:
+                    for stage in sorted(task.stages, key=lambda s: s.stage_order):
+                        stage_date = stage.due_date.date() if stage.due_date else task_start
+                        stage_start = stage_date - timedelta(days=1)
+                        for check_date in [stage_start, stage_date]:
+                            if start_date <= check_date <= end_date:
+                                col_idx = (check_date - start_date).days + 1
+                                if col_idx < len(person_row):
+                                    person_row[col_idx] = stage.stage_name or task.title
+                                    color = STAGE_COLORS.get(stage.status_color, STAGE_COLORS["green"])
+                                    if sheet_id is not None:
+                                        format_requests.append({
+                                            "repeatCell": {
+                                                "range": {"sheetId": sheet_id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1,
+                                                          "startColumnIndex": col_idx, "endColumnIndex": col_idx + 1},
+                                                "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                                                "fields": "userEnteredFormat.backgroundColor"
+                                            }
+                                        })
+                else:
+                    if start_date <= task_start <= end_date:
+                        col_idx = (task_start - start_date).days + 1
+                        if col_idx < len(person_row):
+                            person_row[col_idx] = task.title
+            data_rows.append(person_row)
+            row_idx += 1
+
+        # Write to sheet
+        try:
+            range_str = f"{sheet_name}!A1"
+            self.google_service.write_sheet(spreadsheet_id, range_str, data_rows)
+            if format_requests:
+                self.google_service.batch_update_sheet(spreadsheet_id, format_requests)
+            logger.info(f"Person timeline synced to sheet '{sheet_name}': {len(person_tasks)} people, {num_days} days")
+            return {"status": "success", "people": len(person_tasks), "days": num_days}
+        except Exception as e:
+            logger.error(f"Error syncing person timeline to sheets: {e}")
+            return {"status": "error", "message": str(e)}
+
+    async def sync_person_timeline_from_sheets(
+        self,
+        db: AsyncSession,
+        sheet_name: str = "Timeline",
+    ) -> dict:
+        """
+        Read person-row timeline from Google Sheets and sync changes to DB.
+        Parses person names from column A, task/stage names from cells,
+        cell background colors for stage types.
+        """
+        try:
+            from fuzzywuzzy import fuzz
+        except ImportError:
+            fuzz = None
+        from app.models.user import User
+
+        spreadsheet_id = self._get_spreadsheet_id()
+        if not spreadsheet_id:
+            return {"status": "error", "message": "No spreadsheet configured"}
+
+        try:
+            raw = self.google_service.read_sheet(spreadsheet_id, f"{sheet_name}!A1:ZZ200")
+            if not raw or len(raw) < 4:
+                return {"status": "ok", "message": "Sheet empty or too few rows"}
+
+            day_row = raw[1] if len(raw) > 1 else []
+            # Parse dates from day numbers + month headers
+            month_row = raw[0] if len(raw) > 0 else []
+            dates: List[Optional[date]] = [None]
+            current_month = None
+            current_year = date.today().year
+            month_names_map = {"январь": 1, "февраль": 2, "март": 3, "апрель": 4, "май": 5, "июнь": 6,
+                              "июль": 7, "август": 8, "сентябрь": 9, "октябрь": 10, "ноябрь": 11, "декабрь": 12}
+            for i in range(1, len(day_row)):
+                if i < len(month_row) and month_row[i].strip():
+                    m = month_names_map.get(month_row[i].strip().lower())
+                    if m:
+                        current_month = m
+                try:
+                    day_num = int(day_row[i])
+                    if current_month:
+                        dates.append(date(current_year, current_month, day_num))
+                    else:
+                        dates.append(None)
+                except (ValueError, IndexError):
+                    dates.append(None)
+
+            # Load users for fuzzy matching
+            users_result = await db.execute(select(User).where(User.is_active == True))
+            all_users = {u.full_name.lower(): u for u in users_result.scalars().all() if u.full_name}
+
+            changes = 0
+            for row_idx in range(4, len(raw)):
+                row = raw[row_idx]
+                if not row or not row[0].strip():
+                    continue
+                person_name = row[0].strip()
+
+                # Fuzzy match user
+                best_match = None
+                best_score = 0
+                pname_lower = person_name.lower()
+                for uname, uobj in all_users.items():
+                    if fuzz:
+                        score = fuzz.ratio(pname_lower, uname)
+                    else:
+                        score = 100 if pname_lower == uname else (80 if pname_lower in uname or uname in pname_lower else 0)
+                    if score > best_score and score > 70:
+                        best_score = score
+                        best_match = uobj
+
+                if not best_match:
+                    logger.debug(f"Timeline sync: no user match for '{person_name}'")
+                    continue
+
+                for col_idx in range(1, len(row)):
+                    cell_value = row[col_idx].strip() if col_idx < len(row) else ""
+                    if not cell_value:
+                        continue
+                    if col_idx >= len(dates) or not dates[col_idx]:
+                        continue
+
+                    cell_date = dates[col_idx]
+                    # Find or match task by title
+                    existing = await db.execute(
+                        select(Task).where(Task.title.ilike(f"%{cell_value[:30]}%"))
+                    )
+                    task = existing.scalar_one_or_none()
+                    if task and task.due_date:
+                        task_dl = task.due_date.date() if hasattr(task.due_date, 'date') else task.due_date
+                        if task_dl != cell_date:
+                            logger.info(f"Timeline sync: updating due_date for '{task.title}' from {task_dl} to {cell_date}")
+                            task.due_date = datetime.combine(cell_date, datetime.min.time())
+                            changes += 1
+
+            if changes:
+                await db.commit()
+
+            return {"status": "success", "changes": changes}
+
+        except Exception as e:
+            logger.error(f"Error reading person timeline from sheets: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def _get_spreadsheet_id(self) -> Optional[str]:
+        """Get the configured timeline spreadsheet ID."""
+        if self.timeline_sheets_id:
+            return self.timeline_sheets_id
+        sid = getattr(settings, 'GOOGLE_TIMELINE_SHEETS_ID', None)
+        if sid:
+            self.timeline_sheets_id = sid
+        return sid
+
+    def _get_sheet_id(self, spreadsheet_id: str, sheet_name: str) -> Optional[int]:
+        """Get numeric sheet ID by name for formatting operations."""
+        try:
+            service = self.google_service._get_sheets_service()
+            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            for sheet in meta.get("sheets", []):
+                if sheet["properties"]["title"] == sheet_name:
+                    return sheet["properties"]["sheetId"]
+        except Exception as e:
+            logger.error(f"Error getting sheet id for '{sheet_name}': {e}")
+        return None

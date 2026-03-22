@@ -1,9 +1,8 @@
 import api from './api'
-import { Task, TaskCreate, TaskUpdate, TasksResponse } from '../types/task'
+import { Task, TaskCreate, TaskUpdate, TasksResponse, TaskAssignment } from '../types/task'
 import { TaskQuestion } from '../types/task_question'
 
 export const tasksApi = {
-  // Получить список задач
   getTasks: async (params?: {
     skip?: number
     limit?: number
@@ -15,30 +14,63 @@ export const tasksApi = {
     return response.data
   },
 
-  // Получить задачу по ID
   getTask: async (id: string): Promise<Task> => {
     const response = await api.get<Task>(`/tasks/${id}`)
     return response.data
   },
 
-  // Создать задачу
   createTask: async (data: TaskCreate): Promise<Task> => {
     const response = await api.post<Task>('/tasks', data)
     return response.data
   },
 
-  // Обновить задачу
   updateTask: async (id: string, data: TaskUpdate): Promise<Task> => {
     const response = await api.patch<Task>(`/tasks/${id}`, data)
     return response.data
   },
 
-  // Удалить задачу
   deleteTask: async (id: string): Promise<void> => {
     await api.delete(`/tasks/${id}`)
   },
 
-  // Вопросы к задачам
+  // === Назначения ===
+
+  assignTask: async (taskId: string): Promise<{ status: string }> => {
+    const response = await api.post(`/tasks/${taskId}/assign`)
+    return response.data
+  },
+
+  assignUserToTask: async (taskId: string, userId: string, role?: string): Promise<{ status: string }> => {
+    const response = await api.post(`/tasks/${taskId}/assign-user`, { user_id: userId, role })
+    return response.data
+  },
+
+  getAssignments: async (taskId: string): Promise<TaskAssignment[]> => {
+    const response = await api.get<TaskAssignment[]>(`/tasks/${taskId}/assignments`)
+    return response.data
+  },
+
+  cancelAssignment: async (taskId: string, assignmentId: string): Promise<void> => {
+    await api.delete(`/tasks/${taskId}/assignments/${assignmentId}`)
+  },
+
+  updateAssignment: async (taskId: string, assignmentId: string, data: { status?: string; role_in_task?: string }): Promise<TaskAssignment> => {
+    const response = await api.patch<TaskAssignment>(`/tasks/${taskId}/assignments/${assignmentId}`, data)
+    return response.data
+  },
+
+  reassignTask: async (taskId: string, newUserId: string, role?: string): Promise<{ status: string }> => {
+    const response = await api.post(`/tasks/${taskId}/reassign`, { new_user_id: newUserId, role })
+    return response.data
+  },
+
+  completeTask: async (taskId: string): Promise<Task> => {
+    const response = await api.post<Task>(`/tasks/${taskId}/complete`)
+    return response.data
+  },
+
+  // === Вопросы ===
+
   getTaskQuestions: async (taskId: string): Promise<TaskQuestion[]> => {
     const response = await api.get<TaskQuestion[]>(`/tasks/${taskId}/questions`)
     return response.data
@@ -54,7 +86,8 @@ export const tasksApi = {
     return response.data
   },
 
-  // Файлы задач
+  // === Файлы ===
+
   getTaskFiles: async (taskId: string) => {
     const response = await api.get(`/tasks/${taskId}/files`)
     return response.data

@@ -930,6 +930,176 @@ async def complete_task(
 
 
 # ============================================
+# Управление назначениями
+# ============================================
+
+@router.get("/{task_id}/assignments", response_model=list)
+async def get_task_assignments(
+    task_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Получить список назначений по задаче"""
+    from app.models.task import TaskAssignment
+    from sqlalchemy import select
+    
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    result = await db.execute(
+        select(TaskAssignment).where(TaskAssignment.task_id == task_id)
+    )
+    assignments = result.scalars().all()
+    
+    return [
+        {
+            "id": str(a.id),
+            "task_id": str(a.task_id),
+            "user_id": str(a.user_id),
+            "role_in_task": a.role_in_task,
+            "status": a.status.value if hasattr(a.status, 'value') else str(a.status),
+            "assigned_at": a.assigned_at.isoformat() if a.assigned_at else None,
+            "completed_at": a.completed_at.isoformat() if a.completed_at else None,
+        }
+        for a in assignments
+    ]
+
+
+@router.delete("/{task_id}/assignments/{assignment_id}", status_code=status.HTTP_200_OK)
+async def cancel_assignment(
+    task_id: UUID,
+    assignment_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """Отменить назначение (VP4PR / координатор)"""
+    from app.models.task import TaskAssignment, AssignmentStatus
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.id == assignment_id,
+            TaskAssignment.task_id == task_id
+        )
+    )
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    
+    assignment.status = AssignmentStatus.CANCELLED.value
+    
+    remaining = await db.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.task_id == task_id,
+            TaskAssignment.status.notin_(['cancelled'])
+        )
+    )
+    active_assignments = remaining.scalars().all()
+    active_non_cancelled = [a for a in active_assignments if a.id != assignment_id]
+    
+    task = await TaskService.get_task_by_id(db, task_id)
+    if task and not active_non_cancelled:
+        task.status = TaskStatus.OPEN
+    
+    await db.commit()
+    return {"status": "cancelled", "assignment_id": str(assignment_id)}
+
+
+@router.patch("/{task_id}/assignments/{assignment_id}", response_model=dict)
+async def update_assignment(
+    task_id: UUID,
+    assignment_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """Обновить назначение (статус, роль) — VP4PR / координатор"""
+    from app.models.task import TaskAssignment, AssignmentStatus
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.id == assignment_id,
+            TaskAssignment.task_id == task_id
+        )
+    )
+    assignment = result.scalar_one_or_none()
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    
+    if 'status' in body:
+        try:
+            assignment.status = AssignmentStatus(body['status']).value
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {body['status']}")
+    if 'role_in_task' in body:
+        assignment.role_in_task = body['role_in_task']
+    
+    await db.commit()
+    return {
+        "id": str(assignment.id),
+        "status": assignment.status.value if hasattr(assignment.status, 'value') else str(assignment.status),
+        "role_in_task": assignment.role_in_task,
+    }
+
+
+class ReassignRequest(BaseModel):
+    new_user_id: UUID
+    role: Optional[str] = None
+
+
+@router.post("/{task_id}/reassign", response_model=dict)
+async def reassign_task(
+    task_id: UUID,
+    body: ReassignRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_coordinator())
+):
+    """Переназначить задачу другому пользователю (VP4PR / координатор)"""
+    from app.models.task import TaskAssignment, AssignmentStatus
+    from sqlalchemy import select
+    
+    task = await TaskService.get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    
+    result = await db.execute(
+        select(TaskAssignment).where(
+            TaskAssignment.task_id == task_id,
+            TaskAssignment.status.notin_(['cancelled', 'completed'])
+        )
+    )
+    current_assignments = result.scalars().all()
+    for a in current_assignments:
+        a.status = AssignmentStatus.CANCELLED.value
+    
+    new_assignment = TaskAssignment(
+        task_id=task_id,
+        user_id=body.new_user_id,
+        role_in_task=body.role or "executor",
+        status=AssignmentStatus.ASSIGNED.value
+    )
+    db.add(new_assignment)
+    task.status = TaskStatus.ASSIGNED
+    
+    await db.commit()
+    
+    from app.services.notification_service import NotificationService
+    try:
+        await NotificationService.notify_task_assigned(
+            db=db,
+            user_id=body.new_user_id,
+            task_id=task.id,
+            task_title=task.title
+        )
+    except Exception:
+        pass
+    
+    return {"status": "reassigned", "new_user_id": str(body.new_user_id), "task_id": str(task_id)}
+
+
+# ============================================
 # Вопросы к задачам
 # ============================================
 

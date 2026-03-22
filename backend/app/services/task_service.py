@@ -193,7 +193,7 @@ class TaskService:
         """Получить задачу по ID с загруженными связанными данными"""
         from app.models.file import File
         
-        from app.models.task import TaskQuestion
+        from app.models.task_question import TaskQuestion
         query = select(Task).where(Task.id == task_id)
         query = query.options(
             selectinload(Task.stages),

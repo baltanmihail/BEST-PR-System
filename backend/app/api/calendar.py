@@ -229,6 +229,34 @@ async def sync_sheets_changes_from_db(
         )
 
 
+@router.post("/sync/person-timeline")
+async def sync_person_timeline(
+    sheet_name: str = Query("Timeline", description="Sheet name for person timeline"),
+    direction: str = Query("both", description="'to_sheets', 'from_sheets', or 'both'"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Bidirectional person-row timeline sync with Google Sheets (Gantt format)."""
+    import logging
+    logger = logging.getLogger(__name__)
+    try:
+        from app.services.google_service import GoogleService
+        from app.services.sheets_sync import SheetsSyncService
+        gs = GoogleService()
+        sync = SheetsSyncService(gs)
+
+        results = {}
+        if direction in ("from_sheets", "both"):
+            results["from_sheets"] = await sync.sync_person_timeline_from_sheets(db, sheet_name)
+        if direction in ("to_sheets", "both"):
+            results["to_sheets"] = await sync.sync_person_timeline_to_sheets(db, sheet_name)
+
+        return {"status": "ok", "results": results}
+    except Exception as e:
+        logger.error(f"Person timeline sync error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("")
 async def get_calendar(
     view: Literal["month", "week", "timeline", "gantt", "kanban"] = Query("month", description="Тип представления"),

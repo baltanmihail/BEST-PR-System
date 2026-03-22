@@ -1,28 +1,86 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Calendar as CalendarIcon, RefreshCw, Loader2, ChevronLeft, ChevronRight, Search } from 'lucide-react'
+import { Calendar as CalendarIcon, RefreshCw, Loader2, ChevronLeft, ChevronRight, Search, Users, User as UserIcon, X } from 'lucide-react'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { calendarApi, type CalendarRole, type DetailLevel } from '../services/calendar'
+import { tasksApi } from '../services/tasks'
 import { UserRole } from '../types/user'
-import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMonths } from 'date-fns'
+import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
+import { useNavigate } from 'react-router-dom'
 
 type ViewMode = 'week' | 'month' | 'semester'
+
+interface GanttStage {
+  id: string
+  name: string
+  start: Date
+  end: Date
+  color: 'green' | 'yellow' | 'red' | 'purple' | 'blue'
+  status: string
+}
+
+interface GanttTask {
+  id: string
+  title: string
+  type: string
+  status: string
+  priority: string
+  start: Date
+  end: Date
+  stages: GanttStage[]
+  assignees: string[]
+  assigneeNames: string[]
+  description?: string
+}
+
+interface PersonRow {
+  userId: string
+  name: string
+  role: string
+  tasks: GanttTask[]
+}
+
+const stageColorMap: Record<string, string> = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500',
+  purple: 'bg-purple-500',
+  blue: 'bg-blue-500',
+}
+
+const stageColorBorder: Record<string, string> = {
+  green: 'border-green-400',
+  yellow: 'border-yellow-400',
+  red: 'border-red-400',
+  purple: 'border-purple-400',
+  blue: 'border-blue-400',
+}
+
+const stageLabelMap: Record<string, string> = {
+  green: 'Процесс',
+  yellow: 'Согласование',
+  red: 'Дедлайн',
+  purple: 'Ревью',
+  blue: 'Буфер',
+}
 
 export default function Calendar() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
-  
-  // Состояния
+  const navigate = useNavigate()
+
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [detailLevel, setDetailLevel] = useState<DetailLevel>('normal')
   const [selectedRole, setSelectedRole] = useState<CalendarRole | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [showMyOnly, setShowMyOnly] = useState(false)
   const [hoveredTask, setHoveredTask] = useState<any | null>(null)
-  const [hoverPosition, setHoverPosition] = useState<{ x: number, y: number } | null>(null)
-  
+  const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null)
+  const [selectedTask, setSelectedTask] = useState<any | null>(null)
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const isCoordinator = user && (
@@ -33,24 +91,19 @@ export default function Calendar() {
     user.role === UserRole.VP4PR
   )
 
-  // Вычисляем диапазон дат
   const dateRange = useMemo(() => {
-    let start = new Date(currentDate)
-    let end = new Date(currentDate)
-    let days = []
-
+    let start: Date, end: Date
     if (viewMode === 'week') {
-      start = startOfWeek(currentDate, { locale: ru, weekStartsOn: 1 }) // Понедельник
+      start = startOfWeek(currentDate, { locale: ru, weekStartsOn: 1 })
       end = endOfWeek(currentDate, { locale: ru, weekStartsOn: 1 })
     } else if (viewMode === 'month') {
       start = startOfMonth(currentDate)
       end = endOfMonth(currentDate)
-    } else if (viewMode === 'semester') {
-      // Семестр: 6 месяцев
+    } else {
       start = startOfMonth(currentDate)
       end = endOfMonth(addMonths(start, 5))
     }
-
+    const days: Date[] = []
     let day = new Date(start)
     while (day <= end) {
       days.push(new Date(day))
@@ -59,345 +112,427 @@ export default function Calendar() {
     return { start, end, days }
   }, [currentDate, viewMode])
 
-  // Загрузка данных
+  // Months header for multi-month views
+  const monthHeaders = useMemo(() => {
+    const headers: { label: string; span: number; start: number }[] = []
+    let currentMonth = -1
+    let currentStart = 0
+    let currentSpan = 0
+    dateRange.days.forEach((day, i) => {
+      const m = day.getMonth()
+      if (m !== currentMonth) {
+        if (currentSpan > 0) headers.push({ label: format(dateRange.days[currentStart], 'LLLL', { locale: ru }), span: currentSpan, start: currentStart })
+        currentMonth = m
+        currentStart = i
+        currentSpan = 1
+      } else {
+        currentSpan++
+      }
+    })
+    if (currentSpan > 0) headers.push({ label: format(dateRange.days[currentStart], 'LLLL', { locale: ru }), span: currentSpan, start: currentStart })
+    return headers
+  }, [dateRange.days])
+
   const { data: calendarData, isLoading } = useQuery({
     queryKey: ['calendar', viewMode, selectedRole, dateRange.start.toISOString(), dateRange.end.toISOString(), detailLevel],
     queryFn: () => {
       const startStr = dateRange.start.toISOString().split('T')[0]
       const endStr = dateRange.end.toISOString().split('T')[0]
-      
       if (selectedRole === 'all') {
-        return calendarApi.getCalendar({
-          view: 'timeline', // Всегда берем timeline для гибкости
-          start_date: startStr,
-          end_date: endStr,
-          detail_level: detailLevel,
-          include_equipment: true,
-        })
-      } else {
-        return calendarApi.getCalendarByRole(selectedRole, {
-          view: 'timeline',
-          start_date: startStr,
-          end_date: endStr,
-          detail_level: detailLevel,
-          include_equipment: true,
-        })
+        return calendarApi.getCalendar({ view: 'timeline', start_date: startStr, end_date: endStr, detail_level: detailLevel, include_equipment: true })
       }
+      return calendarApi.getCalendarByRole(selectedRole, { view: 'timeline', start_date: startStr, end_date: endStr, detail_level: detailLevel, include_equipment: true })
     },
   })
 
-  // Синхронизация с Google Sheets
-  const syncToSheetsMutation = useMutation({
-    mutationFn: () =>
-      calendarApi.syncToSheets({
-        month: currentDate.getMonth() + 1,
-        year: currentDate.getFullYear(),
-        role: selectedRole === 'all' ? 'all' : selectedRole,
-      }),
+  const syncMutation = useMutation({
+    mutationFn: () => calendarApi.syncToSheets({ month: currentDate.getMonth() + 1, year: currentDate.getFullYear(), role: selectedRole === 'all' ? 'all' : selectedRole }),
   })
 
-  // Фильтрация задач (поиск)
-  const filteredItems = useMemo(() => {
-    if (!calendarData?.items) return []
-    return calendarData.items.filter((item: any) => {
-      if (searchQuery && item.title && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) return false
-      return true
-    })
-  }, [calendarData, searchQuery])
+  // Build person-based rows from calendar items
+  const personRows = useMemo<PersonRow[]>(() => {
+    const items = calendarData?.items || []
+    const byPerson = new Map<string, PersonRow>()
+    const unassigned: GanttTask[] = []
 
-  // Навигация
-  const navigateDate = (direction: 'prev' | 'next') => {
-    const newDate = new Date(currentDate)
-    if (viewMode === 'week') {
-      newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-    } else if (viewMode === 'month') {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-    } else if (viewMode === 'semester') {
-      newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 6 : -6))
+    for (const item of items) {
+      if (searchQuery && item.title && !item.title.toLowerCase().includes(searchQuery.toLowerCase())) continue
+
+      const start = item.start_date ? parseISO(item.start_date) : (item.due_date ? parseISO(item.due_date) : dateRange.start)
+      const end = item.end_date ? parseISO(item.end_date) : (item.due_date ? parseISO(item.due_date) : start)
+      const stages: GanttStage[] = (item.stages || []).map((s: any) => ({
+        id: s.id,
+        name: s.stage_name || s.name || '',
+        start: s.due_date ? addDays(parseISO(s.due_date), -1) : start,
+        end: s.due_date ? parseISO(s.due_date) : end,
+        color: s.status_color || 'green',
+        status: s.status || 'pending',
+      }))
+
+      const gTask: GanttTask = {
+        id: item.id,
+        title: item.title || '',
+        type: item.type_task || item.type || '',
+        status: item.status || '',
+        priority: item.priority || '',
+        start,
+        end,
+        stages,
+        assignees: (item.assignments || []).map((a: any) => a.user_id),
+        assigneeNames: (item.assignments || []).map((a: any) => a.user_name || a.user_id?.slice(0, 8) || '?'),
+        description: item.description,
+      }
+
+      if (!item.assignments || item.assignments.length === 0) {
+        unassigned.push(gTask)
+      } else {
+        for (const a of item.assignments) {
+          const key = a.user_id || 'unknown'
+          if (!byPerson.has(key)) {
+            byPerson.set(key, { userId: key, name: a.user_name || key.slice(0, 8), role: item.type_task || item.type || '', tasks: [] })
+          }
+          byPerson.get(key)!.tasks.push(gTask)
+        }
+      }
     }
-    setCurrentDate(newDate)
-  }
 
-  // Стили для задач
-  const getTaskColor = (type: string, status: string) => {
-    // Если задача завершена - зеленый
-    if (status === 'completed') return 'bg-green-500/20 border-green-500/50 text-green-300'
-    if (status === 'cancelled') return 'bg-red-500/20 border-red-500/50 text-red-300'
-    
-    switch (type) {
-      case 'smm': return 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-      case 'design': return 'bg-blue-500/20 border-blue-500/50 text-blue-300'
-      case 'channel': return 'bg-orange-500/20 border-orange-500/50 text-orange-300'
-      case 'prfr': return 'bg-purple-500/20 border-purple-500/50 text-purple-300'
-      case 'equipment': return 'bg-red-500/20 border-red-500/50 text-red-300'
-      case 'event': return 'bg-pink-500/20 border-pink-500/50 text-pink-300'
-      default: return 'bg-gray-500/20 border-gray-500/50 text-gray-300'
+    const rows = Array.from(byPerson.values())
+    if (unassigned.length > 0) {
+      rows.push({ userId: '__unassigned__', name: 'Не назначено', role: '', tasks: unassigned })
     }
-  }
 
-  const getTaskStyle = (item: any) => {
-    const start = item.start_date ? parseISO(item.start_date) : dateRange.start
-    const end = item.end_date ? parseISO(item.end_date) : (item.due_date ? parseISO(item.due_date) : start)
-    
-    // Ограничиваем рамками просмотра
-    const effectiveStart = start < dateRange.start ? dateRange.start : start
-    const effectiveEnd = end > dateRange.end ? dateRange.end : end
-    
+    // Filter "my only"
+    if (showMyOnly && user?.id) {
+      return rows.filter(r => r.userId === user.id)
+    }
+
+    return rows
+  }, [calendarData, searchQuery, showMyOnly, user, dateRange])
+
+  const dayWidth = viewMode === 'semester' ? 20 : viewMode === 'month' ? 36 : 80
+  const rowHeight = detailLevel === 'compact' ? 32 : detailLevel === 'detailed' ? 56 : 40
+
+  const getBarStyle = useCallback((task: GanttTask) => {
     const totalDays = dateRange.days.length
-    const startOffset = Math.max(0, (effectiveStart.getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24))
-    let duration = (effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)
-    
-    // Если это точка во времени (start == end), даем минимальную ширину
-    if (duration < 1) duration = 1
-    
+    const startOff = Math.max(0, differenceInDays(task.start, dateRange.start))
+    const endOff = Math.min(totalDays, differenceInDays(task.end, dateRange.start) + 1)
+    const dur = Math.max(1, endOff - startOff)
     return {
-      left: `${(startOffset / totalDays) * 100}%`,
-      width: `${(duration / totalDays) * 100}%`
+      left: startOff * dayWidth,
+      width: dur * dayWidth,
     }
+  }, [dateRange, dayWidth])
+
+  const getStageBarStyle = useCallback((stage: GanttStage) => {
+    const totalDays = dateRange.days.length
+    const startOff = Math.max(0, differenceInDays(stage.start, dateRange.start))
+    const endOff = Math.min(totalDays, differenceInDays(stage.end, dateRange.start) + 1)
+    const dur = Math.max(1, endOff - startOff)
+    return {
+      left: startOff * dayWidth,
+      width: dur * dayWidth,
+    }
+  }, [dateRange, dayWidth])
+
+  const navigateDate = (direction: 'prev' | 'next') => {
+    const d = new Date(currentDate)
+    if (viewMode === 'week') d.setDate(d.getDate() + (direction === 'next' ? 7 : -7))
+    else if (viewMode === 'month') d.setMonth(d.getMonth() + (direction === 'next' ? 1 : -1))
+    else d.setMonth(d.getMonth() + (direction === 'next' ? 6 : -6))
+    setCurrentDate(d)
   }
 
-  // Обработчик наведения
-  const handleMouseEnter = (e: React.MouseEvent, item: any) => {
+  const handleTaskHover = (e: React.MouseEvent, task: GanttTask) => {
     const rect = e.currentTarget.getBoundingClientRect()
-    setHoverPosition({ x: rect.left, y: rect.bottom + 10 })
-    setHoveredTask(item)
+    setHoverPosition({ x: Math.min(rect.left, window.innerWidth - 320), y: Math.min(rect.bottom + 8, window.innerHeight - 250) })
+    setHoveredTask(task)
   }
 
-  const handleMouseLeave = () => {
-    setHoveredTask(null)
-    setHoverPosition(null)
+  const handleTaskClick = (task: GanttTask) => {
+    setSelectedTask(task)
   }
+
+  const todayOffset = differenceInDays(new Date(), dateRange.start)
+  const totalWidth = dateRange.days.length * dayWidth
 
   return (
-    <div className="h-[calc(100vh-6rem)] flex flex-col p-4 space-y-4">
-      {/* Хедер */}
-      <div className={`glass-enhanced ${theme} p-4 rounded-xl flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4`}>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full xl:w-auto">
-          <div className="flex items-center gap-3">
-            <CalendarIcon className="h-6 w-6 text-best-accent" />
-            <div>
-              <h1 className="text-2xl font-bold text-white">Календарь</h1>
-              <p className="text-white/50 text-xs">
-                {format(currentDate, 'LLLL yyyy', { locale: ru })}
-              </p>
-            </div>
+    <div className="h-[calc(100vh-6rem)] flex flex-col p-4 space-y-3">
+      {/* Header */}
+      <div className={`glass-enhanced ${theme} p-3 rounded-xl flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3`}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full xl:w-auto">
+          <div className="flex items-center gap-2">
+            <CalendarIcon className="h-5 w-5 text-best-accent" />
+            <h1 className="text-xl font-bold text-white">Таймлайн</h1>
+            <span className="text-white/40 text-xs">{format(currentDate, 'LLLL yyyy', { locale: ru })}</span>
           </div>
-          
-          <div className="flex bg-white/10 rounded-lg p-1 self-stretch sm:self-auto">
-            {(['week', 'month', 'semester'] as const).map((mode) => (
-              <button 
-                key={mode}
-                onClick={() => setViewMode(mode)}
-                className={`flex-1 sm:flex-none px-3 py-1 rounded-md text-sm transition-all ${viewMode === mode ? 'bg-best-primary text-white' : 'text-white/70 hover:text-white'}`}
-              >
-                {mode === 'week' ? 'Неделя' : mode === 'month' ? 'Месяц' : 'Семестр'}
-              </button>
+          <div className="flex bg-white/10 rounded-lg p-0.5">
+            {(['week', 'month', 'semester'] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)}
+                className={`px-3 py-1 rounded-md text-xs transition-all ${viewMode === m ? 'bg-best-primary text-white' : 'text-white/60 hover:text-white'}`}
+              >{m === 'week' ? 'Неделя' : m === 'month' ? 'Месяц' : 'Семестр'}</button>
             ))}
           </div>
         </div>
-
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
-          {/* Поиск */}
-          <div className="relative flex-1 w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-white/50" />
-            <input
-              type="text"
-              placeholder="Поиск..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-white placeholder-white/30 focus:outline-none focus:border-best-primary/50 text-sm"
-            />
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          <div className="relative flex-1 min-w-[150px] max-w-[220px]">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/40" />
+            <input type="text" placeholder="Поиск..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-white placeholder-white/30 focus:outline-none focus:border-best-primary/50 text-xs" />
           </div>
-
-          {/* Фильтры */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <select
-              value={selectedRole}
-              onChange={(e) => setSelectedRole(e.target.value as any)}
-              className={`flex-1 sm:flex-none bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 text-sm`}
-            >
-              <option value="all">Все типы</option>
-              <option value="smm">SMM</option>
-              <option value="design">Design</option>
-              <option value="channel">Channel</option>
-              <option value="prfr">PR-FR</option>
-            </select>
-
-            <select
-              value={detailLevel}
-              onChange={(e) => setDetailLevel(e.target.value as any)}
-              className={`flex-1 sm:flex-none bg-white/10 text-white rounded-lg px-3 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme} [&>option]:bg-gray-800 text-sm`}
-            >
-              <option value="compact">Компактно</option>
-              <option value="normal">Обычно</option>
-              <option value="detailed">Подробно</option>
-            </select>
+          <select value={selectedRole} onChange={e => setSelectedRole(e.target.value as any)}
+            className={`bg-white/10 text-white rounded-lg px-2 py-1.5 border border-white/20 text-xs [&>option]:bg-gray-800`}>
+            <option value="all">Все</option>
+            <option value="smm">SMM</option>
+            <option value="design">Design</option>
+            <option value="channel">Channel</option>
+            <option value="prfr">PR-FR</option>
+          </select>
+          <select value={detailLevel} onChange={e => setDetailLevel(e.target.value as any)}
+            className={`bg-white/10 text-white rounded-lg px-2 py-1.5 border border-white/20 text-xs [&>option]:bg-gray-800`}>
+            <option value="compact">Компактно</option>
+            <option value="normal">Обычно</option>
+            <option value="detailed">Подробно</option>
+          </select>
+          <button onClick={() => setShowMyOnly(!showMyOnly)}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs transition-all border ${showMyOnly ? 'bg-best-primary text-white border-best-primary' : 'bg-white/5 text-white/60 border-white/10 hover:text-white'}`}>
+            {showMyOnly ? <UserIcon className="h-3 w-3" /> : <Users className="h-3 w-3" />}
+            <span>{showMyOnly ? 'Мои' : 'Все'}</span>
+          </button>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => navigateDate('prev')} className="p-1.5 hover:bg-white/10 rounded text-white"><ChevronLeft className="h-4 w-4" /></button>
+            <button onClick={() => setCurrentDate(new Date())} className="px-2 py-1 hover:bg-white/10 rounded text-white text-xs">Сегодня</button>
+            <button onClick={() => navigateDate('next')} className="p-1.5 hover:bg-white/10 rounded text-white"><ChevronRight className="h-4 w-4" /></button>
           </div>
-
-          {/* Навигация */}
-          <div className="flex items-center gap-1 self-end sm:self-auto">
-            <button onClick={() => navigateDate('prev')} className="p-2 hover:bg-white/10 rounded-lg text-white">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-            <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1 hover:bg-white/10 rounded-lg text-white text-sm">
-              Сегодня
-            </button>
-            <button onClick={() => navigateDate('next')} className="p-2 hover:bg-white/10 rounded-lg text-white">
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Синхронизация (для админов) */}
           {isCoordinator && (
-            <button
-              onClick={() => syncToSheetsMutation.mutate()}
-              disabled={syncToSheetsMutation.isPending}
-              className="p-2 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 transition-all disabled:opacity-50"
-              title="Синхронизировать с Google Sheets"
-            >
-              {syncToSheetsMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+            <button onClick={() => syncMutation.mutate()} disabled={syncMutation.isPending}
+              className="p-1.5 bg-best-primary text-white rounded-lg hover:bg-best-primary/80 disabled:opacity-50" title="Синхронизировать">
+              {syncMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </button>
           )}
         </div>
       </div>
 
-      {/* Таймлайн */}
+      {/* Legend */}
+      <div className="flex items-center gap-3 px-1 flex-wrap">
+        {Object.entries(stageLabelMap).map(([color, label]) => (
+          <div key={color} className="flex items-center gap-1">
+            <div className={`w-3 h-3 rounded-sm ${stageColorMap[color]}`} />
+            <span className="text-white/50 text-[10px]">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Gantt Chart */}
       <div className={`glass-enhanced ${theme} flex-1 rounded-xl overflow-hidden relative border border-white/10`}>
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin text-best-primary" />
-          </div>
+          <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-best-primary" /></div>
         ) : (
           <div className="absolute inset-0 overflow-auto" ref={scrollContainerRef}>
-            <div className="min-w-fit">
-                {/* Шапка календаря (Sticky) */}
-                <div className="sticky top-0 z-20 flex bg-[#1a1a2e] border-b border-white/10">
-                  <div className="sticky left-0 z-30 w-48 sm:w-64 p-4 border-r border-white/10 flex-shrink-0 font-bold text-white bg-[#1a1a2e]">
-                    Задача
-                  </div>
+            <div style={{ minWidth: totalWidth + 180 }}>
+              {/* Month headers */}
+              {viewMode !== 'week' && (
+                <div className="sticky top-0 z-30 flex" style={{ height: 24 }}>
+                  <div className="sticky left-0 z-40 w-[180px] flex-shrink-0 bg-[#1a1a2e]" />
                   <div className="flex">
-                    {dateRange.days.map((day) => {
-                      const isTodayDate = isSameDay(day, new Date())
-                      const isWeekend = day.getDay() === 0 || day.getDay() === 6
-                      const dayWidth = viewMode === 'semester' ? 'w-[30px] min-w-[30px]' : 'w-[40px] min-w-[40px]'
-                      
-                      return (
-                        <div 
-                          key={day.toISOString()} 
-                          className={`${dayWidth} text-center border-r border-white/5 py-2 flex flex-col items-center justify-center ${
-                            isTodayDate ? 'bg-best-primary/20' : isWeekend ? 'bg-white/5' : ''
-                          }`}
-                        >
-                          <span className="text-[10px] text-white/50 uppercase">{format(day, 'EEEEEE', { locale: ru })}</span>
-                          <span className={`text-sm font-bold ${isTodayDate ? 'text-best-primary' : 'text-white'}`}>
-                            {format(day, 'd')}
-                          </span>
-                        </div>
-                      )
-                    })}
+                    {monthHeaders.map((mh, i) => (
+                      <div key={i} style={{ width: mh.span * dayWidth }} className="text-center text-[10px] text-white/60 font-semibold border-r border-white/10 bg-[#1a1a2e] capitalize leading-6">
+                        {mh.label}
+                      </div>
+                    ))}
                   </div>
                 </div>
+              )}
 
-                {/* Тело таймлайна */}
-                <div>
-                  {filteredItems.map((item: any) => (
-                    <div key={item.id} className="flex border-b border-white/5 hover:bg-white/5 transition-colors group relative h-12">
-                      {/* Название задачи (Sticky Left) */}
-                      <div className="sticky left-0 z-10 w-48 sm:w-64 p-3 border-r border-white/10 flex-shrink-0 flex items-center bg-[#1a1a2e] group-hover:bg-[#252540] transition-colors">
-                        <div className="truncate text-white text-sm font-medium" title={item.title}>
-                          {item.title}
-                        </div>
+              {/* Day headers */}
+              <div className={`sticky ${viewMode !== 'week' ? 'top-6' : 'top-0'} z-20 flex border-b border-white/10`}>
+                <div className="sticky left-0 z-40 w-[180px] flex-shrink-0 p-2 border-r border-white/10 bg-[#1a1a2e]">
+                  <span className="text-white/70 font-semibold text-xs">Исполнитель</span>
+                </div>
+                <div className="flex">
+                  {dateRange.days.map(day => {
+                    const isToday = isSameDay(day, new Date())
+                    const isWeekend = day.getDay() === 0 || day.getDay() === 6
+                    return (
+                      <div key={day.toISOString()} style={{ width: dayWidth, minWidth: dayWidth }}
+                        className={`text-center border-r border-white/5 py-1 flex flex-col items-center ${isToday ? 'bg-best-primary/20' : isWeekend ? 'bg-white/[0.03]' : 'bg-[#1a1a2e]'}`}>
+                        {viewMode !== 'semester' && <span className="text-[9px] text-white/40 uppercase">{format(day, 'EEEEEE', { locale: ru })}</span>}
+                        <span className={`text-[11px] font-bold ${isToday ? 'text-best-primary' : 'text-white/80'}`}>{format(day, 'd')}</span>
                       </div>
-                      
-                      {/* Полоска задачи */}
-                      <div className="relative flex">
-                        {/* Сетка дней (фон) */}
-                        <div className="flex pointer-events-none">
-                          {dateRange.days.map((day) => (
-                            <div 
-                              key={day.toISOString()} 
-                              className={`${viewMode === 'semester' ? 'w-[30px] min-w-[30px]' : 'w-[40px] min-w-[40px]'} border-r border-white/5 ${
-                                isSameDay(day, new Date()) ? 'bg-best-primary/5' : ''
-                              }`}
-                            />
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Person rows */}
+              {personRows.map(row => (
+                <div key={row.userId}>
+                  {row.tasks.map((task, ti) => (
+                    <div key={`${row.userId}-${task.id}-${ti}`} className="flex border-b border-white/5 hover:bg-white/[0.02] transition-colors" style={{ height: rowHeight }}>
+                      <div className="sticky left-0 z-10 w-[180px] flex-shrink-0 px-3 flex items-center border-r border-white/10 bg-[#1a1a2e] hover:bg-[#252540] transition-colors">
+                        {ti === 0 ? (
+                          <div className="truncate">
+                            <span className="text-white text-xs font-medium block truncate">{row.name}</span>
+                            {row.role && <span className="text-white/30 text-[9px] uppercase">{row.role}</span>}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="relative flex-1" style={{ width: totalWidth }}>
+                        {/* Day grid background */}
+                        <div className="absolute inset-0 flex pointer-events-none">
+                          {dateRange.days.map(day => (
+                            <div key={day.toISOString()} style={{ width: dayWidth, minWidth: dayWidth }}
+                              className={`border-r border-white/5 ${isSameDay(day, new Date()) ? 'bg-best-primary/5' : ''}`} />
                           ))}
                         </div>
 
-                        {/* Сама задача */}
-                        <div 
-                          className={`absolute top-2 bottom-2 rounded-md border backdrop-blur-sm flex items-center px-2 cursor-pointer hover:brightness-110 transition-all shadow-lg ${getTaskColor(item.type_task || item.type, item.status)}`}
-                          style={getTaskStyle(item)}
-                          onMouseEnter={(e) => handleMouseEnter(e, item)}
-                          onMouseLeave={handleMouseLeave}
-                        >
-                          {detailLevel !== 'compact' && (
-                            <span className="text-xs font-bold truncate text-white drop-shadow-md">
-                              {item.title}
-                            </span>
-                          )}
-                        </div>
+                        {/* Task bar */}
+                        {detailLevel === 'detailed' && task.stages.length > 0 ? (
+                          // Show stages as individual blocks
+                          task.stages.map(stage => {
+                            const style = getStageBarStyle(stage)
+                            return (
+                              <div key={stage.id}
+                                className={`absolute top-1 rounded cursor-pointer hover:brightness-125 transition-all border ${stageColorMap[stage.color]} ${stageColorBorder[stage.color]} bg-opacity-70`}
+                                style={{ left: style.left, width: Math.max(style.width, dayWidth), height: rowHeight - 8 }}
+                                onClick={() => handleTaskClick(task)}
+                                onMouseEnter={e => handleTaskHover(e, task)}
+                                onMouseLeave={() => { setHoveredTask(null); setHoverPosition(null) }}>
+                                <span className="text-[9px] text-white font-medium px-1 truncate block leading-tight mt-0.5 drop-shadow">{stage.name}</span>
+                                {stage.end && <span className="text-[8px] text-white/60 px-1 block">{format(stage.end, 'd.MM')}</span>}
+                              </div>
+                            )
+                          })
+                        ) : (
+                          (() => {
+                            const style = getBarStyle(task)
+                            const typeColor = task.status === 'completed' ? 'bg-green-500/60 border-green-400/50'
+                              : task.status === 'cancelled' ? 'bg-red-500/30 border-red-400/30'
+                              : task.type === 'smm' ? 'bg-emerald-500/50 border-emerald-400/50'
+                              : task.type === 'design' ? 'bg-blue-500/50 border-blue-400/50'
+                              : task.type === 'channel' ? 'bg-orange-500/50 border-orange-400/50'
+                              : task.type === 'prfr' ? 'bg-purple-500/50 border-purple-400/50'
+                              : 'bg-gray-500/50 border-gray-400/50'
+                            return (
+                              <div
+                                className={`absolute top-1 rounded cursor-pointer hover:brightness-125 transition-all border ${typeColor}`}
+                                style={{ left: style.left, width: Math.max(style.width, dayWidth), height: rowHeight - 8 }}
+                                onClick={() => handleTaskClick(task)}
+                                onMouseEnter={e => handleTaskHover(e, task)}
+                                onMouseLeave={() => { setHoveredTask(null); setHoverPosition(null) }}>
+                                {detailLevel !== 'compact' && (
+                                  <span className="text-[10px] text-white font-semibold px-1.5 truncate block leading-tight mt-1 drop-shadow-md">{task.title}</span>
+                                )}
+                              </div>
+                            )
+                          })()
+                        )}
                       </div>
                     </div>
                   ))}
-                  
-                  {filteredItems.length === 0 && (
-                    <div className="p-8 text-center text-white/50 sticky left-0">
-                      Нет задач в выбранном периоде
-                    </div>
-                  )}
                 </div>
+              ))}
+
+              {personRows.length === 0 && (
+                <div className="p-8 text-center text-white/40 text-sm sticky left-0">
+                  {showMyOnly ? 'У вас нет задач в этом периоде' : 'Нет задач в выбранном периоде'}
+                </div>
+              )}
             </div>
+
+            {/* Today marker line */}
+            {todayOffset >= 0 && todayOffset < dateRange.days.length && (
+              <div className="absolute top-0 bottom-0 pointer-events-none z-10"
+                style={{ left: 180 + todayOffset * dayWidth + dayWidth / 2, width: 2 }}>
+                <div className="w-full h-full bg-best-primary/60" />
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Hover Card (Popover) */}
-      {hoveredTask && hoverPosition && (
-        <div 
-          className={`fixed z-50 w-72 p-4 rounded-xl glass-enhanced ${theme} border border-white/20 shadow-2xl pointer-events-none animate-in fade-in zoom-in-95 duration-200`}
-          style={{ 
-            left: Math.min(hoverPosition.x, window.innerWidth - 300), // Чтобы не уходило за правый край
-            top: Math.min(hoverPosition.y, window.innerHeight - 200)  // Чтобы не уходило за нижний край
-          }}
-        >
+      {/* Hover card */}
+      {hoveredTask && hoverPosition && !selectedTask && (
+        <div className={`fixed z-50 w-80 p-3 rounded-xl glass-enhanced ${theme} border border-white/20 shadow-2xl pointer-events-none`}
+          style={{ left: hoverPosition.x, top: hoverPosition.y }}>
           <div className="flex items-start justify-between mb-2">
-            <h4 className="text-white font-bold text-sm">{hoveredTask.title}</h4>
-            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${getTaskColor(hoveredTask.type_task || hoveredTask.type, hoveredTask.status).split(' ')[0]}`}>
-              {hoveredTask.status}
-            </span>
+            <h4 className="text-white font-bold text-sm flex-1">{hoveredTask.title}</h4>
+            <span className="text-[10px] uppercase font-bold text-white/60 ml-2">{hoveredTask.status}</span>
           </div>
-          
-          {hoveredTask.thumbnail && (
-            <img src={hoveredTask.thumbnail} alt="" className="w-full h-24 object-cover rounded-lg mb-2" />
-          )}
-          
-          <div className="space-y-1 text-xs text-white/70">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="h-3 w-3" />
-              <span>
-                {hoveredTask.start_date ? format(parseISO(hoveredTask.start_date), 'd MMM', { locale: ru }) : ''} 
-                {' - '}
-                {hoveredTask.end_date ? format(parseISO(hoveredTask.end_date), 'd MMM', { locale: ru }) : ''}
-              </span>
+          {hoveredTask.description && <p className="text-white/50 text-xs mb-2 line-clamp-2">{hoveredTask.description}</p>}
+          <div className="flex items-center gap-2 text-xs text-white/60 mb-2">
+            <CalendarIcon className="h-3 w-3" />
+            <span>{format(hoveredTask.start, 'd MMM', { locale: ru })} — {format(hoveredTask.end, 'd MMM', { locale: ru })}</span>
+          </div>
+          {hoveredTask.assigneeNames?.length > 0 && (
+            <div className="text-xs text-white/50">
+              <UserIcon className="h-3 w-3 inline mr-1" />{hoveredTask.assigneeNames.join(', ')}
             </div>
-            {hoveredTask.description && (
-              <p className="line-clamp-2 mt-1">{hoveredTask.description}</p>
-            )}
-            
-            {/* Этапы (если есть) */}
-            {hoveredTask.stages && hoveredTask.stages.length > 0 && (
-              <div className="mt-2 pt-2 border-t border-white/10">
-                <p className="font-semibold mb-1">Этапы:</p>
-                {hoveredTask.stages.map((stage: any) => (
-                  <div key={stage.id} className="flex justify-between items-center">
-                    <span>{stage.name}</span>
-                    <span className={stage.status === 'completed' ? 'text-green-400' : 'text-yellow-400'}>
-                      {stage.status === 'completed' ? '✓' : '•'}
-                    </span>
-                  </div>
+          )}
+          {hoveredTask.stages?.length > 0 && (
+            <div className="mt-2 pt-2 border-t border-white/10 space-y-1">
+              {hoveredTask.stages.map((s: GanttStage) => (
+                <div key={s.id} className="flex items-center gap-1.5">
+                  <div className={`w-2 h-2 rounded-sm ${stageColorMap[s.color]}`} />
+                  <span className="text-white/60 text-[10px]">{s.name}</span>
+                  {s.end && <span className="text-white/30 text-[10px] ml-auto">{format(s.end, 'd.MM')}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Task detail panel (slide-over) */}
+      {selectedTask && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedTask(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div className={`relative w-full max-w-md glass-enhanced ${theme} border-l border-white/20 p-6 overflow-y-auto`}
+            onClick={e => e.stopPropagation()}>
+            <button onClick={() => setSelectedTask(null)} className="absolute top-4 right-4 text-white/60 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="text-xl font-bold text-white mb-2">{selectedTask.title}</h2>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs px-2 py-0.5 rounded bg-best-primary/20 text-best-primary uppercase">{selectedTask.type}</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/60">{selectedTask.status}</span>
+              <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/60">{selectedTask.priority}</span>
+            </div>
+            {selectedTask.description && <p className="text-white/60 text-sm mb-4">{selectedTask.description}</p>}
+            <div className="text-sm text-white/70 mb-4">
+              <CalendarIcon className="h-4 w-4 inline mr-1" />
+              {format(selectedTask.start, 'd MMMM yyyy', { locale: ru })} — {format(selectedTask.end, 'd MMMM yyyy', { locale: ru })}
+            </div>
+            {selectedTask.assigneeNames?.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-white/80 font-semibold text-sm mb-1">Исполнители:</h3>
+                {selectedTask.assigneeNames.map((name: string, i: number) => (
+                  <span key={i} className="inline-block text-xs bg-white/10 text-white/70 rounded px-2 py-0.5 mr-1 mb-1">{name}</span>
                 ))}
               </div>
             )}
+            {selectedTask.stages?.length > 0 && (
+              <div className="mb-4">
+                <h3 className="text-white/80 font-semibold text-sm mb-2">Этапы:</h3>
+                <div className="space-y-2">
+                  {selectedTask.stages.map((s: GanttStage) => (
+                    <div key={s.id} className={`p-2 rounded border ${stageColorBorder[s.color]} bg-white/5`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2.5 h-2.5 rounded-sm ${stageColorMap[s.color]}`} />
+                        <span className="text-white text-sm font-medium">{s.name}</span>
+                        <span className="text-white/40 text-xs ml-auto">{stageLabelMap[s.color]}</span>
+                      </div>
+                      <div className="text-white/50 text-xs mt-1">
+                        {format(s.start, 'd MMM', { locale: ru })} — {format(s.end, 'd MMM', { locale: ru })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button onClick={() => { setSelectedTask(null); navigate(`/tasks`) }}
+              className="w-full bg-best-primary text-white py-2 rounded-lg hover:bg-best-primary/80 text-sm font-medium mt-2">
+              Открыть задачу
+            </button>
           </div>
         </div>
       )}

@@ -193,6 +193,32 @@ class GoogleService:
             self._oauth_sheets_service = None
             self._oauth_docs_service = None
     
+    def check_oauth_health(self) -> dict:
+        """Proactive OAuth health check — refresh token and report status."""
+        if not self._oauth_credentials:
+            return {"status": "not_configured", "message": "OAuth credentials not set"}
+        try:
+            if self._oauth_credentials.expired or not self._oauth_credentials.token:
+                self._oauth_credentials.refresh(Request())
+            return {
+                "status": "ok",
+                "token_valid": self._oauth_credentials.valid,
+                "expiry": self._oauth_credentials.expiry.isoformat() if self._oauth_credentials.expiry else None,
+            }
+        except Exception as e:
+            logger.error(f"OAuth health check failed: {e}")
+            return {"status": "error", "message": str(e)}
+
+    def try_reinitialize_oauth(self) -> dict:
+        """Attempt to reinitialize OAuth from scratch if refresh failed."""
+        try:
+            self._initialize_oauth_client()
+            if self._oauth_credentials and self._oauth_credentials.valid:
+                return {"status": "ok", "message": "OAuth reinitialized successfully"}
+            return {"status": "error", "message": "OAuth reinitialized but credentials invalid"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
     def _get_oauth_drive_service(self):
         """
         Получить Drive сервис на основе OAuth (для создания файлов от имени пользователя)
