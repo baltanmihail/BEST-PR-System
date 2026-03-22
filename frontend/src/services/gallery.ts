@@ -3,6 +3,7 @@ import api from './api'
 export interface GalleryFile {
   id?: string
   drive_id: string
+  folder_id?: string
   file_name: string
   file_type: string
   thumbnail_url?: string | null
@@ -79,7 +80,7 @@ export const galleryApi = {
     return response.data
   },
 
-  syncFromDrive: async (): Promise<{ status: string; added: number; message: string }> => {
+  syncFromDrive: async (): Promise<{ status: string; added: number; updated?: number; message: string }> => {
     const response = await api.post('/gallery/sync/drive')
     return response.data
   },

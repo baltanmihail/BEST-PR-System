@@ -123,112 +123,218 @@ class GalleryService:
         
         return list(items), total
     
+    def _build_file_info(self, google_service: GoogleService, file: dict) -> dict:
+        """Сформировать инфо о файле для хранения в JSON."""
+        file_id = file.get("id", "")
+        name = file.get("name", "Untitled")
+        mime_type = file.get("mimeType", "application/octet-stream")
+
+        try:
+            drive_url = google_service.get_shareable_link(file_id, background=False)
+        except Exception:
+            drive_url = google_service.get_file_url(file_id)
+
+        if mime_type.startswith("image/"):
+            file_type = "image"
+        elif mime_type.startswith("video/"):
+            file_type = "video"
+        else:
+            file_type = "document"
+
+        return {
+            "drive_id": file_id,
+            "file_name": name,
+            "file_type": file_type,
+            "thumbnail_url": drive_url if file_type == "image" else None,
+            "drive_url": drive_url,
+            "mime_type": mime_type,
+            "file_size": int(file.get("size", 0)),
+        }
+
+    @staticmethod
+    def _detect_category(files_info: list) -> GalleryCategory:
+        """Определить категорию проекта по набору файлов."""
+        has_video = any(f["file_type"] == "video" for f in files_info)
+        has_photo = any(f["file_type"] == "image" for f in files_info)
+        if has_video:
+            return GalleryCategory.VIDEO
+        if has_photo:
+            return GalleryCategory.PHOTO
+        return GalleryCategory.FINAL
+
+    @staticmethod
+    def _pick_thumbnail(files_info: list) -> Optional[str]:
+        """Выбрать превью: первое фото, или None."""
+        for f in files_info:
+            if f["file_type"] == "image" and f.get("thumbnail_url"):
+                return f["thumbnail_url"]
+        return None
+
     async def sync_gallery_from_drive(
         self,
         db: AsyncSession,
-        created_by: UUID
+        created_by: UUID,
     ) -> Dict:
         """
-        Синхронизировать галерею с Google Drive
-        
-        Сканирует папку Gallery и добавляет отсутствующие файлы в БД.
+        Синхронизирует галерею с Google Drive.
+
+        Структура на Drive:
+          Gallery/
+            ПроектА/          ← папка = один проект, имя = заголовок
+              видео.mp4
+              фото.jpg
+              доп.pdf
+            ПроектБ/
+              ...
+            одиночный.jpg     ← файл без папки = отдельный проект
         """
-        from app.models.gallery import GalleryItem, GalleryCategory
-        import mimetypes
-        
         google_service = self._get_google_service()
         drive_structure = self._get_drive_structure()
-        
-        # Получаем ID папки Gallery
+
         gallery_folder_id = drive_structure.get_gallery_folder_id()
         if not gallery_folder_id:
             return {"status": "error", "message": "Gallery folder not found"}
-            
-        # Получаем список файлов в папке
-        drive_files = google_service.list_files(folder_id=gallery_folder_id, background=False)
-        if not drive_files:
-            return {"status": "success", "added": 0, "message": "No files in Gallery folder"}
-            
-        # Получаем список существующих drive_id из БД
-        # Это не очень эффективно, но для начала сойдет. 
-        # Лучше было бы хранить drive_id в отдельной колонке или индексе, но у нас JSON
-        query = select(GalleryItem)
-        result = await db.execute(query)
+
+        top_items = google_service.list_files(folder_id=gallery_folder_id, background=False)
+        if not top_items:
+            return {"status": "success", "added": 0, "updated": 0, "message": "Папка Gallery пуста"}
+
+        # Собираем все существующие drive_id из БД и маппинг folder_id → gallery_item
+        result = await db.execute(select(GalleryItem))
         existing_items = result.scalars().all()
-        
-        existing_drive_ids = set()
+
+        existing_drive_ids: set[str] = set()
+        folder_id_to_item: dict[str, GalleryItem] = {}
+
         for item in existing_items:
             if item.files:
                 for f in item.files:
-                    if f.get("drive_id"):
-                        existing_drive_ids.add(f.get("drive_id"))
-        
-        added_count = 0
-        
-        for file in drive_files:
-            file_id = file.get("id")
-            if not file_id or file_id in existing_drive_ids:
+                    did = f.get("drive_id")
+                    if did:
+                        existing_drive_ids.add(did)
+                    fid = f.get("folder_id")
+                    if fid:
+                        folder_id_to_item[fid] = item
+
+        added = 0
+        updated = 0
+
+        folders = [f for f in top_items if f.get("mimeType") == "application/vnd.google-apps.folder"]
+        loose_files = [f for f in top_items if f.get("mimeType") != "application/vnd.google-apps.folder"]
+
+        # === Обработка папок (каждая папка = проект) ===
+        for folder in folders:
+            folder_id = folder["id"]
+            folder_name = folder.get("name", "Без названия")
+
+            children = google_service.list_files(folder_id=folder_id, background=False)
+            media_children = [c for c in children if c.get("mimeType") != "application/vnd.google-apps.folder"]
+
+            if not media_children:
                 continue
-                
-            # Игнорируем папки
-            if file.get("mimeType") == "application/vnd.google-apps.folder":
+
+            new_files_info = []
+            for child in media_children:
+                child_id = child.get("id", "")
+                if child_id in existing_drive_ids:
+                    continue
+                info = self._build_file_info(google_service, child)
+                new_files_info.append(info)
+                existing_drive_ids.add(child_id)
+
+            if folder_id in folder_id_to_item:
+                item = folder_id_to_item[folder_id]
+                if new_files_info:
+                    old_files = list(item.files or [])
+                    old_files.extend(new_files_info)
+                    item.files = old_files
+                    if not item.thumbnail_url:
+                        item.thumbnail_url = self._pick_thumbnail(old_files)
+                    updated += 1
+            else:
+                if not new_files_info:
+                    all_children_ids = {c.get("id") for c in media_children}
+                    if all_children_ids.issubset(existing_drive_ids):
+                        continue
+
+                all_files_info = []
+                for child in media_children:
+                    child_id = child.get("id", "")
+                    if any(f.get("drive_id") == child_id for f in new_files_info):
+                        all_files_info.append(next(f for f in new_files_info if f["drive_id"] == child_id))
+                    else:
+                        all_files_info.append(self._build_file_info(google_service, child))
+                        existing_drive_ids.add(child_id)
+
+                if not all_files_info:
+                    continue
+
+                folder_marker = {
+                    "drive_id": folder_id,
+                    "folder_id": folder_id,
+                    "file_name": folder_name,
+                    "file_type": "folder",
+                    "drive_url": f"https://drive.google.com/drive/folders/{folder_id}",
+                    "mime_type": "application/vnd.google-apps.folder",
+                    "file_size": 0,
+                }
+                all_files_info.insert(0, folder_marker)
+
+                category = self._detect_category(all_files_info)
+                thumbnail = self._pick_thumbnail(all_files_info)
+
+                new_item = GalleryItem(
+                    title=folder_name,
+                    description=None,
+                    category=category,
+                    created_by=created_by,
+                    files=all_files_info,
+                    thumbnail_url=thumbnail,
+                    tags=["Google Drive"],
+                )
+                db.add(new_item)
+                added += 1
+
+        # === Обработка одиночных файлов (не в подпапке) ===
+        for file in loose_files:
+            file_id = file.get("id", "")
+            if file_id in existing_drive_ids:
                 continue
-                
-            # Создаем новый элемент
-            name = file.get("name", "Untitled")
-            mime_type = file.get("mimeType", "application/octet-stream")
-            
-            # Опредлеляем категорию
-            category = GalleryCategory.FINAL
-            if mime_type.startswith("image/"):
-                category = GalleryCategory.PHOTO
-            elif mime_type.startswith("video/"):
-                category = GalleryCategory.VIDEO
-                
-            # Формируем инфо о файле
-            # Получаем публичную ссылку
-            try:
-                drive_url = google_service.get_shareable_link(file_id, background=False)
-            except:
-                drive_url = google_service.get_file_url(file_id)
-                
-            # Превью
-            thumbnail_url = None
-            if category == GalleryCategory.PHOTO:
-                thumbnail_url = drive_url
-                
-            files_info = [{
-                "drive_id": file_id,
-                "file_name": name,
-                "file_type": "image" if category == GalleryCategory.PHOTO else "video" if category == GalleryCategory.VIDEO else "document",
-                "thumbnail_url": thumbnail_url,
-                "drive_url": drive_url,
-                "mime_type": mime_type,
-                "file_size": int(file.get("size", 0))
-            }]
-            
-            # Создаем элемент в БД
+
+            info = self._build_file_info(google_service, file)
+            existing_drive_ids.add(file_id)
+
+            category = GalleryCategory.PHOTO if info["file_type"] == "image" else GalleryCategory.VIDEO if info["file_type"] == "video" else GalleryCategory.FINAL
+            thumbnail = info.get("thumbnail_url") if info["file_type"] == "image" else None
+
             new_item = GalleryItem(
-                title=name, # Используем имя файла как заголовок
-                description="Автоматически загружено из Google Drive",
+                title=file.get("name", "Untitled"),
+                description=None,
                 category=category,
                 created_by=created_by,
-                files=files_info,
-                thumbnail_url=thumbnail_url,
-                tags=["Google Drive"]
+                files=[info],
+                thumbnail_url=thumbnail,
+                tags=["Google Drive"],
             )
-            
             db.add(new_item)
-            added_count += 1
-            
-        if added_count > 0:
+            added += 1
+
+        if added > 0 or updated > 0:
             await db.commit()
-            
+
+        msg_parts = []
+        if added:
+            msg_parts.append(f"добавлено {added}")
+        if updated:
+            msg_parts.append(f"обновлено {updated}")
+        msg = ", ".join(msg_parts) if msg_parts else "Нет новых файлов"
+
         return {
             "status": "success",
-            "added": added_count,
-            "total_scanned": len(drive_files),
-            "message": f"Added {added_count} new items from Google Drive"
+            "added": added,
+            "updated": updated,
+            "total_scanned": len(top_items),
+            "message": msg,
         }
 
     @staticmethod

@@ -39,7 +39,7 @@ export default function Gallery() {
     mutationFn: () => galleryApi.syncFromDrive(),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['gallery'] })
-      alert(data.message || `Синхронизировано ${data.added} новых файлов`)
+      alert(data.message || `Добавлено: ${data.added}, обновлено: ${data.updated || 0}`)
     },
     onError: (error: any) => {
       console.error(error)
@@ -487,7 +487,9 @@ export default function Gallery() {
 
             {/* Видео / Изображение */}
             {selectedItem.files?.length > 0 && (() => {
-              const primaryFile = selectedItem.files[0]
+              const mediaFiles = selectedItem.files.filter(f => f.file_type !== 'folder')
+              const primaryFile = mediaFiles[0]
+              if (!primaryFile) return null
               const isVideo = primaryFile.file_type === 'video' || primaryFile.mime_type?.startsWith('video/')
               const isImage = primaryFile.file_type === 'image' || primaryFile.mime_type?.startsWith('image/')
               const driveId = primaryFile.drive_id
@@ -598,11 +600,14 @@ export default function Gallery() {
             )}
 
             {/* Файлы */}
-            {selectedItem.files && selectedItem.files.length > 0 && (
+            {selectedItem.files && selectedItem.files.length > 0 && (() => {
+              const visibleFiles = selectedItem.files.filter(f => f.file_type !== 'folder')
+              if (!visibleFiles.length) return null
+              return (
               <div>
-                <p className="text-white/60 text-sm mb-2">Файлы ({selectedItem.files.length})</p>
+                <p className="text-white/60 text-sm mb-2">Файлы ({visibleFiles.length})</p>
                 <div className="space-y-2">
-                  {selectedItem.files.map((file, idx) => {
+                  {visibleFiles.map((file, idx) => {
                     const driveUrl = file.drive_url || (file.drive_id ? `https://drive.google.com/file/d/${file.drive_id}/view` : null)
                     const isVideo = file.file_type === 'video' || file.mime_type?.startsWith('video/')
                     const size = file.file_size ? (file.file_size > 1048576 ? `${(file.file_size / 1048576).toFixed(1)} МБ` : `${(file.file_size / 1024).toFixed(0)} КБ`) : null
@@ -623,7 +628,8 @@ export default function Gallery() {
                   })}
                 </div>
               </div>
-            )}
+              )
+            })()}
           </div>
         </div>
       )}
