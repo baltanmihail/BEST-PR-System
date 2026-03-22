@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera, UserPlus, UserMinus, RefreshCw, CheckCircle, Pencil, Trash2, X, Save } from 'lucide-react'
+import { Clock, AlertCircle, MessageSquare, ChevronDown, ChevronUp, Image as ImageIcon, Camera, UserPlus, UserMinus, RefreshCw, CheckCircle, Pencil, Trash2, X, Save, Plus } from 'lucide-react'
 import { useParallaxHover } from '../hooks/useParallaxHover'
-import { Task, TaskUpdate } from '../types/task'
+import { Task, TaskUpdate, TaskStageCreate, TaskStageUpdate } from '../types/task'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -197,25 +197,6 @@ export default function TaskCard({ task }: TaskCardProps) {
   const getRoleName = (role: string) => {
     const names: Record<string, string> = { smm: 'SMM', design: 'Design', channel: 'Channel', prfr: 'PR-FR' }
     return names[role] || role
-  }
-
-  const getStageStatusColor = (status: string, color?: string) => {
-    if (color) {
-      const colorMap: Record<string, string> = {
-        green: 'bg-green-500/20 text-green-400 border-green-500/50',
-        yellow: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-        red: 'bg-red-500/20 text-red-400 border-red-500/50',
-        purple: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
-        blue: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-      }
-      return colorMap[color] || 'bg-white/10 text-white border-white/20'
-    }
-    const statusMap: Record<string, string> = {
-      completed: 'bg-green-500/20 text-green-400 border-green-500/50',
-      in_progress: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-      pending: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
-    }
-    return statusMap[status] || 'bg-white/10 text-white border-white/20'
   }
 
   const getUserDisplayName = (assignment: { user_id: string; user_name?: string }) => {
@@ -426,46 +407,16 @@ export default function TaskCard({ task }: TaskCardProps) {
         </div>
       )}
 
-      {/* Контрольные точки */}
-      {!isEditing && task.stages && task.stages.length > 0 && (
-        <div className="mb-4">
-          <h4 className={`text-white font-semibold mb-2 text-readable ${theme}`}>
-            Контрольные точки:
-          </h4>
-          <div className="space-y-2">
-            {task.stages
-              .sort((a, b) => a.stage_order - b.stage_order)
-              .map((stage) => (
-                <div
-                  key={stage.id}
-                  className="flex items-center justify-between p-2 bg-white/5 rounded-lg"
-                >
-                  <div className="flex items-center space-x-2">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(stage.status, stage.status_color)}`}
-                    >
-                      {stage.stage_name}
-                    </span>
-                    {stage.due_date && (
-                      <span className="text-white/60 text-xs">
-                        {new Date(stage.due_date).toLocaleDateString('ru-RU')}
-                      </span>
-                    )}
-                    {isRegistered && (
-                      <StageFileUpload taskId={task.id} stageId={stage.id} stageName={stage.stage_name} />
-                    )}
-                  </div>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium border ${getStageStatusColor(stage.status, stage.status_color)}`}
-                  >
-                    {stage.status === 'completed' ? '✅ Выполнено' :
-                     stage.status === 'in_progress' ? '🔄 В работе' : '⏳ Не начато'}
-                  </span>
-                </div>
-              ))}
-          </div>
-        </div>
-      )}
+      {/* Контрольные точки (этапы) */}
+      {!isEditing && (task.stages?.length || isCoordinator) ? (
+        <StagesSection
+          task={task}
+          isCoordinator={!!isCoordinator}
+          isRegistered={isRegistered}
+          theme={theme}
+          onInvalidate={invalidateTaskQueries}
+        />
+      ) : null}
 
       {!isEditing && <TaskQuestions taskId={task.id} />}
       {!isEditing && <TaskFiles taskId={task.id} />}
@@ -643,6 +594,258 @@ export default function TaskCard({ task }: TaskCardProps) {
       {assignMutation.isError && (
         <p className="text-red-400 text-xs mt-2">{(assignMutation.error as Error)?.message || 'Ошибка при назначении'}</p>
       )}
+    </div>
+  )
+}
+
+const stageColorOptions = ['green', 'yellow', 'red', 'purple', 'blue'] as const
+const stageColorNames: Record<string, string> = {
+  green: 'Процесс',
+  yellow: 'Согласование',
+  red: 'Дедлайн',
+  purple: 'Ревью',
+  blue: 'Буфер',
+}
+
+function StagesSection({ task, isCoordinator, isRegistered, theme, onInvalidate }: {
+  task: Task
+  isCoordinator: boolean
+  isRegistered: boolean
+  theme: string
+  onInvalidate: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [editingStageId, setEditingStageId] = useState<string | null>(null)
+  const [editStage, setEditStage] = useState<TaskStageUpdate>({})
+  const [showAddStage, setShowAddStage] = useState(false)
+  const [newStage, setNewStage] = useState<TaskStageCreate>({ stage_name: '', stage_order: (task.stages?.length || 0) + 1, status_color: 'green' })
+
+  const createStageMutation = useMutation({
+    mutationFn: (data: TaskStageCreate) => tasksApi.createStage(task.id, data),
+    onSuccess: () => {
+      onInvalidate()
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      setShowAddStage(false)
+      setNewStage({ stage_name: '', stage_order: (task.stages?.length || 0) + 2, status_color: 'green' })
+    },
+  })
+
+  const updateStageMutation = useMutation({
+    mutationFn: ({ stageId, data }: { stageId: string; data: TaskStageUpdate }) => tasksApi.updateStage(task.id, stageId, data),
+    onSuccess: () => {
+      onInvalidate()
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      setEditingStageId(null)
+    },
+  })
+
+  const deleteStageMutation = useMutation({
+    mutationFn: (stageId: string) => tasksApi.deleteStage(task.id, stageId),
+    onSuccess: () => {
+      onInvalidate()
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    },
+  })
+
+  const startEdit = (stage: Task['stages'] extends (infer S)[] | undefined ? NonNullable<S> : never) => {
+    setEditingStageId(stage.id)
+    setEditStage({
+      stage_name: stage.stage_name,
+      stage_order: stage.stage_order,
+      due_date: stage.due_date || undefined,
+      status: stage.status as TaskStageUpdate['status'],
+      status_color: stage.status_color as TaskStageUpdate['status_color'],
+    })
+  }
+
+  const saveEdit = () => {
+    if (!editingStageId) return
+    updateStageMutation.mutate({ stageId: editingStageId, data: editStage })
+  }
+
+  const formatDateForInput = (dateStr?: string | null) => {
+    if (!dateStr) return ''
+    const d = new Date(dateStr)
+    const pad = (n: number) => n.toString().padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+
+  const getStageStatusColor = (status: string, color?: string) => {
+    if (color) {
+      const colorMap: Record<string, string> = {
+        green: 'bg-green-500/20 text-green-400 border-green-500/50',
+        yellow: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+        red: 'bg-red-500/20 text-red-400 border-red-500/50',
+        purple: 'bg-purple-500/20 text-purple-400 border-purple-500/50',
+        blue: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+      }
+      return colorMap[color] || 'bg-white/10 text-white border-white/20'
+    }
+    const statusMap: Record<string, string> = {
+      completed: 'bg-green-500/20 text-green-400 border-green-500/50',
+      in_progress: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+      pending: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
+    }
+    return statusMap[status] || 'bg-white/10 text-white border-white/20'
+  }
+
+  const sortedStages = [...(task.stages || [])].sort((a, b) => a.stage_order - b.stage_order)
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className={`text-white font-semibold text-readable ${theme}`}>
+          Этапы ({sortedStages.length})
+        </h4>
+        {isCoordinator && (
+          <button
+            onClick={() => setShowAddStage(!showAddStage)}
+            className="text-best-primary hover:text-best-primary/80 text-xs flex items-center gap-1"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Добавить</span>
+          </button>
+        )}
+      </div>
+
+      {showAddStage && (
+        <div className="mb-3 p-3 bg-white/5 rounded-lg border border-white/10 space-y-2">
+          <input
+            type="text"
+            value={newStage.stage_name}
+            onChange={e => setNewStage({ ...newStage, stage_name: e.target.value })}
+            placeholder="Название этапа"
+            className="w-full bg-white/10 text-white rounded px-3 py-1.5 border border-white/20 focus:outline-none focus:ring-1 focus:ring-best-primary text-sm"
+            autoFocus
+            onKeyDown={e => { if (e.key === 'Enter' && newStage.stage_name.trim()) createStageMutation.mutate(newStage) }}
+          />
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              value={newStage.due_date || ''}
+              onChange={e => setNewStage({ ...newStage, due_date: e.target.value || undefined })}
+              className="flex-1 bg-white/10 text-white rounded px-2 py-1 border border-white/20 focus:outline-none text-xs [color-scheme:dark]"
+            />
+            <div className="flex gap-1">
+              {stageColorOptions.map(c => (
+                <button
+                  key={c}
+                  onClick={() => setNewStage({ ...newStage, status_color: c })}
+                  className={`w-5 h-5 rounded-full border-2 transition-all ${
+                    newStage.status_color === c ? 'scale-125 border-white' : 'border-transparent opacity-60 hover:opacity-100'
+                  }`}
+                  style={{ backgroundColor: c === 'green' ? '#22c55e' : c === 'yellow' ? '#eab308' : c === 'red' ? '#ef4444' : c === 'purple' ? '#a855f7' : '#3b82f6' }}
+                  title={stageColorNames[c]}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => newStage.stage_name.trim() && createStageMutation.mutate(newStage)}
+              disabled={!newStage.stage_name.trim() || createStageMutation.isPending}
+              className="bg-best-primary text-white px-3 py-1 rounded text-xs hover:bg-best-primary/80 disabled:opacity-50"
+            >
+              {createStageMutation.isPending ? 'Создаю...' : 'Создать'}
+            </button>
+            <button onClick={() => setShowAddStage(false)} className="bg-white/10 text-white px-3 py-1 rounded text-xs hover:bg-white/20">
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {sortedStages.map(stage => (
+          <div key={stage.id}>
+            {editingStageId === stage.id ? (
+              <div className="p-2.5 bg-white/5 rounded-lg border border-best-primary/30 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={editStage.stage_name || ''}
+                    onChange={e => setEditStage({ ...editStage, stage_name: e.target.value })}
+                    className="flex-1 bg-white/10 text-white rounded px-2 py-1 border border-white/20 focus:outline-none focus:ring-1 focus:ring-best-primary text-sm"
+                    autoFocus
+                  />
+                  <select
+                    value={editStage.status || stage.status}
+                    onChange={e => setEditStage({ ...editStage, status: e.target.value as TaskStageUpdate['status'] })}
+                    className="bg-white/10 text-white rounded px-2 py-1 border border-white/20 text-xs [&>option]:bg-gray-800"
+                  >
+                    <option value="pending">Не начато</option>
+                    <option value="in_progress">В работе</option>
+                    <option value="completed">Выполнено</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="datetime-local"
+                    value={formatDateForInput(editStage.due_date)}
+                    onChange={e => setEditStage({ ...editStage, due_date: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
+                    className="flex-1 bg-white/10 text-white rounded px-2 py-1 border border-white/20 focus:outline-none text-xs [color-scheme:dark]"
+                  />
+                  <div className="flex gap-1">
+                    {stageColorOptions.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setEditStage({ ...editStage, status_color: c as TaskStageUpdate['status_color'] })}
+                        className={`w-4 h-4 rounded-full border-2 transition-all ${
+                          (editStage.status_color || stage.status_color) === c ? 'scale-125 border-white' : 'border-transparent opacity-60 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: c === 'green' ? '#22c55e' : c === 'yellow' ? '#eab308' : c === 'red' ? '#ef4444' : c === 'purple' ? '#a855f7' : '#3b82f6' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveEdit} disabled={updateStageMutation.isPending}
+                    className="bg-best-primary text-white px-3 py-1 rounded text-xs hover:bg-best-primary/80 disabled:opacity-50 flex items-center gap-1">
+                    <Save className="h-3 w-3" />{updateStageMutation.isPending ? '...' : 'OK'}
+                  </button>
+                  <button onClick={() => setEditingStageId(null)} className="bg-white/10 text-white px-3 py-1 rounded text-xs hover:bg-white/20">
+                    Отмена
+                  </button>
+                  {isCoordinator && (
+                    <button onClick={() => { if (confirm('Удалить этап?')) deleteStageMutation.mutate(stage.id) }}
+                      className="ml-auto text-red-400/70 hover:text-red-400 text-xs flex items-center gap-1 px-2 py-1 rounded hover:bg-red-500/10">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`flex items-center gap-2 p-2 bg-white/5 rounded-lg group transition-all ${isCoordinator ? 'cursor-pointer hover:bg-white/10' : ''}`}
+                onClick={() => isCoordinator && startEdit(stage)}
+              >
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0`}
+                  style={{ backgroundColor: stage.status_color === 'green' ? '#22c55e' : stage.status_color === 'yellow' ? '#eab308' : stage.status_color === 'red' ? '#ef4444' : stage.status_color === 'purple' ? '#a855f7' : '#3b82f6' }}
+                />
+                <span className="text-white text-sm flex-1 truncate">{stage.stage_name}</span>
+                {stage.due_date && (
+                  <span className="text-white/50 text-xs flex-shrink-0">
+                    {new Date(stage.due_date).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}
+                    {' '}
+                    {new Date(stage.due_date).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium border flex-shrink-0 ${getStageStatusColor(stage.status, stage.status_color)}`}>
+                  {stage.status === 'completed' ? 'Готово' : stage.status === 'in_progress' ? 'В работе' : 'Ожидание'}
+                </span>
+                {isRegistered && (
+                  <div onClick={e => e.stopPropagation()}>
+                    <StageFileUpload taskId={task.id} stageId={stage.id} stageName={stage.stage_name} />
+                  </div>
+                )}
+                {isCoordinator && (
+                  <Pencil className="h-3 w-3 text-white/20 group-hover:text-white/60 flex-shrink-0 transition-colors" />
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

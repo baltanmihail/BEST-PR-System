@@ -208,17 +208,20 @@ export default function Calendar() {
     return rows
   }, [calendarData, searchQuery, showMyOnly, user, dateRange])
 
-  const dayWidth = viewMode === 'semester' ? 20 : viewMode === 'month' ? 36 : 80
-  const rowHeight = detailLevel === 'compact' ? 32 : detailLevel === 'detailed' ? 56 : 40
+  // dayWidth зависит ТОЛЬКО от режима просмотра (сколько дней нужно вместить)
+  const dayWidth = viewMode === 'semester' ? 18 : viewMode === 'month' ? 36 : 80
+  // rowHeight зависит от детализации (сколько информации показывать)
+  const rowHeight = detailLevel === 'compact' ? 28 : detailLevel === 'detailed' ? 72 : 40
 
   const getBarStyle = useCallback((task: GanttTask) => {
     const totalDays = dateRange.days.length
     const startOff = Math.max(0, differenceInDays(task.start, dateRange.start))
     const endOff = Math.min(totalDays, differenceInDays(task.end, dateRange.start) + 1)
     const dur = Math.max(1, endOff - startOff)
+    const w = dur * dayWidth
     return {
       left: startOff * dayWidth,
-      width: dur * dayWidth,
+      width: Math.max(w, dayWidth * 2),
     }
   }, [dateRange, dayWidth])
 
@@ -227,9 +230,10 @@ export default function Calendar() {
     const startOff = Math.max(0, differenceInDays(stage.start, dateRange.start))
     const endOff = Math.min(totalDays, differenceInDays(stage.end, dateRange.start) + 1)
     const dur = Math.max(1, endOff - startOff)
+    const w = dur * dayWidth
     return {
       left: startOff * dayWidth,
-      width: dur * dayWidth,
+      width: Math.max(w, dayWidth * 1.5),
     }
   }, [dateRange, dayWidth])
 
@@ -386,23 +390,45 @@ export default function Calendar() {
 
                         {/* Task bar */}
                         {detailLevel === 'detailed' && task.stages.length > 0 ? (
-                          // Show stages as individual blocks
-                          task.stages.map(stage => {
-                            const style = getStageBarStyle(stage)
-                            return (
-                              <div key={stage.id}
-                                className={`absolute top-1 rounded cursor-pointer hover:brightness-125 transition-all border ${stageColorMap[stage.color]} ${stageColorBorder[stage.color]} bg-opacity-70`}
-                                style={{ left: style.left, width: Math.max(style.width, dayWidth), height: rowHeight - 8 }}
-                                onClick={() => handleTaskClick(task)}
-                                onMouseEnter={e => handleTaskHover(e, task)}
-                                onMouseLeave={() => { setHoveredTask(null); setHoverPosition(null) }}>
-                                <span className="text-[9px] text-white font-medium px-1 truncate block leading-tight mt-0.5 drop-shadow">{stage.name}</span>
-                                {stage.end && <span className="text-[8px] text-white/60 px-1 block">{format(stage.end, 'd.MM')}</span>}
-                              </div>
-                            )
-                          })
-                        ) : (
-                          (() => {
+                          <>
+                            {/* Подробно: общий бар + этапы внутри */}
+                            {(() => {
+                              const style = getBarStyle(task)
+                              const typeColor = task.status === 'completed' ? 'bg-green-500/20 border-green-400/30'
+                                : task.type === 'smm' ? 'bg-emerald-500/10 border-emerald-400/30'
+                                : task.type === 'design' ? 'bg-blue-500/10 border-blue-400/30'
+                                : task.type === 'channel' ? 'bg-orange-500/10 border-orange-400/30'
+                                : task.type === 'prfr' ? 'bg-purple-500/10 border-purple-400/30'
+                                : 'bg-gray-500/10 border-gray-400/30'
+                              return (
+                                <div
+                                  className={`absolute top-1 rounded border ${typeColor}`}
+                                  style={{ left: style.left, width: style.width, height: rowHeight - 8 }}
+                                  onClick={() => handleTaskClick(task)}
+                                  onMouseEnter={e => handleTaskHover(e, task)}
+                                  onMouseLeave={() => { setHoveredTask(null); setHoverPosition(null) }}
+                                >
+                                  <span className="text-[9px] text-white/80 font-semibold px-1 truncate block drop-shadow">{task.title}</span>
+                                  <div className="flex items-end gap-px px-0.5 absolute bottom-0.5 left-0 right-0" style={{ height: rowHeight - 24 }}>
+                                    {task.stages.map(stage => {
+                                      const ss = getStageBarStyle(stage)
+                                      const relLeft = ss.left - style.left
+                                      return (
+                                        <div key={stage.id}
+                                          className={`absolute rounded-sm ${stageColorMap[stage.color]} cursor-pointer hover:brightness-125`}
+                                          style={{ left: Math.max(0, relLeft), width: Math.max(ss.width, dayWidth), height: '60%', bottom: 0 }}
+                                          title={`${stage.name} — ${format(stage.end, 'd.MM')}`}
+                                        >
+                                          <span className="text-[7px] text-white/90 px-0.5 truncate block leading-tight">{stage.name}</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          </>
+                        ) : (() => {
                             const style = getBarStyle(task)
                             const typeColor = task.status === 'completed' ? 'bg-green-500/60 border-green-400/50'
                               : task.status === 'cancelled' ? 'bg-red-500/30 border-red-400/30'
@@ -414,7 +440,7 @@ export default function Calendar() {
                             return (
                               <div
                                 className={`absolute top-1 rounded cursor-pointer hover:brightness-125 transition-all border ${typeColor}`}
-                                style={{ left: style.left, width: Math.max(style.width, dayWidth), height: rowHeight - 8 }}
+                                style={{ left: style.left, width: style.width, height: rowHeight - 8 }}
                                 onClick={() => handleTaskClick(task)}
                                 onMouseEnter={e => handleTaskHover(e, task)}
                                 onMouseLeave={() => { setHoveredTask(null); setHoverPosition(null) }}>
@@ -423,8 +449,7 @@ export default function Calendar() {
                                 )}
                               </div>
                             )
-                          })()
-                        )}
+                          })()}
                       </div>
                     </div>
                   ))}
@@ -528,7 +553,7 @@ export default function Calendar() {
                 </div>
               </div>
             )}
-            <button onClick={() => { setSelectedTask(null); navigate(`/tasks`) }}
+            <button onClick={() => { setSelectedTask(null); navigate(`/tasks?highlight=${selectedTask.id}`) }}
               className="w-full bg-best-primary text-white py-2 rounded-lg hover:bg-best-primary/80 text-sm font-medium mt-2">
               Открыть задачу
             </button>

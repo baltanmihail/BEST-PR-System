@@ -112,6 +112,9 @@ class TaskStageCreate(TaskStageBase):
 
 class TaskStageUpdate(BaseModel):
     """Схема для обновления этапа"""
+    stage_name: Optional[str] = None
+    stage_order: Optional[int] = Field(None, gt=0)
+    due_date: Optional[datetime] = None
     status: Optional[StageStatus] = None
     status_color: Optional[str] = Field(None, pattern="^(green|yellow|red|purple|blue)$")
     completed_at: Optional[datetime] = None

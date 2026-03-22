@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import Layout from './components/layout/Layout'
 import Home from './pages/Home'
@@ -9,7 +9,6 @@ import Stats from './pages/Stats'
 import Leaderboard from './pages/Leaderboard'
 import Support from './pages/Support'
 import Notifications from './pages/Notifications'
-import Activity from './pages/Activity'
 import Gallery from './pages/Gallery'
 import Register from './pages/Register'
 import Login from './pages/Login'
@@ -140,7 +139,7 @@ function AppContent() {
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/support" element={<Support />} />
             <Route path="/notifications" element={<Notifications />} />
-            <Route path="/activity" element={<Activity />} />
+            <Route path="/activity" element={<Navigate to="/notifications" replace />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/register" element={<Register />} />
             <Route path="/login" element={<Login />} />

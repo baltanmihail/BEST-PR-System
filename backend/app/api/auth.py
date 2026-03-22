@@ -3,10 +3,12 @@ API endpoints для аутентификации
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from typing import Optional
-from datetime import datetime, timezone
+from sqlalchemy import select, and_, text
+from typing import Optional, Dict
+from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel
 import logging
+import secrets
 
 from app.database import get_db
 from app.models.user import User, UserRole
@@ -16,6 +18,12 @@ from app.utils.permissions import get_current_user, require_vp4pr, get_current_u
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_login_codes: Dict[str, dict] = {}
+
+
+class CodeLoginRequest(BaseModel):
+    code: str
 
 
 @router.post("/bot-login", response_model=dict)
@@ -176,6 +184,79 @@ async def auth_telegram(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication error: {error_detail}"
         )
+
+
+@router.post("/generate-code", response_model=dict)
+async def generate_login_code(
+    telegram_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Генерация одноразового кода для входа.
+    Вызывается ботом когда пользователь запрашивает /code.
+    """
+    result = await db.execute(
+        select(User).where(
+            and_(User.telegram_id == telegram_id, User.deleted_at.is_(None))
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    code = f"{secrets.randbelow(900000) + 100000}"
+    _login_codes[code] = {
+        "user_id": str(user.id),
+        "telegram_id": telegram_id,
+        "expires": datetime.now(timezone.utc) + timedelta(minutes=5),
+    }
+
+    for old_code, info in list(_login_codes.items()):
+        if info["expires"] < datetime.now(timezone.utc):
+            del _login_codes[old_code]
+
+    return {"code": code, "expires_in": 300}
+
+
+@router.post("/code-login", response_model=dict)
+async def code_login(
+    body: CodeLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Вход по одноразовому коду, полученному в Telegram боте.
+    """
+    code = body.code.strip()
+    info = _login_codes.get(code)
+
+    if not info:
+        raise HTTPException(status_code=400, detail="Неверный код")
+    if info["expires"] < datetime.now(timezone.utc):
+        del _login_codes[code]
+        raise HTTPException(status_code=400, detail="Код истёк, запросите новый через /code в боте")
+
+    del _login_codes[code]
+
+    result = await db.execute(select(User).where(User.id == info["user_id"]))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
+    access_token = create_access_token(data={"sub": str(user.id), "telegram_id": user.telegram_id})
+    logger.info(f"Code login successful for user {user.telegram_id}")
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "telegram_id": user.telegram_id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "role": user.role.value if hasattr(user.role, 'value') else str(user.role),
+        },
+    }
 
 
 @router.get("/me", response_model=UserResponse)

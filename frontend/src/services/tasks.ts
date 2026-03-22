@@ -1,5 +1,5 @@
 import api from './api'
-import { Task, TaskCreate, TaskUpdate, TasksResponse, TaskAssignment } from '../types/task'
+import { Task, TaskCreate, TaskUpdate, TasksResponse, TaskAssignment, TaskStage, TaskStageCreate, TaskStageUpdate } from '../types/task'
 import { TaskQuestion } from '../types/task_question'
 
 export const tasksApi = {
@@ -84,6 +84,27 @@ export const tasksApi = {
   answerTaskQuestion: async (taskId: string, questionId: string, answer: string): Promise<TaskQuestion> => {
     const response = await api.post<TaskQuestion>(`/tasks/${taskId}/questions/${questionId}/answer`, { answer })
     return response.data
+  },
+
+  // === Этапы ===
+
+  getStages: async (taskId: string): Promise<TaskStage[]> => {
+    const response = await api.get<TaskStage[]>(`/tasks/${taskId}/stages`)
+    return response.data
+  },
+
+  createStage: async (taskId: string, data: TaskStageCreate): Promise<TaskStage> => {
+    const response = await api.post<TaskStage>(`/tasks/${taskId}/stages`, data)
+    return response.data
+  },
+
+  updateStage: async (taskId: string, stageId: string, data: TaskStageUpdate): Promise<TaskStage> => {
+    const response = await api.patch<TaskStage>(`/tasks/${taskId}/stages/${stageId}`, data)
+    return response.data
+  },
+
+  deleteStage: async (taskId: string, stageId: string): Promise<void> => {
+    await api.delete(`/tasks/${taskId}/stages/${stageId}`)
   },
 
   // === Файлы ===

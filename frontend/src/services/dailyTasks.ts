@@ -5,6 +5,8 @@ export interface DailyTask {
   title: string
   notes?: string
   date: string
+  scheduled_time?: string | null
+  priority: number
   is_done: boolean
   done_at?: string
   creator_id: string
@@ -18,6 +20,8 @@ export interface DailyTaskCreate {
   title: string
   notes?: string
   date?: string
+  scheduled_time?: string
+  priority?: number
   assignee_id?: string
 }
 
@@ -26,6 +30,8 @@ export interface DailyTaskUpdate {
   notes?: string
   is_done?: boolean
   date?: string
+  scheduled_time?: string | null
+  priority?: number
   assignee_id?: string
 }
 

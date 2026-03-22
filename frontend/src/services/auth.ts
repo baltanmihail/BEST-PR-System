@@ -35,13 +35,17 @@ export const authApi = {
     return response.data
   },
 
-  // Получить текущего пользователя
+  codeLogin: async (code: string): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/code-login', { code })
+    localStorage.setItem('access_token', response.data.access_token)
+    return response.data
+  },
+
   getMe: async (): Promise<User> => {
     const response = await api.get<User>('/auth/me')
     return response.data
   },
 
-  // Выход
   logout: (): void => {
     localStorage.removeItem('access_token')
   },

@@ -738,6 +738,7 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                         text="🌐 Перейти на сайт",
                         url=f"{settings.FRONTEND_URL}/?token={access_token}"
                     ),
+                    InlineKeyboardButton(text="🔑 Код для сайта", callback_data="get_login_code"),
                 ],
             ]
         elif "coordinator" in user_role:
@@ -771,6 +772,7 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                         text="🌐 Перейти на сайт",
                         url=f"{settings.FRONTEND_URL}/?token={access_token}"
                     ),
+                    InlineKeyboardButton(text="🔑 Код для сайта", callback_data="get_login_code"),
                 ],
             ]
         else:
@@ -805,6 +807,7 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
                         text="🌐 Перейти на сайт",
                         url=f"{settings.FRONTEND_URL}/?token={access_token}"
                     ),
+                    InlineKeyboardButton(text="🔑 Код для сайта", callback_data="get_login_code"),
                 ],
             ]
     
@@ -1895,6 +1898,7 @@ async def cmd_help(message: Message):
                 "/leaderboard - рейтинг участников\n"
                 "/equipment - мои заявки на оборудование\n"
                 "/notifications - уведомления\n"
+                "/code - код для входа на сайт с телефона\n"
                 "/help - эта справка\n\n"
                 "💡 <b>Также можно использовать веб-интерфейс:</b>\n"
                 f"<a href=\"{settings.FRONTEND_URL}\">Открыть сайт</a>"
@@ -1909,6 +1913,42 @@ async def cmd_help(message: Message):
         )
 
 
+@router.message(Command("code"))
+async def cmd_code(message: Message, state: FSMContext):
+    """Команда /code — генерирует одноразовый код для входа на сайте"""
+    try:
+        user = message.from_user
+        if not user or user.is_bot:
+            return
+
+        response = await call_api(
+            "POST",
+            f"/auth/generate-code?telegram_id={user.id}",
+        )
+
+        if "error" in response:
+            await message.answer(
+                "❌ Не удалось сгенерировать код.\n\n"
+                "Убедитесь, что вы зарегистрированы в системе.\n"
+                "Если нет — нажмите /start для регистрации.",
+                parse_mode="HTML",
+            )
+            return
+
+        code = response.get("code", "------")
+        site_url = settings.FRONTEND_URL + "/login"
+
+        await message.answer(
+            f"🔑 <b>Код для входа на сайт:</b>\n\n"
+            f"<code>{code}</code>\n\n"
+            f"⏳ Действует <b>5 минут</b>\n\n"
+            f"📱 Откройте сайт и введите код:\n"
+            f"<a href=\"{site_url}\">{site_url}</a>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Error in cmd_code: {e}")
+        await message.answer("❌ Произошла ошибка. Попробуйте позже.")
 
 
 # Убрали обработчик bestpr://auth, так как теперь QR-код содержит HTTPS ссылку на бота
@@ -4541,6 +4581,42 @@ async def process_equipment_request_cancel(callback: CallbackQuery, state: FSMCo
     
     # Очищаем состояние
     await state.clear()
+
+
+@router.callback_query(F.data == "get_login_code")
+async def callback_get_login_code(callback: CallbackQuery, state: FSMContext):
+    """Генерирует одноразовый код для входа на сайте (кнопка в меню)"""
+    try:
+        await callback.answer()
+        user = callback.from_user
+        if not user:
+            return
+
+        response = await call_api(
+            "POST",
+            f"/auth/generate-code?telegram_id={user.id}",
+        )
+        if "error" in response:
+            await callback.message.answer(
+                "❌ Не удалось сгенерировать код. Вы зарегистрированы?",
+                parse_mode="HTML",
+            )
+            return
+
+        code = response.get("code", "------")
+        site_url = settings.FRONTEND_URL + "/login"
+
+        await callback.message.answer(
+            f"🔑 <b>Код для входа на сайт:</b>\n\n"
+            f"<code>{code}</code>\n\n"
+            f"⏳ Действует <b>5 минут</b>\n\n"
+            f"📱 Откройте сайт и введите код:\n"
+            f"<a href=\"{site_url}\">{site_url}</a>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.error(f"Error in callback_get_login_code: {e}")
+        await callback.answer("❌ Ошибка. Попробуйте /code", show_alert=True)
 
 
 @router.callback_query(F.data == "main_menu")

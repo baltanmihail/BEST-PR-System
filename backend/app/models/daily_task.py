@@ -1,7 +1,7 @@
 """
 Модель быстрых задач на день (планёрка)
 """
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Date
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Date, Integer, Time
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -17,6 +17,8 @@ class DailyTask(Base):
     title = Column(String(500), nullable=False)
     notes = Column(Text, nullable=True)
     date = Column(Date, nullable=False, index=True)
+    scheduled_time = Column(Time, nullable=True)
+    priority = Column(Integer, default=0, nullable=False)  # 0=normal, 1=high, 2=urgent
     is_done = Column(Boolean, default=False, nullable=False)
     done_at = Column(DateTime(timezone=True), nullable=True)
 

@@ -1,19 +1,25 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { Loader2, CheckCircle2, AlertCircle, X, KeyRound, QrCode } from 'lucide-react'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { qrAuthApi, QRStatusResponse, QRGenerateResponse } from '../services/qrAuth'
+import { authApi } from '../services/auth'
 import { registrationApi } from '../services/registration'
+
+type LoginTab = 'qr' | 'code'
 
 export default function Login() {
   const { theme } = useThemeStore()
   const { login, user } = useAuthStore()
   const navigate = useNavigate()
+  const [tab, setTab] = useState<LoginTab>('code')
   const [sessionToken, setSessionToken] = useState<string | null>(null)
   const [showAgreement, setShowAgreement] = useState(false)
   const [agreementContent, setAgreementContent] = useState<string>('')
+  const [loginCode, setLoginCode] = useState('')
+  const [codeError, setCodeError] = useState('')
 
   // Получаем пользовательское соглашение
   const { data: agreementData } = useQuery({
@@ -195,194 +201,185 @@ export default function Login() {
     refetchQR()
   }
 
+  const codeLoginMutation = useMutation({
+    mutationFn: (code: string) => authApi.codeLogin(code),
+    onSuccess: (data) => {
+      login(data.access_token)
+      navigate('/')
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.detail || 'Неверный код или код истёк'
+      setCodeError(typeof msg === 'string' ? msg : 'Ошибка входа')
+    },
+  })
+
+  const handleCodeSubmit = () => {
+    const trimmed = loginCode.trim()
+    if (trimmed.length < 4) return
+    setCodeError('')
+    codeLoginMutation.mutate(trimmed)
+  }
+
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900`}>
-      <div className={`max-w-md w-full glass-enhanced ${theme} rounded-xl shadow-2xl p-8 border border-white/20 backdrop-blur-xl`}>
-        <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+      <div className={`max-w-md w-full glass-enhanced ${theme} rounded-xl shadow-2xl p-6 md:p-8 border border-white/20 backdrop-blur-xl`}>
+        <div className="flex items-center justify-between mb-5">
           <h1 className={`text-2xl font-bold text-white text-readable ${theme}`}>
             Вход в систему
           </h1>
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 rounded-lg hover:bg-white/10 transition-colors"
-          >
+          <button onClick={() => navigate('/')} className="p-2 rounded-lg hover:bg-white/10 transition-colors">
             <X className="w-5 h-5 text-white" />
           </button>
         </div>
 
-        <div className="text-center mb-6">
-          <p className={`text-white/80 text-readable ${theme} mb-4`}>
-            Отсканируйте QR-код или перейдите по ссылке ниже в Telegram бота для входа
-          </p>
+        {/* Вкладки: Код / QR */}
+        <div className="flex bg-white/10 rounded-lg p-1 mb-6">
+          <button
+            onClick={() => setTab('code')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+              tab === 'code' ? 'bg-best-primary text-white' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            По коду
+          </button>
+          <button
+            onClick={() => setTab('qr')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-sm font-medium transition-all ${
+              tab === 'qr' ? 'bg-best-primary text-white' : 'text-white/60 hover:text-white'
+            }`}
+          >
+            <QrCode className="w-4 h-4" />
+            QR-код
+          </button>
         </div>
 
-        {/* QR-код */}
-        <div className="flex flex-col items-center mb-6">
-          {qrLoading ? (
-            <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed rounded-lg">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        {/* === Вкладка: Вход по коду === */}
+        {tab === 'code' && (
+          <div className="space-y-5">
+            <div className={`rounded-lg p-4 bg-white/5 border border-white/10`}>
+              <h3 className="font-semibold text-white mb-2 text-sm">Как получить код:</h3>
+              <ol className="list-decimal list-inside space-y-1.5 text-sm text-white/70">
+                <li>
+                  Откройте бота{' '}
+                  <a href="https://t.me/BESTPRSystemBot" target="_blank" rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline font-medium">@BESTPRSystemBot</a>
+                </li>
+                <li>Отправьте команду <code className="bg-white/10 px-1.5 py-0.5 rounded text-white">/code</code></li>
+                <li>Введите полученный код ниже</li>
+              </ol>
             </div>
-          ) : qrData?.qr_code ? (
-            <div className="relative">
-              <img
-                src={qrData.qr_code}
-                alt="QR Code"
-                className="w-64 h-64 border-2 rounded-lg"
+
+            <div>
+              <label className="block text-white/60 text-sm mb-2">Одноразовый код</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={loginCode}
+                onChange={e => { setLoginCode(e.target.value.replace(/\D/g, '')); setCodeError('') }}
+                onKeyDown={e => { if (e.key === 'Enter') handleCodeSubmit() }}
+                placeholder="000000"
+                className="w-full bg-white/10 text-white text-center text-3xl tracking-[0.5em] rounded-xl px-4 py-4 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary placeholder-white/20 font-mono"
+                autoFocus
               />
-              {isExpired && (
-                <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <AlertCircle className="w-12 h-12 mx-auto mb-2" />
-                    <p className="font-semibold">QR-код истёк</p>
-                  </div>
-                </div>
-              )}
-              {isConfirmed && (
-                <div className="absolute inset-0 bg-green-500 bg-opacity-50 rounded-lg flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <CheckCircle2 className="w-12 h-12 mx-auto mb-2" />
-                    <p className="font-semibold">Вход подтверждён!</p>
-                  </div>
-                </div>
+              {codeError && (
+                <p className="mt-2 text-red-400 text-sm flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" /> {codeError}
+                </p>
               )}
             </div>
-          ) : qrError ? (
-            <div className="w-64 h-64 flex flex-col items-center justify-center border-2 border-dashed border-red-500/50 rounded-lg p-4">
-              <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-              <p className={`text-sm text-center ${theme === 'dark' ? 'text-red-400' : 'text-red-600'}`}>
-                Ошибка генерации QR-кода
-              </p>
-              <p className={`text-xs text-center mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                {qrError instanceof Error ? qrError.message : 'Попробуйте обновить страницу'}
-              </p>
-              <button
-                onClick={handleRefreshQR}
-                className={`mt-2 text-xs px-3 py-1 rounded ${theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-900'}`}
-              >
-                Обновить
-              </button>
-            </div>
-          ) : (
-            <div className="w-64 h-64 flex items-center justify-center border-2 border-dashed rounded-lg">
-              <AlertCircle className="w-8 h-8 text-gray-400" />
-            </div>
-          )}
-        </div>
 
-        {/* Статус */}
-        <div className="text-center mb-6">
-          {isPending && !qrLoading && (
-            <div className="flex items-center justify-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-              <p className={`${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>
-                Ожидание подтверждения...
-              </p>
-            </div>
-          )}
-          {isExpired && (
-            <div className="flex items-center justify-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-500" />
-              <p className="text-red-500">QR-код истёк. Обновите страницу.</p>
-            </div>
-          )}
-          {isConfirmed && (
-            <div className="flex items-center justify-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-              <p className="text-green-500">Вход подтверждён! Перенаправление...</p>
-            </div>
-          )}
-        </div>
-
-        {/* Инструкции */}
-        <div className={`glass-enhanced ${theme} rounded-lg p-4 mb-6 border border-white/20`}>
-          <h3 className="font-semibold mb-2 text-white text-readable ${theme}">
-            Как войти:
-          </h3>
-          <ol className="list-decimal list-inside space-y-1 text-sm text-white/80 text-readable ${theme}">
-            <li>
-              Откройте Telegram бота{' '}
-              <a
-                href="https://t.me/BESTPRSystemBot"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-500 hover:underline font-medium"
-              >
-                @BESTPRSystemBot
-              </a>
-            </li>
-            <li>Отсканируйте QR-код камерой телефона</li>
-            <li>Бот откроется автоматически в Telegram</li>
-            <li>Подтвердите вход в боте</li>
-            <li>Вы автоматически войдёте на сайт</li>
-          </ol>
-          <div className="mt-3 pt-3 border-t border-white/20">
-            <p className="text-xs text-white/70 text-readable ${theme}">
-              💡 <b>Совет:</b> Если вы ещё не зарегистрированы, после сканирования QR-кода бот предложит удобную регистрацию через WebApp прямо в Telegram!
-            </p>
-          </div>
-        </div>
-
-        {/* Пользовательское соглашение и обработка данных */}
-        <div className={`glass-enhanced ${theme} rounded-lg p-4 mb-6 border border-white/20`}>
-          <p className="text-xs text-white/60 text-readable ${theme}">
-            Входя в систему, вы соглашаетесь с{' '}
             <button
-              onClick={() => setShowAgreement(true)}
-              className="text-blue-500 hover:underline font-medium"
+              onClick={handleCodeSubmit}
+              disabled={loginCode.length < 6 || codeLoginMutation.isPending}
+              className="w-full bg-best-primary text-white py-3 rounded-xl font-medium hover:bg-best-primary/80 transition-all disabled:opacity-40 flex items-center justify-center gap-2"
             >
-              пользовательским соглашением
-            </button>
-            {' '}и{' '}
-            <button
-              onClick={() => {
-                const consentWindow = window.open('', '_blank', 'width=800,height=600')
-                if (consentWindow) {
-                  consentWindow.document.write(`
-                    <html>
-                      <head>
-                        <title>Согласие на обработку персональных данных</title>
-                        <style>
-                          body { font-family: Arial, sans-serif; padding: 20px; line-height: 1.6; max-width: 800px; margin: 0 auto; }
-                          h1 { color: #333; }
-                          p { margin-bottom: 1em; }
-                        </style>
-                      </head>
-                      <body>
-                        <h1>Согласие на обработку персональных данных</h1>
-                        <p>Настоящим я даю согласие на обработку моих персональных данных (Telegram ID, имя, username) в целях использования системы управления PR-отделом BEST Москва.</p>
-                        <p>Обработка персональных данных осуществляется в соответствии с Федеральным законом № 152-ФЗ "О персональных данных".</p>
-                        <p>Я понимаю, что могу отозвать согласие в любое время, обратившись к администратору системы.</p>
-                      </body>
-                    </html>
-                  `)
-                }
-              }}
-              className="text-blue-500 hover:underline font-medium"
-            >
-              обработкой персональных данных
-            </button>
-          </p>
-        </div>
-
-        {/* Кнопка обновления - показываем только если QR истёк и нет автообновления */}
-        {isExpired && (
-          <div className="flex justify-center">
-            <button
-              onClick={handleRefreshQR}
-              disabled={qrLoading}
-              className="w-full py-2 px-4 rounded-lg font-medium transition-colors bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 border border-white/20"
-            >
-              {qrLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 inline mr-2 animate-spin" />
-                  Генерация...
-                </>
+              {codeLoginMutation.isPending ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Проверяю...</>
               ) : (
-                'Обновить QR-код'
+                'Войти'
               )}
             </button>
           </div>
         )}
+
+        {/* === Вкладка: QR-код === */}
+        {tab === 'qr' && (
+          <div className="space-y-5">
+            <div className="flex flex-col items-center">
+              {qrLoading ? (
+                <div className="w-56 h-56 flex items-center justify-center border-2 border-dashed rounded-lg border-white/20">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                </div>
+              ) : qrData?.qr_code ? (
+                <div className="relative">
+                  <img src={qrData.qr_code} alt="QR Code" className="w-56 h-56 border-2 border-white/20 rounded-lg" />
+                  {isExpired && (
+                    <div className="absolute inset-0 bg-black/60 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-white">
+                        <AlertCircle className="w-10 h-10 mx-auto mb-1" />
+                        <p className="text-sm font-semibold">QR-код истёк</p>
+                      </div>
+                    </div>
+                  )}
+                  {isConfirmed && (
+                    <div className="absolute inset-0 bg-green-500/60 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-white">
+                        <CheckCircle2 className="w-10 h-10 mx-auto mb-1" />
+                        <p className="text-sm font-semibold">Вход подтверждён!</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : qrError ? (
+                <div className="w-56 h-56 flex flex-col items-center justify-center border-2 border-dashed border-red-500/50 rounded-lg p-4">
+                  <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
+                  <p className="text-sm text-center text-red-400">Ошибка QR</p>
+                  <button onClick={handleRefreshQR} className="mt-2 text-xs px-3 py-1 rounded bg-white/10 text-white hover:bg-white/20">Обновить</button>
+                </div>
+              ) : (
+                <div className="w-56 h-56 flex items-center justify-center border-2 border-dashed rounded-lg border-white/20">
+                  <Loader2 className="w-6 h-6 animate-spin text-white/40" />
+                </div>
+              )}
+            </div>
+
+            <div className="text-center text-sm">
+              {isPending && !qrLoading && (
+                <p className="text-white/60 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-400" /> Ожидание...
+                </p>
+              )}
+              {isConfirmed && <p className="text-green-400">Перенаправление...</p>}
+            </div>
+
+            <div className="rounded-lg p-4 bg-white/5 border border-white/10">
+              <ol className="list-decimal list-inside space-y-1 text-sm text-white/70">
+                <li>Отсканируйте QR камерой</li>
+                <li>Подтвердите в Telegram боте</li>
+                <li>Вы войдёте автоматически</li>
+              </ol>
+            </div>
+
+            {isExpired && (
+              <button onClick={handleRefreshQR} disabled={qrLoading}
+                className="w-full py-2.5 rounded-lg font-medium bg-white/10 text-white hover:bg-white/20 disabled:opacity-50 border border-white/20">
+                {qrLoading ? <><Loader2 className="w-4 h-4 inline mr-2 animate-spin" />Генерация...</> : 'Обновить QR-код'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Соглашение */}
+        <div className="mt-5 pt-4 border-t border-white/10">
+          <p className="text-xs text-white/40 text-center">
+            Входя в систему, вы соглашаетесь с{' '}
+            <button onClick={() => setShowAgreement(true)} className="text-blue-400 hover:underline">
+              пользовательским соглашением
+            </button>
+          </p>
+        </div>
       </div>
 
       {/* Модальное окно для пользовательского соглашения */}

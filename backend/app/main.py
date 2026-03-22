@@ -139,6 +139,21 @@ async def startup_event():
                 await db.execute(text("CREATE INDEX IF NOT EXISTS ix_daily_tasks_assignee_date ON daily_tasks(assignee_id, date)"))
                 await db.commit()
                 logger.info("✅ Fallback: создана таблица daily_tasks")
+
+            # Добавляем новые столбцы daily_tasks если нет
+            for col, coldef in [
+                ("scheduled_time", "TIME"),
+                ("priority", "INTEGER DEFAULT 0"),
+            ]:
+                r = await db.execute(text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name='daily_tasks' AND column_name=:col"
+                ), {"col": col})
+                if r.fetchone() is None:
+                    await db.execute(text(f"ALTER TABLE daily_tasks ADD COLUMN {col} {coldef}"))
+                    await db.commit()
+                    logger.info(f"✅ Fallback: добавлен столбец daily_tasks.{col}")
+
             # bot_message_tracking для хранения message_id планёрок
             r = await db.execute(text(
                 "SELECT table_name FROM information_schema.tables "

@@ -3,7 +3,7 @@ API endpoints для быстрых задач (планёрка на день)
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, desc, asc, nulls_last
 from sqlalchemy.orm import selectinload
 from typing import Optional, List
 from uuid import UUID
@@ -24,6 +24,8 @@ class DailyTaskCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     notes: Optional[str] = None
     date: Optional[date] = None
+    scheduled_time: Optional[str] = None  # "HH:MM"
+    priority: Optional[int] = Field(0, ge=0, le=2)
     assignee_id: Optional[str] = None
 
 
@@ -32,6 +34,8 @@ class DailyTaskUpdate(BaseModel):
     notes: Optional[str] = None
     is_done: Optional[bool] = None
     date: Optional[date] = None
+    scheduled_time: Optional[str] = None
+    priority: Optional[int] = Field(None, ge=0, le=2)
     assignee_id: Optional[str] = None
 
 
@@ -40,6 +44,8 @@ class DailyTaskResponse(BaseModel):
     title: str
     notes: Optional[str] = None
     date: str
+    scheduled_time: Optional[str] = None
+    priority: int = 0
     is_done: bool
     done_at: Optional[str] = None
     creator_id: str
@@ -58,6 +64,8 @@ def _task_to_response(task: DailyTask) -> DailyTaskResponse:
         title=task.title,
         notes=task.notes,
         date=str(task.date),
+        scheduled_time=task.scheduled_time.strftime("%H:%M") if task.scheduled_time else None,
+        priority=task.priority or 0,
         is_done=task.is_done,
         done_at=task.done_at.isoformat() if task.done_at else None,
         creator_id=str(task.creator_id),
@@ -92,7 +100,12 @@ async def get_daily_tasks(
         select(DailyTask)
         .where(and_(*conditions))
         .options(selectinload(DailyTask.creator), selectinload(DailyTask.assignee))
-        .order_by(DailyTask.is_done, DailyTask.created_at)
+        .order_by(
+            asc(DailyTask.is_done),
+            nulls_last(asc(DailyTask.scheduled_time)),
+            desc(DailyTask.priority),
+            asc(DailyTask.created_at),
+        )
     )
     result = await db.execute(query)
     tasks = result.scalars().all()
@@ -118,7 +131,12 @@ async def get_my_daily_tasks(
             DailyTask.date == d,
         )
         .options(selectinload(DailyTask.creator), selectinload(DailyTask.assignee))
-        .order_by(DailyTask.is_done, DailyTask.created_at)
+        .order_by(
+            asc(DailyTask.is_done),
+            nulls_last(asc(DailyTask.scheduled_time)),
+            desc(DailyTask.priority),
+            asc(DailyTask.created_at),
+        )
     )
     result = await db.execute(query)
     tasks = result.scalars().all()
@@ -135,10 +153,21 @@ async def create_daily_task(
     task_date = data.date or datetime.now(MSK).date()
     assignee_uuid = UUID(data.assignee_id) if data.assignee_id else current_user.id
 
+    sched_time = None
+    if data.scheduled_time:
+        try:
+            from datetime import time as _time
+            parts = data.scheduled_time.split(":")
+            sched_time = _time(int(parts[0]), int(parts[1]))
+        except Exception:
+            pass
+
     task = DailyTask(
         title=data.title,
         notes=data.notes,
         date=task_date,
+        scheduled_time=sched_time,
+        priority=data.priority or 0,
         creator_id=current_user.id,
         assignee_id=assignee_uuid,
     )
@@ -181,6 +210,15 @@ async def update_daily_task(
         task.date = data.date
     if data.assignee_id is not None:
         task.assignee_id = UUID(data.assignee_id)
+    if data.priority is not None:
+        task.priority = data.priority
+    if data.scheduled_time is not None:
+        try:
+            from datetime import time as _time
+            parts = data.scheduled_time.split(":")
+            task.scheduled_time = _time(int(parts[0]), int(parts[1]))
+        except Exception:
+            task.scheduled_time = None
     if data.is_done is not None:
         task.is_done = data.is_done
         task.done_at = datetime.now(timezone.utc) if data.is_done else None

@@ -91,6 +91,14 @@ export interface TaskUpdate {
   due_date?: string
 }
 
+export interface TaskStageUpdate {
+  stage_name?: string
+  stage_order?: number
+  due_date?: string | null
+  status?: 'pending' | 'in_progress' | 'completed'
+  status_color?: 'green' | 'yellow' | 'red' | 'purple' | 'blue'
+}
+
 export interface TasksResponse {
   items: Task[]
   total: number

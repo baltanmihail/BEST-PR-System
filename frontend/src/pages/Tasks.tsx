@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { CheckSquare, AlertCircle, Filter, Loader2, X, ChevronDown, ChevronUp, Plus } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { tasksApi } from '../services/tasks'
 import { publicApi } from '../services/public'
 import TaskCard from '../components/TaskCard'
@@ -8,11 +8,14 @@ import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { Task } from '../types/task'
 import { UserRole } from '../types/user'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 
 export default function Tasks() {
   const { theme } = useThemeStore()
   const { user } = useAuthStore()
+  const [searchParams] = useSearchParams()
+  const highlightId = searchParams.get('highlight')
+  const highlightRef = useRef<HTMLDivElement>(null)
   const isRegistered = user && user.is_active
   
   // Проверяем роль координатора или VP4PR
@@ -83,6 +86,14 @@ export default function Tasks() {
   }, [tasks, filters.type, filters.status, filters.priority])
 
   const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '')
+
+  useEffect(() => {
+    if (highlightId && highlightRef.current && !isLoading) {
+      setTimeout(() => {
+        highlightRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }, 300)
+    }
+  }, [highlightId, isLoading])
 
   return (
     <div className="max-w-7xl mx-auto p-4 md:p-6">
@@ -238,7 +249,12 @@ export default function Tasks() {
 
       <div className="grid grid-cols-1 gap-4">
         {filteredTasks.map((task, index) => (
-          <div key={task.id} data-tour={index === 0 ? "task-card" : undefined}>
+          <div
+            key={task.id}
+            ref={task.id === highlightId ? highlightRef : undefined}
+            data-tour={index === 0 ? "task-card" : undefined}
+            className={task.id === highlightId ? 'ring-2 ring-best-primary rounded-xl transition-all duration-500' : ''}
+          >
             <TaskCard task={task} />
           </div>
         ))}
