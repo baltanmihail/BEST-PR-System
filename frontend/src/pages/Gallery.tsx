@@ -57,8 +57,8 @@ export default function Gallery() {
   })
 
   const { data: tasksData } = useQuery({
-    queryKey: ['tasks', 'completed'],
-    queryFn: () => tasksApi.getTasks({ status: 'completed', limit: 20 }),
+    queryKey: ['tasks', 'for-gallery'],
+    queryFn: () => tasksApi.getTasks({ limit: 50 }),
     enabled: isLinkingTask
   })
 
@@ -488,26 +488,32 @@ export default function Gallery() {
             {/* Видео / Изображение */}
             {selectedItem.files?.length > 0 && (() => {
               const mediaFiles = selectedItem.files.filter(f => f.file_type !== 'folder')
-              const primaryFile = mediaFiles[0]
-              if (!primaryFile) return null
-              const isVideo = primaryFile.file_type === 'video' || primaryFile.mime_type?.startsWith('video/')
-              const isImage = primaryFile.file_type === 'image' || primaryFile.mime_type?.startsWith('image/')
-              const driveId = primaryFile.drive_id
+              const videoFile = mediaFiles.find(f => f.file_type === 'video' || f.mime_type?.startsWith('video/'))
+              const imageFile = mediaFiles.find(f => f.file_type === 'image' || f.mime_type?.startsWith('image/'))
 
-              if (isVideo && driveId) {
+              if (videoFile?.drive_id) {
+                const directUrl = `https://drive.usercontent.google.com/download?id=${videoFile.drive_id}&export=download&confirm=t`
                 return (
                   <div className="mb-4 rounded-lg overflow-hidden bg-black aspect-video">
-                    <iframe
-                      src={`https://drive.google.com/file/d/${driveId}/preview`}
+                    <video
+                      controls
+                      preload="metadata"
                       className="w-full h-full"
-                      allow="autoplay; encrypted-media"
-                      allowFullScreen
-                    />
+                      poster={selectedItem.thumbnail_url || undefined}
+                    >
+                      <source src={directUrl} type={videoFile.mime_type || 'video/mp4'} />
+                      <iframe
+                        src={`https://drive.google.com/file/d/${videoFile.drive_id}/preview`}
+                        className="w-full h-full"
+                        allow="autoplay; encrypted-media"
+                        allowFullScreen
+                      />
+                    </video>
                   </div>
                 )
               }
-              if (isImage && selectedItem.thumbnail_url) {
-                return <img src={selectedItem.thumbnail_url} alt={selectedItem.title} className="w-full max-h-96 object-contain rounded-lg mb-4 bg-black/30" />
+              if (imageFile && (imageFile.thumbnail_url || imageFile.drive_url)) {
+                return <img src={imageFile.thumbnail_url || imageFile.drive_url || ''} alt={selectedItem.title} className="w-full max-h-96 object-contain rounded-lg mb-4 bg-black/30" />
               }
               if (selectedItem.thumbnail_url) {
                 return <img src={selectedItem.thumbnail_url} alt={selectedItem.title} className="w-full max-h-96 object-contain rounded-lg mb-4 bg-black/30" />
@@ -549,18 +555,43 @@ export default function Gallery() {
             {/* Связанная задача */}
             {selectedItem.task ? (
               <div className="mb-4 p-4 bg-white/5 rounded-lg border border-white/10">
-                <h3 className="text-white font-semibold mb-2 flex items-center gap-2">
-                  <CheckSquare className="h-4 w-4 text-green-400" />
-                  Связанная задача
-                </h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-white font-semibold flex items-center gap-2">
+                    <CheckSquare className="h-4 w-4 text-green-400" />
+                    Связанная задача
+                  </h3>
+                  {isCoordinator && (
+                    <button
+                      onClick={() => {
+                        if (confirm('Отвязать задачу?')) updateItemMutation.mutate({ id: selectedItem.id, data: { task_id: undefined } as any })
+                      }}
+                      className="text-white/30 hover:text-red-400 text-xs"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
                 <p className="font-medium text-white mb-1">{selectedItem.task.title}</p>
                 {selectedItem.task.description && (
                   <p className="text-white/60 text-sm mb-2 line-clamp-3">{selectedItem.task.description}</p>
                 )}
-                <div className="flex flex-wrap gap-4 text-xs text-white/50">
+                <div className="flex flex-wrap gap-4 text-xs text-white/50 mb-2">
                   {selectedItem.task.due_date && <span>Дедлайн: {new Date(selectedItem.task.due_date).toLocaleDateString('ru-RU')}</span>}
                   {selectedItem.task.completed_at && <span>Завершено: {new Date(selectedItem.task.completed_at).toLocaleDateString('ru-RU')}</span>}
                 </div>
+                {selectedItem.task.assignees && selectedItem.task.assignees.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-white/10">
+                    <p className="text-white/50 text-xs mb-1.5">Ответственные:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedItem.task.assignees.map(a => (
+                        <span key={a.user_id} className="px-2.5 py-1 bg-white/10 rounded-full text-xs text-white flex items-center gap-1">
+                          <User className="h-3 w-3 text-best-primary" />
+                          {a.full_name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : isCoordinator ? (
               <div className="mb-4 p-4 bg-white/5 rounded-lg border border-dashed border-white/20">
@@ -610,19 +641,33 @@ export default function Gallery() {
                   {visibleFiles.map((file, idx) => {
                     const driveUrl = file.drive_url || (file.drive_id ? `https://drive.google.com/file/d/${file.drive_id}/view` : null)
                     const isVideo = file.file_type === 'video' || file.mime_type?.startsWith('video/')
+                    const isImage = file.file_type === 'image' || file.mime_type?.startsWith('image/')
                     const size = file.file_size ? (file.file_size > 1048576 ? `${(file.file_size / 1048576).toFixed(1)} МБ` : `${(file.file_size / 1024).toFixed(0)} КБ`) : null
+                    const isThumbnail = selectedItem.thumbnail_url && (file.thumbnail_url === selectedItem.thumbnail_url || file.drive_url === selectedItem.thumbnail_url)
                     return (
-                      <div key={file.drive_id || idx} className="p-3 bg-white/10 rounded-lg flex items-center justify-between gap-3">
+                      <div key={file.drive_id || idx} className={`p-3 rounded-lg flex items-center justify-between gap-3 ${isThumbnail ? 'bg-best-primary/20 border border-best-primary/40' : 'bg-white/10'}`}>
                         <div className="flex items-center gap-2 min-w-0">
                           {isVideo ? <Play className="h-4 w-4 text-best-secondary flex-shrink-0" /> : <Image className="h-4 w-4 text-best-primary flex-shrink-0" />}
                           <span className="text-white text-sm truncate">{file.file_name}</span>
                           {size && <span className="text-white/40 text-xs flex-shrink-0">{size}</span>}
+                          {isThumbnail && <span className="text-best-primary text-[10px] font-bold flex-shrink-0">ПРЕВЬЮ</span>}
                         </div>
-                        {driveUrl && (
-                          <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs flex-shrink-0">
-                            <ExternalLink className="h-3.5 w-3.5" /> Открыть
-                          </a>
-                        )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isCoordinator && isImage && !isThumbnail && (file.thumbnail_url || file.drive_url) && (
+                            <button
+                              onClick={() => updateItemMutation.mutate({ id: selectedItem.id, data: { thumbnail_url: file.thumbnail_url || file.drive_url || undefined } })}
+                              className="text-best-primary hover:text-best-primary/70 text-[11px] font-medium whitespace-nowrap"
+                              title="Сделать превью проекта"
+                            >
+                              📷 Превью
+                            </button>
+                          )}
+                          {driveUrl && (
+                            <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs">
+                              <ExternalLink className="h-3.5 w-3.5" /> Открыть
+                            </a>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

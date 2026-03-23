@@ -10,6 +10,16 @@ from app.models.gallery import GalleryCategory
 from app.models.task import TaskStatus
 
 
+class GalleryTaskAssignee(BaseModel):
+    """Ответственный за задачу"""
+    user_id: UUID
+    full_name: str
+    role: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class GalleryTaskInfo(BaseModel):
     """Краткая информация о связанной задаче"""
     id: UUID
@@ -18,6 +28,7 @@ class GalleryTaskInfo(BaseModel):
     status: TaskStatus
     due_date: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    assignees: List[GalleryTaskAssignee] = Field(default_factory=list)
     
     class Config:
         from_attributes = True
@@ -26,8 +37,9 @@ class GalleryTaskInfo(BaseModel):
 class GalleryFileInfo(BaseModel):
     """Информация о файле в галерее"""
     drive_id: str = Field(..., description="ID файла в Google Drive")
+    folder_id: Optional[str] = Field(None, description="ID папки проекта (маркер)")
     file_name: str = Field(..., description="Название файла")
-    file_type: str = Field(..., description="Тип файла (image, video, document, etc.)")
+    file_type: str = Field(..., description="Тип файла (image, video, document, folder)")
     thumbnail_url: Optional[str] = Field(None, description="URL превью файла")
     drive_url: Optional[str] = Field(None, description="Ссылка для просмотра файла в Google Drive")
     file_size: Optional[int] = Field(None, description="Размер файла в байтах")

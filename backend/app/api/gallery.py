@@ -11,13 +11,73 @@ from app.database import get_db
 from app.models.user import User
 from app.models.gallery import GalleryCategory
 from app.schemas.gallery import (
-    GalleryItemResponse, GalleryItemCreate, GalleryItemUpdate, GalleryItemListResponse, GalleryFileInfo
+    GalleryItemResponse, GalleryItemCreate, GalleryItemUpdate, GalleryItemListResponse,
+    GalleryFileInfo, GalleryTaskInfo, GalleryTaskAssignee
 )
 from app.services.gallery_service import GalleryService
 from app.utils.permissions import get_current_user, require_coordinator
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/gallery", tags=["gallery"])
+
+
+async def _build_task_info(db, task) -> Optional[GalleryTaskInfo]:
+    """Построить GalleryTaskInfo с ответственными из связанной задачи."""
+    if not task:
+        return None
+    from sqlalchemy.orm import selectinload
+    from app.models.task import Task, TaskAssignment
+    from sqlalchemy import select
+
+    q = (
+        select(Task)
+        .where(Task.id == task.id)
+        .options(selectinload(Task.assignments).selectinload(TaskAssignment.user))
+    )
+    result = await db.execute(q)
+    full_task = result.scalar_one_or_none()
+    if not full_task:
+        return GalleryTaskInfo.model_validate(task)
+
+    assignees = []
+    for a in (full_task.assignments or []):
+        if hasattr(a, 'user') and a.user:
+            assignees.append(GalleryTaskAssignee(
+                user_id=a.user.id,
+                full_name=a.user.full_name,
+                role=a.user.role.value if hasattr(a.user.role, 'value') else str(a.user.role),
+            ))
+    return GalleryTaskInfo(
+        id=full_task.id,
+        title=full_task.title,
+        description=full_task.description,
+        status=full_task.status,
+        due_date=full_task.due_date,
+        completed_at=full_task.completed_at,
+        assignees=assignees,
+    )
+
+
+async def _build_response(db, item) -> GalleryItemResponse:
+    """Построить GalleryItemResponse из ORM-объекта."""
+    files_info = [GalleryFileInfo(**fd) for fd in (item.files or [])]
+    task_info = await _build_task_info(db, item.task) if item.task else None
+    return GalleryItemResponse(
+        id=item.id,
+        title=item.title,
+        description=item.description,
+        category=item.category,
+        tags=item.tags or [],
+        task_id=item.task_id,
+        thumbnail_url=item.thumbnail_url,
+        files=files_info,
+        created_by=item.created_by,
+        creator_name=item.creator.full_name if item.creator else None,
+        task=task_info,
+        sort_order=item.sort_order,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 
 class GalleryReorderRequest(BaseModel):
@@ -63,26 +123,9 @@ async def get_gallery_items(
         sort_by=sort_by
     )
     
-    # Преобразуем в ответ с информацией о создателе
     items_response = []
     for item in items:
-        files_info = [GalleryFileInfo(**file_data) for file_data in (item.files or [])]
-        
-        items_response.append(GalleryItemResponse(
-            id=item.id,
-            title=item.title,
-            description=item.description,
-            category=item.category,
-            tags=item.tags or [],
-            task_id=item.task_id,
-            thumbnail_url=item.thumbnail_url,
-            files=files_info,
-            created_by=item.created_by,
-            creator_name=item.creator.full_name if item.creator else None,
-            sort_order=item.sort_order,
-            created_at=item.created_at,
-            updated_at=item.updated_at
-        ))
+        items_response.append(await _build_response(db, item))
     
     return GalleryItemListResponse(
         items=items_response,
@@ -111,47 +154,7 @@ async def get_gallery_item(
             detail="Gallery item not found"
         )
     
-    # Получаем ссылки на файлы в Google Drive
-    files_info = []
-    if item.files:
-        from app.services.google_service import GoogleService
-        from concurrent.futures import ThreadPoolExecutor
-        import asyncio
-        
-        google_service = GoogleService()
-        executor = ThreadPoolExecutor(max_workers=5)
-        
-        for file_data in item.files:
-            drive_id = file_data.get('drive_id')
-            if drive_id:
-                try:
-                    # Получаем ссылку для просмотра
-                    drive_url = await asyncio.get_event_loop().run_in_executor(
-                        executor,
-                        lambda d_id=drive_id: google_service.get_shareable_link(d_id, background=False)
-                    )
-                    file_data['drive_url'] = drive_url
-                except Exception as e:
-                    import logging
-                    logging.warning(f"Failed to get Drive URL for file {drive_id}: {e}")
-            
-            files_info.append(GalleryFileInfo(**file_data))
-    
-    return GalleryItemResponse(
-        id=item.id,
-        title=item.title,
-        description=item.description,
-        category=item.category,
-        tags=item.tags or [],
-        task_id=item.task_id,
-        thumbnail_url=item.thumbnail_url,
-        files=files_info,
-        created_by=item.created_by,
-        creator_name=item.creator.full_name if item.creator else None,
-        sort_order=item.sort_order,
-        created_at=item.created_at,
-        updated_at=item.updated_at
-    )
+    return await _build_response(db, item)
 
 
 @router.post("", response_model=GalleryItemResponse, status_code=status.HTTP_201_CREATED)
@@ -216,7 +219,6 @@ async def create_gallery_item(
                 logging.error(f"Ошибка чтения файла {file.filename}: {e}")
                 continue
     
-    # Создаём элемент галереи
     gallery_service = GalleryService()
     try:
         item = await gallery_service.create_gallery_item(
@@ -234,24 +236,7 @@ async def create_gallery_item(
             detail=f"Ошибка создания элемента галереи: {str(e)}"
         )
     
-    # Преобразуем файлы в ответ
-    files_info = [GalleryFileInfo(**file_data) for file_data in (item.files or [])]
-    
-    return GalleryItemResponse(
-        id=item.id,
-        title=item.title,
-        description=item.description,
-        category=item.category,
-        tags=item.tags or [],
-        task_id=item.task_id,
-        thumbnail_url=item.thumbnail_url,
-        files=files_info,
-        created_by=item.created_by,
-        creator_name=item.creator.full_name if item.creator else None,
-        sort_order=item.sort_order,
-        created_at=item.created_at,
-        updated_at=item.updated_at
-    )
+    return await _build_response(db, item)
 
 
 @router.put("/{item_id}", response_model=GalleryItemResponse)
@@ -279,24 +264,7 @@ async def update_gallery_item(
             detail="Gallery item not found or you don't have permission to update it"
         )
     
-    # Преобразуем файлы в ответ
-    files_info = [GalleryFileInfo(**file_data) for file_data in (item.files or [])]
-    
-    return GalleryItemResponse(
-        id=item.id,
-        title=item.title,
-        description=item.description,
-        category=item.category,
-        tags=item.tags or [],
-        task_id=item.task_id,
-        thumbnail_url=item.thumbnail_url,
-        files=files_info,
-        created_by=item.created_by,
-        creator_name=item.creator.full_name if item.creator else None,
-        sort_order=item.sort_order,
-        created_at=item.created_at,
-        updated_at=item.updated_at
-    )
+    return await _build_response(db, item)
 
 
 @router.post("/sync/drive", response_model=dict)

@@ -14,6 +14,12 @@ export interface GalleryFile {
   uploaded_at?: string
 }
 
+export interface GalleryTaskAssignee {
+  user_id: string
+  full_name: string
+  role?: string
+}
+
 export interface GalleryTaskInfo {
   id: string
   title: string
@@ -21,6 +27,7 @@ export interface GalleryTaskInfo {
   status: string
   due_date?: string
   completed_at?: string
+  assignees?: GalleryTaskAssignee[]
 }
 
 export interface GalleryItem {
