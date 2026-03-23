@@ -129,23 +129,31 @@ class GalleryService:
         name = file.get("name", "Untitled")
         mime_type = file.get("mimeType", "application/octet-stream")
 
+        # Делаем файл публично доступным по ссылке
         try:
-            drive_url = google_service.get_shareable_link(file_id, background=False)
+            google_service.get_shareable_link(file_id, background=False)
         except Exception:
-            drive_url = google_service.get_file_url(file_id)
+            pass
+
+        drive_url = f"https://drive.google.com/file/d/{file_id}/view"
 
         if mime_type.startswith("image/"):
             file_type = "image"
+            # Прямой URL на контент изображения (работает в <img src>)
+            thumbnail_url = f"https://lh3.googleusercontent.com/d/{file_id}"
         elif mime_type.startswith("video/"):
             file_type = "video"
+            # Миниатюра видео через Google Drive API
+            thumbnail_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w800"
         else:
             file_type = "document"
+            thumbnail_url = None
 
         return {
             "drive_id": file_id,
             "file_name": name,
             "file_type": file_type,
-            "thumbnail_url": drive_url if file_type == "image" else None,
+            "thumbnail_url": thumbnail_url,
             "drive_url": drive_url,
             "mime_type": mime_type,
             "file_size": int(file.get("size", 0)),
@@ -164,9 +172,12 @@ class GalleryService:
 
     @staticmethod
     def _pick_thumbnail(files_info: list) -> Optional[str]:
-        """Выбрать превью: первое фото, или None."""
+        """Выбрать превью: первое фото → thumbnail видео → None."""
         for f in files_info:
             if f["file_type"] == "image" and f.get("thumbnail_url"):
+                return f["thumbnail_url"]
+        for f in files_info:
+            if f["file_type"] == "video" and f.get("thumbnail_url"):
                 return f["thumbnail_url"]
         return None
 

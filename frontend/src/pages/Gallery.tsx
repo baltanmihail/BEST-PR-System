@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar, RefreshCw, CheckSquare, Link as LinkIcon, Save, X, Plus, Upload, Trash2, ExternalLink, Play, Pencil } from 'lucide-react'
-import { galleryApi, type GalleryItem } from '../services/gallery'
+import { Image, Loader2, Film, Filter, Eye, Heart, Tag, User, Calendar, RefreshCw, CheckSquare, Link as LinkIcon, Save, X, Plus, Upload, Trash2, ExternalLink, Play, Pencil, ImageIcon } from 'lucide-react'
+import { galleryApi, type GalleryItem, type GalleryFile } from '../services/gallery'
 import { tasksApi } from '../services/tasks'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
@@ -26,6 +26,9 @@ export default function Gallery() {
   const [editingField, setEditingField] = useState<'title' | 'description' | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [activeMediaIdx, setActiveMediaIdx] = useState(0)
+  const [videoPlaying, setVideoPlaying] = useState(false)
+  const [showAllMedia, setShowAllMedia] = useState(false)
 
   const isCoordinator = user && (
     user.role === UserRole.COORDINATOR_SMM ||
@@ -347,17 +350,38 @@ export default function Gallery() {
             {items.map((item, index) => (
               <div
                 key={item.id}
-                onClick={() => { setSelectedItem(item); setEditingField(null) }}
+                onClick={() => { setSelectedItem(item); setEditingField(null); setActiveMediaIdx(0); setVideoPlaying(false); setShowAllMedia(false) }}
                 className={`p-4 rounded-lg bg-white/10 border border-white/20 hover:bg-white/15 transition-all cursor-pointer card-3d`}
                 data-tour={index === 0 ? "gallery-item" : undefined}
               >
-                {item.thumbnail_url ? (
-                  <img src={item.thumbnail_url} alt={item.title} className="w-full h-48 object-cover rounded-lg mb-3" />
-                ) : item.category === 'video' ? (
-                  <div className="w-full h-48 rounded-lg mb-3 bg-black/30 flex items-center justify-center">
-                    <Play className="h-12 w-12 text-white/30" />
-                  </div>
-                ) : null}
+                {(() => {
+                  const thumbUrl = item.thumbnail_url
+                  const videoFile = item.files?.find(f => f.file_type === 'video' && f.drive_id)
+                  const imgFile = item.files?.find(f => f.file_type === 'image' && f.drive_id)
+                  const displayUrl = thumbUrl
+                    || (imgFile ? `https://lh3.googleusercontent.com/d/${imgFile.drive_id}` : null)
+                    || (videoFile ? `https://drive.google.com/thumbnail?id=${videoFile.drive_id}&sz=w400` : null)
+
+                  if (displayUrl) {
+                    return (
+                      <div className="w-full h-48 rounded-lg mb-3 overflow-hidden bg-black/30 relative">
+                        <img src={displayUrl} alt={item.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        {item.category === 'video' && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <div className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center">
+                              <Play className="h-5 w-5 text-white ml-0.5" fill="currentColor" />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                  return item.category === 'video' ? (
+                    <div className="w-full h-48 rounded-lg mb-3 bg-black/30 flex items-center justify-center">
+                      <Play className="h-12 w-12 text-white/30" />
+                    </div>
+                  ) : null
+                })()}
                 <div className="flex items-center space-x-2 mb-2">
                   {item.category === 'video' && <Film className="h-5 w-5 text-best-secondary" />}
                   {item.category === 'photo' && <Image className="h-5 w-5 text-best-primary" />}
@@ -485,40 +509,129 @@ export default function Gallery() {
               </div>
             </div>
 
-            {/* Видео / Изображение */}
-            {selectedItem.files?.length > 0 && (() => {
-              const mediaFiles = selectedItem.files.filter(f => f.file_type !== 'folder')
-              const videoFile = mediaFiles.find(f => f.file_type === 'video' || f.mime_type?.startsWith('video/'))
-              const imageFile = mediaFiles.find(f => f.file_type === 'image' || f.mime_type?.startsWith('image/'))
+            {/* Медиа-карусель */}
+            {(() => {
+              const mediaFiles = (selectedItem.files || []).filter(
+                (f: GalleryFile) => f.file_type === 'video' || f.file_type === 'image'
+              )
+              if (!mediaFiles.length) return null
 
-              if (videoFile?.drive_id) {
-                const directUrl = `https://drive.usercontent.google.com/download?id=${videoFile.drive_id}&export=download&confirm=t`
-                return (
-                  <div className="mb-4 rounded-lg overflow-hidden bg-black aspect-video">
-                    <video
-                      controls
-                      preload="metadata"
-                      className="w-full h-full"
-                      poster={selectedItem.thumbnail_url || undefined}
-                    >
-                      <source src={directUrl} type={videoFile.mime_type || 'video/mp4'} />
-                      <iframe
-                        src={`https://drive.google.com/file/d/${videoFile.drive_id}/preview`}
-                        className="w-full h-full"
-                        allow="autoplay; encrypted-media"
-                        allowFullScreen
+              // Сортируем: видео первым, затем фото
+              const sorted = [...mediaFiles].sort((a, b) => {
+                if (a.file_type === 'video' && b.file_type !== 'video') return -1
+                if (a.file_type !== 'video' && b.file_type === 'video') return 1
+                return 0
+              })
+
+              const safeIdx = Math.min(activeMediaIdx, sorted.length - 1)
+              const active = sorted[safeIdx]
+              const isActiveVideo = active?.file_type === 'video' || active?.mime_type?.startsWith('video/')
+              const MAX_THUMBS = 6
+
+              const getThumbUrl = (f: GalleryFile) => {
+                if (f.file_type === 'image' && f.drive_id) return `https://lh3.googleusercontent.com/d/${f.drive_id}`
+                if (f.file_type === 'video' && f.drive_id) return `https://drive.google.com/thumbnail?id=${f.drive_id}&sz=w200`
+                return f.thumbnail_url || null
+              }
+
+              return (
+                <div className="mb-4">
+                  {/* Основной просмотр */}
+                  <div className="rounded-lg overflow-hidden bg-black aspect-video mb-3 relative">
+                    {isActiveVideo && active?.drive_id ? (
+                      videoPlaying ? (
+                        <iframe
+                          src={`https://drive.google.com/file/d/${active.drive_id}/preview`}
+                          className="w-full h-full"
+                          allow="autoplay; encrypted-media"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center cursor-pointer group relative"
+                          onClick={() => setVideoPlaying(true)}
+                        >
+                          {active.thumbnail_url || active.drive_id ? (
+                            <img
+                              src={`https://drive.google.com/thumbnail?id=${active.drive_id}&sz=w800`}
+                              alt={active.file_name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                            />
+                          ) : null}
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/20 transition-colors">
+                            <div className="w-16 h-16 rounded-full bg-white/90 flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
+                              <Play className="h-8 w-8 text-black ml-1" fill="currentColor" />
+                            </div>
+                          </div>
+                          <div className="absolute bottom-3 left-3 text-white/70 text-xs bg-black/50 px-2 py-1 rounded">
+                            {active.file_name}
+                          </div>
+                        </div>
+                      )
+                    ) : active?.drive_id ? (
+                      <img
+                        src={`https://lh3.googleusercontent.com/d/${active.drive_id}`}
+                        alt={active.file_name}
+                        className="w-full h-full object-contain"
                       />
-                    </video>
+                    ) : null}
                   </div>
-                )
-              }
-              if (imageFile && (imageFile.thumbnail_url || imageFile.drive_url)) {
-                return <img src={imageFile.thumbnail_url || imageFile.drive_url || ''} alt={selectedItem.title} className="w-full max-h-96 object-contain rounded-lg mb-4 bg-black/30" />
-              }
-              if (selectedItem.thumbnail_url) {
-                return <img src={selectedItem.thumbnail_url} alt={selectedItem.title} className="w-full max-h-96 object-contain rounded-lg mb-4 bg-black/30" />
-              }
-              return null
+
+                  {/* Полоска миниатюр-карусель */}
+                  {sorted.length > 1 && (
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                      {(showAllMedia ? sorted : sorted.slice(0, MAX_THUMBS)).map((f, idx) => {
+                        const thumbUrl = getThumbUrl(f)
+                        const isActive = idx === safeIdx
+                        const isVid = f.file_type === 'video'
+                        return (
+                          <button
+                            key={f.drive_id || idx}
+                            onClick={() => { setActiveMediaIdx(idx); setVideoPlaying(false) }}
+                            className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-best-primary ring-1 ring-best-primary/50' : 'border-white/20 hover:border-white/40'}`}
+                          >
+                            {thumbUrl ? (
+                              <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                                {isVid ? <Film className="h-5 w-5 text-white/40" /> : <ImageIcon className="h-5 w-5 text-white/40" />}
+                              </div>
+                            )}
+                            {isVid && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                <Play className="h-4 w-4 text-white" fill="currentColor" />
+                              </div>
+                            )}
+                            {isCoordinator && !isVid && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  const url = f.drive_id ? `https://lh3.googleusercontent.com/d/${f.drive_id}` : f.thumbnail_url
+                                  if (url) updateItemMutation.mutate({ id: selectedItem.id, data: { thumbnail_url: url } })
+                                }}
+                                className={`absolute top-0 right-0 p-0.5 text-[8px] font-bold rounded-bl ${selectedItem.thumbnail_url && (selectedItem.thumbnail_url.includes(f.drive_id || '___') || f.thumbnail_url === selectedItem.thumbnail_url) ? 'bg-best-primary text-white' : 'bg-black/60 text-white/70 opacity-0 group-hover:opacity-100 hover:!opacity-100'}`}
+                                title="Сделать обложкой"
+                                style={{ opacity: selectedItem.thumbnail_url && (selectedItem.thumbnail_url.includes(f.drive_id || '___') || f.thumbnail_url === selectedItem.thumbnail_url) ? 1 : undefined }}
+                              >
+                                📷
+                              </button>
+                            )}
+                          </button>
+                        )
+                      })}
+                      {!showAllMedia && sorted.length > MAX_THUMBS && (
+                        <button
+                          onClick={() => setShowAllMedia(true)}
+                          className="flex-shrink-0 w-16 h-16 rounded-lg border-2 border-white/20 flex items-center justify-center bg-white/5 hover:bg-white/10 transition-colors"
+                        >
+                          <span className="text-white/60 text-sm font-bold">+{sorted.length - MAX_THUMBS}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
             })()}
 
             {/* Описание (редактируемое) */}
@@ -630,44 +743,29 @@ export default function Gallery() {
               </div>
             )}
 
-            {/* Файлы */}
-            {selectedItem.files && selectedItem.files.length > 0 && (() => {
-              const visibleFiles = selectedItem.files.filter(f => f.file_type !== 'folder')
-              if (!visibleFiles.length) return null
+            {/* Файлы (документы и прочие) */}
+            {(() => {
+              const docFiles = (selectedItem.files || []).filter(f => f.file_type !== 'folder' && f.file_type !== 'video' && f.file_type !== 'image')
+              if (!docFiles.length) return null
               return (
-              <div>
-                <p className="text-white/60 text-sm mb-2">Файлы ({visibleFiles.length})</p>
+              <div className="mt-4">
+                <p className="text-white/60 text-sm mb-2">Дополнительные файлы ({docFiles.length})</p>
                 <div className="space-y-2">
-                  {visibleFiles.map((file, idx) => {
+                  {docFiles.map((file, idx) => {
                     const driveUrl = file.drive_url || (file.drive_id ? `https://drive.google.com/file/d/${file.drive_id}/view` : null)
-                    const isVideo = file.file_type === 'video' || file.mime_type?.startsWith('video/')
-                    const isImage = file.file_type === 'image' || file.mime_type?.startsWith('image/')
                     const size = file.file_size ? (file.file_size > 1048576 ? `${(file.file_size / 1048576).toFixed(1)} МБ` : `${(file.file_size / 1024).toFixed(0)} КБ`) : null
-                    const isThumbnail = selectedItem.thumbnail_url && (file.thumbnail_url === selectedItem.thumbnail_url || file.drive_url === selectedItem.thumbnail_url)
                     return (
-                      <div key={file.drive_id || idx} className={`p-3 rounded-lg flex items-center justify-between gap-3 ${isThumbnail ? 'bg-best-primary/20 border border-best-primary/40' : 'bg-white/10'}`}>
+                      <div key={file.drive_id || idx} className="p-3 bg-white/10 rounded-lg flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
-                          {isVideo ? <Play className="h-4 w-4 text-best-secondary flex-shrink-0" /> : <Image className="h-4 w-4 text-best-primary flex-shrink-0" />}
+                          <ExternalLink className="h-4 w-4 text-white/40 flex-shrink-0" />
                           <span className="text-white text-sm truncate">{file.file_name}</span>
                           {size && <span className="text-white/40 text-xs flex-shrink-0">{size}</span>}
-                          {isThumbnail && <span className="text-best-primary text-[10px] font-bold flex-shrink-0">ПРЕВЬЮ</span>}
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {isCoordinator && isImage && !isThumbnail && (file.thumbnail_url || file.drive_url) && (
-                            <button
-                              onClick={() => updateItemMutation.mutate({ id: selectedItem.id, data: { thumbnail_url: file.thumbnail_url || file.drive_url || undefined } })}
-                              className="text-best-primary hover:text-best-primary/70 text-[11px] font-medium whitespace-nowrap"
-                              title="Сделать превью проекта"
-                            >
-                              📷 Превью
-                            </button>
-                          )}
-                          {driveUrl && (
-                            <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs">
-                              <ExternalLink className="h-3.5 w-3.5" /> Открыть
-                            </a>
-                          )}
-                        </div>
+                        {driveUrl && (
+                          <a href={driveUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs flex-shrink-0">
+                            <ExternalLink className="h-3.5 w-3.5" /> Открыть
+                          </a>
+                        )}
                       </div>
                     )
                   })}
