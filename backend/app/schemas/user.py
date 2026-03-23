@@ -35,6 +35,8 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     """Схема ответа с пользователем"""
     id: UUID
+    telegram_username: Optional[str] = None
+    email: Optional[str] = None
     level: int
     points: int
     streak_days: int

@@ -1935,7 +1935,7 @@ class SheetsSyncService:
         # Write to sheet
         try:
             range_str = f"{sheet_name}!A1"
-            self.google_service.write_sheet(spreadsheet_id, range_str, data_rows)
+            self.google_service.write_sheet(range_str, data_rows, sheet_id=spreadsheet_id)
             if format_requests:
                 self.google_service.batch_update_sheet(spreadsheet_id, format_requests)
             logger.info(f"Person timeline synced to sheet '{sheet_name}': {len(person_tasks)} people, {num_days} days")
@@ -1965,7 +1965,7 @@ class SheetsSyncService:
             return {"status": "error", "message": "No spreadsheet configured"}
 
         try:
-            raw = self.google_service.read_sheet(spreadsheet_id, f"{sheet_name}!A1:ZZ200")
+            raw = self.google_service.read_sheet(f"{sheet_name}!A1:ZZ200", sheet_id=spreadsheet_id)
             if not raw or len(raw) < 4:
                 return {"status": "ok", "message": "Sheet empty or too few rows"}
 
