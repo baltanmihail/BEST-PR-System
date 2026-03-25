@@ -318,7 +318,7 @@ async def update_user(
     # Проверка прав: только VP4PR может менять роли
     old_role = user.role.value if isinstance(user.role, UserRole) else str(user.role)
     if user_data.role and user_data.role != user.role:
-        if current_user.role != UserRole.VP4PR:
+        if not current_user.role.is_privileged():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only VP4PR can change user roles"
@@ -513,7 +513,7 @@ async def get_user_activity(
     # Проверка прав: пользователь может видеть только свою активность, координаторы и VP4PR - любую
     if current_user.id != user_id and current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -560,7 +560,7 @@ async def get_user_tasks(
     # Проверка прав: пользователь может видеть только свои задачи, координаторы и VP4PR - любые
     if current_user.id != user_id and current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -616,7 +616,7 @@ async def export_user_data(
     from app.models.activity import ActivityLog
     from app.models.gallery import GalleryItem
     
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only VP4PR can export user data"

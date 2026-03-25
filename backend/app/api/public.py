@@ -367,7 +367,8 @@ async def get_public_stats(
                 UserRole.COORDINATOR_DESIGN,
                 UserRole.COORDINATOR_CHANNEL,
                 UserRole.COORDINATOR_PRFR,
-                UserRole.VP4PR
+                UserRole.VP4PR,
+                UserRole.ADMIN
             ])
         )
     )

@@ -5,7 +5,7 @@ import { tasksApi } from '../services/tasks'
 import { TaskQuestion } from '../types/task_question'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 
 interface TaskQuestionsProps {
   taskId: string
@@ -21,13 +21,7 @@ export default function TaskQuestions({ taskId }: TaskQuestionsProps) {
 
   const isRegistered = !!user?.is_active
   
-  const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
-  )
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   // Загружаем вопросы
   const { data: questions, isLoading } = useQuery<TaskQuestion[]>({

@@ -154,7 +154,7 @@ def get_welcome_greeting(user_name: str, role: str, points: int = 0) -> str:
         f"✨ Здравствуй, {user_name}!",
     ]
     
-    if role == "vp4pr":
+    if role in ("vp4pr", "admin"):
         return random.choice([
             f"👑 Приветствую, {user_name}!",
             f"🎯 Добро пожаловать, {user_name}!",
@@ -177,6 +177,7 @@ def format_role_title(role: str) -> str:
     """Человекочитаемое название роли/позиции для приветствия."""
     mapping = {
         "vp4pr": "VP4PR (руководитель PR)",
+        "admin": "👑 Админ",
         "coordinator_smm": "Координатор SMM",
         "coordinator_design": "Координатор Design",
         "coordinator_channel": "Глава Channel",
@@ -731,7 +732,7 @@ async def cmd_start(message: Message, state: FSMContext, command: Command = None
         greeting = get_welcome_greeting(user.first_name, user_role, points)
         role_title = format_role_title(user_role)
         
-        if user_role == "vp4pr":
+        if user_role in ("vp4pr", "admin"):
             welcome_text = (
                 f"{greeting}\n\n"
                 f"{system_title}\n\n"
@@ -1077,7 +1078,7 @@ async def callback_view_leaderboard(callback: CallbackQuery, state: FSMContext):
         is_registered = viewer.get("registered") or in_top
         if is_registered:
             role = (viewer.get("role") or "").lower()
-            if role == "vp4pr":
+            if role in ("vp4pr", "admin"):
                 footer = "📊 Как глава PR ты видишь полный рейтинг. Мотивируй команду!\n\n"
             elif "coordinator" in role:
                 footer = "📊 Ты в рейтинге! Выполняй задачи и поднимайся выше.\n\n"
@@ -1369,7 +1370,7 @@ async def callback_moderation(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_panel")
 async def callback_admin_panel(callback: CallbackQuery, state: FSMContext):
-    """Админ-панель (только для VP4PR)"""
+    """Админ-панель (только для VP4PR и Админ)"""
     try:
         await callback.answer()
         await callback.message.answer(
@@ -2887,7 +2888,7 @@ async def callback_ask_question(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             "❓ <b>Задать вопрос</b>\n\n"
             "Ты можешь задать вопрос:\n"
-            "• VP4PR (главе PR-отдела) - @bfm5451\n"
+            "• VP4PR (главе PR-отдела) и Админ — @bfm5451\n"
             "• Координаторам через поддержку на сайте\n\n"
             "Или напиши свой вопрос здесь, и мы переадресуем его нужному человеку.\n\n"
             "Напиши свой вопрос:",
@@ -3066,7 +3067,7 @@ async def handle_text_message(message: Message, state: FSMContext):
             "✅ Спасибо за вопрос! Мы передадим его координаторам.\n\n"
             "Обычно мы отвечаем в течение 24 часов.\n\n"
             "Также ты можешь написать напрямую:\n"
-            "• VP4PR - @bfm5451",
+            "• VP4PR и Админ — @bfm5451",
             parse_mode="HTML"
         )
         
@@ -3115,7 +3116,7 @@ from aiogram.types import ContentType
 
 @router.message(Command("create_task"))
 async def cmd_create_task(message: Message, state: FSMContext):
-    """Команда /create_task - создание новой задачи (только для координаторов)"""
+    """Команда /create_task — создание задачи (координаторы, VP4PR, Админ)"""
     user = message.from_user
     
     # Проверяем авторизацию
@@ -3128,7 +3129,7 @@ async def cmd_create_task(message: Message, state: FSMContext):
         )
         return
     
-    # Проверяем права доступа (только координаторы и VP4PR)
+    # Проверяем права доступа (координаторы, VP4PR и Админ)
     headers = {"Authorization": f"Bearer {access_token}"}
     user_response = await call_api("GET", "/auth/me", headers=headers)
     
@@ -3144,13 +3145,14 @@ async def cmd_create_task(message: Message, state: FSMContext):
     from app.models.user import UserRole
     allowed_roles = [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR,
+        UserRole.ADMIN,
     ]
     
     if user_role not in [r.value for r in allowed_roles]:
         await message.answer(
             "❌ У вас нет прав для создания задач.\n\n"
-            "Создавать задачи могут только координаторы и VP4PR."
+            "Создавать задачи могут только координаторы, VP4PR и Админ."
         )
         return
     

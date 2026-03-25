@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { usersApi, type UserProfile } from '../services/users'
-import { UserRole } from '../types/user'
+import { isPrivileged, isCoordinatorOrAbove } from '../types/user'
 
 export default function UserMonitoring() {
   const { theme } = useThemeStore()
@@ -22,43 +22,11 @@ export default function UserMonitoring() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [editForm, setEditForm] = useState({ full_name: '', username: '', telegram_id: '', telegram_username: '', email: '', role: '' })
 
-  // Проверяем роль (роль приходит как строка из API через Pydantic, например "vp4pr", "coordinator_smm")
-  // Pydantic сериализует enum UserRole в его значение (строку), поэтому user.role - это строка, а не enum
-  // VP4PR тоже должен иметь доступ к мониторингу пользователей
-  // Используем простую проверку, как в Home.tsx и Sidebar.tsx
-  let roleValue = ''
-  if (typeof user?.role === 'string') {
-    roleValue = user.role.toLowerCase().trim()
-  } else if (user?.role && typeof user.role === 'object') {
-    const roleObj = user.role as any
-    if ('value' in roleObj) {
-      roleValue = String(roleObj.value).toLowerCase().trim()
-    } else {
-      roleValue = String(user.role).toLowerCase().trim()
-    }
-  } else {
-    roleValue = String(user?.role || '').toLowerCase().trim()
-  }
+  const roleValue = typeof user?.role === 'string'
+    ? user.role.toLowerCase().trim()
+    : String(user?.role || '').toLowerCase().trim()
   
-  const isCoordinator = user && (
-    roleValue.includes('coordinator') || 
-    roleValue === 'vp4pr' || 
-    roleValue === UserRole.VP4PR ||
-    roleValue === UserRole.COORDINATOR_SMM ||
-    roleValue === UserRole.COORDINATOR_DESIGN ||
-    roleValue === UserRole.COORDINATOR_CHANNEL ||
-    roleValue === UserRole.COORDINATOR_PRFR
-  )
-
-  // Отладка для VP4PR
-  if (user && (roleValue === 'vp4pr' || roleValue === UserRole.VP4PR)) {
-    console.log('[UserMonitoring] VP4PR user detected:', {
-      user,
-      roleValue,
-      userRole: user.role,
-      isCoordinator
-    })
-  }
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   if (!isCoordinator) {
     return (
@@ -132,7 +100,7 @@ export default function UserMonitoring() {
     },
   })
 
-  const isVP4PR = roleValue === 'vp4pr' || roleValue === UserRole.VP4PR
+  const isVP4PR = isPrivileged(roleValue)
 
   const openEditModal = (u: UserProfile) => {
     setSelectedUser(u)
@@ -162,6 +130,7 @@ export default function UserMonitoring() {
 
   const getRoleName = (role: string) => {
     const roleMap: Record<string, string> = {
+      admin: 'Админ',
       vp4pr: 'VP4PR',
       coordinator_smm: 'Координатор SMM',
       coordinator_design: 'Координатор Design',
@@ -553,6 +522,7 @@ export default function UserMonitoring() {
                   onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
                   className={`w-full bg-white/10 text-white rounded-lg px-4 py-2 border border-white/20 focus:outline-none focus:ring-2 focus:ring-best-primary text-readable ${theme}`}
                 >
+                  <option value="admin" className="bg-gray-800">Админ</option>
                   <option value="vp4pr" className="bg-gray-800">VP4PR</option>
                   <option value="coordinator_smm" className="bg-gray-800">Координатор SMM</option>
                   <option value="coordinator_design" className="bg-gray-800">Координатор Design</option>

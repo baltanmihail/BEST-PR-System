@@ -131,7 +131,8 @@ async def create_support_request(
             UserRole.COORDINATOR_DESIGN,
             UserRole.COORDINATOR_CHANNEL,
             UserRole.COORDINATOR_PRFR,
-            UserRole.VP4PR
+            UserRole.VP4PR,
+            UserRole.ADMIN
         ])
     )
     admins_result = await db.execute(admins_query)

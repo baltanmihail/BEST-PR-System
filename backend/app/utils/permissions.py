@@ -86,19 +86,20 @@ def require_role(*allowed_roles: UserRole, require_active: bool = True):
 
 
 def require_coordinator():
-    """Проверка, что пользователь - координатор"""
+    """Проверка, что пользователь - координатор или выше"""
     return require_role(
         UserRole.COORDINATOR_SMM,
         UserRole.COORDINATOR_DESIGN,
         UserRole.COORDINATOR_CHANNEL,
         UserRole.COORDINATOR_PRFR,
-        UserRole.VP4PR
+        UserRole.VP4PR,
+        UserRole.ADMIN,
     )
 
 
 def require_vp4pr():
-    """Проверка, что пользователь - VP4PR"""
-    return require_role(UserRole.VP4PR)
+    """Проверка, что пользователь - VP4PR или ADMIN"""
+    return require_role(UserRole.VP4PR, UserRole.ADMIN)
 
 
 def get_current_user_allow_inactive():

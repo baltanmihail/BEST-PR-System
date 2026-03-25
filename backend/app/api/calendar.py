@@ -93,7 +93,7 @@ async def sync_calendar_to_sheets(
     # Проверка прав
     if current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -177,7 +177,7 @@ async def sync_sheets_changes_from_db(
     # Проверка прав
     if current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

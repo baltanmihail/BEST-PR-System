@@ -7,7 +7,7 @@ import TaskCard from '../components/TaskCard'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { Task } from '../types/task'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 import { useState, useMemo, useEffect, useRef } from 'react'
 
 export default function Tasks() {
@@ -18,13 +18,7 @@ export default function Tasks() {
   const highlightRef = useRef<HTMLDivElement>(null)
   const isRegistered = user && user.is_active
   
-  // Проверяем роль координатора или VP4PR
-  const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
-  const isCoordinator = user && (
-    roleStr.includes('coordinator') || 
-    roleStr === 'vp4pr' || 
-    roleStr === UserRole.VP4PR
-  )
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
   
   const [isFiltersOpen, setIsFiltersOpen] = useState(false)
   const [filters, setFilters] = useState<{

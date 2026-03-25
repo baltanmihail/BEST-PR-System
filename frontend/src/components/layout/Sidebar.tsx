@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Home, CheckSquare, Trophy, MessageSquare, Bell, Image, Star, Camera, Settings, Shield, Calendar, ClipboardList, X } from 'lucide-react'
 import { useThemeStore } from '../../store/themeStore'
 import { useAuthStore } from '../../store/authStore'
-import { UserRole } from '../../types/user'
+import { isCoordinatorOrAbove } from '../../types/user'
 import { useEffect } from 'react'
 
 const navigation = [
@@ -31,9 +31,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user } = useAuthStore()
   const isRegistered = user?.is_active || false
   
-  // Проверяем роль координатора или VP4PR (роль может быть строкой или enum)
-  const roleStr = typeof user?.role === 'string' ? user.role : String(user?.role || '')
-  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr' || user.role === UserRole.VP4PR)
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   // Фильтруем навигацию для незарегистрированных пользователей и координаторов
   const filteredNavigation = navigation.filter(

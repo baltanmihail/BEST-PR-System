@@ -522,14 +522,14 @@ class GalleryService:
         
         # Проверка прав (только создатель или VP4PR может обновлять)
         from app.models.user import UserRole
-        if item.created_by != current_user.id and current_user.role != UserRole.VP4PR:
+        if item.created_by != current_user.id and not current_user.role.is_privileged():
             return None
         
         # Обновляем поля
         update_data = item_data.model_dump(exclude_unset=True)
         
         # Проверка прав на изменение sort_order (только VP4PR)
-        if "sort_order" in update_data and current_user.role != UserRole.VP4PR:
+        if "sort_order" in update_data and not current_user.role.is_privileged():
             update_data.pop("sort_order", None)
         
         # Обработка добавления новых файлов
@@ -571,7 +571,7 @@ class GalleryService:
         
         # Проверка прав (только создатель или VP4PR может удалять)
         from app.models.user import UserRole
-        if item.created_by != current_user.id and current_user.role != UserRole.VP4PR:
+        if item.created_by != current_user.id and not current_user.role.is_privileged():
             return False
         
         # Удаляем файлы из Google Drive (асинхронно, в фоне)

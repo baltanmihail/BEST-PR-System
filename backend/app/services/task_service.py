@@ -364,7 +364,7 @@ class TaskService:
         from app.models.user import UserRole
         if task.created_by != current_user.id and current_user.role not in [
             UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN, 
-            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
         ]:
             return None
         
@@ -372,7 +372,7 @@ class TaskService:
         update_data = task_data.model_dump(exclude_unset=True)
         
         # Проверка прав на изменение sort_order (только VP4PR)
-        if "sort_order" in update_data and current_user.role != UserRole.VP4PR:
+        if "sort_order" in update_data and not current_user.role.is_privileged():
             # Удаляем sort_order из данных, если пользователь не VP4PR
             update_data.pop("sort_order", None)
         
@@ -529,7 +529,7 @@ class TaskService:
         from app.models.user import UserRole
         if task.created_by != current_user.id and current_user.role not in [
             UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
         ]:
             return None
         
@@ -559,7 +559,7 @@ class TaskService:
         
         # Проверка прав (только создатель или VP4PR)
         from app.models.user import UserRole
-        if task.created_by != current_user.id and current_user.role != UserRole.VP4PR:
+        if task.created_by != current_user.id and not current_user.role.is_privileged():
             return False
         
         # Удаляем задачу

@@ -33,7 +33,7 @@ async def _notify_coordinators_new_request(user_name: str, equipment_name: str, 
 
         async with AsyncSessionLocal() as db:
             coord_roles = [_UR.COORDINATOR_SMM, _UR.COORDINATOR_DESIGN,
-                           _UR.COORDINATOR_CHANNEL, _UR.COORDINATOR_PRFR, _UR.VP4PR]
+                           _UR.COORDINATOR_CHANNEL, _UR.COORDINATOR_PRFR, _UR.VP4PR, _UR.ADMIN]
             result = await db.execute(
                 select(_User).where(
                     or_(*[_User.role == r for r in coord_roles]),
@@ -324,7 +324,7 @@ async def update_equipment_request(
     from app.models.user import UserRole
     is_coordinator = current_user.role in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]
     
     if request.user_id != current_user.id and not is_coordinator:

@@ -142,7 +142,7 @@ class TaskDeadlineService:
 
         # VP4PR сводка
         vp_result = await db.execute(
-            select(User).where(User.role == UserRole.VP4PR.value, User.is_active == True)
+            select(User).where(User.role.in_([UserRole.VP4PR.value, UserRole.ADMIN.value]), User.is_active == True)
         )
         for vp in vp_result.scalars().all():
             if not vp.telegram_id or vp.telegram_id <= 0:

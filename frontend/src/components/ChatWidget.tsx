@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { supportApi, SupportTicket } from '../services/support'
 import { notificationsApi } from '../services/notifications'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isCoordinatorOrAbove } from '../types/user'
 
 interface Message {
   id: string
@@ -33,11 +34,7 @@ export default function ChatWidget() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const queryClient = useQueryClient()
 
-  const isAdmin = user?.role === 'vp4pr' ||
-    user?.role === 'coordinator_smm' ||
-    user?.role === 'coordinator_design' ||
-    user?.role === 'coordinator_channel' ||
-    user?.role === 'coordinator_prfr'
+  const isAdmin = user ? isCoordinatorOrAbove(user.role) : false
 
   const { data: notificationsData } = useQuery({
     queryKey: ['notifications', 'widget'],

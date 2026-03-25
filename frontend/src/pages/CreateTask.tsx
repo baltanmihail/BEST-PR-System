@@ -13,6 +13,7 @@ import { usersApi } from '../services/users'
 import api from '../services/api'
 import FileUploadDragDrop, { type FilePreview } from '../components/FileUploadDragDrop'
 import { TaskCreate, TaskType, TaskPriority, TaskStageCreate } from '../types/task'
+import { isPrivileged, isCoordinatorOrAbove } from '../types/user'
 
 export default function CreateTask() {
   const { theme } = useThemeStore()
@@ -37,9 +38,8 @@ export default function CreateTask() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
 
-  // Проверяем, является ли пользователь координатором
   const roleStr = typeof user?.role === 'string' ? user.role : String(user?.role || '')
-  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr')
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   // Загружаем шаблоны задач
   const { data: templates, isLoading: templatesLoading } = useQuery({
@@ -59,7 +59,7 @@ export default function CreateTask() {
   const { data: usersData } = useQuery({
     queryKey: ['users-for-assign'],
     queryFn: () => usersApi.getUsers({ limit: 100, is_active: true }),
-    enabled: roleStr === 'vp4pr',
+    enabled: isPrivileged(roleStr),
   })
 
   // Загрузка шаблона и заполнение формы
@@ -675,8 +675,8 @@ export default function CreateTask() {
             </div>
           </div>
 
-          {/* Назначение пользователей (только VP4PR) */}
-          {roleStr === 'vp4pr' && usersData?.items && (
+          {/* Назначение пользователей (только VP4PR/Admin) */}
+          {isPrivileged(roleStr) && usersData?.items && (
             <div>
               <label className={`block text-white/80 mb-2 font-medium text-readable ${theme}`}>
                 Назначить на задачу

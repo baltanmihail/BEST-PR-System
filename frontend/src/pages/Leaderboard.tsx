@@ -34,9 +34,8 @@ export default function Leaderboard() {
   // Фильтруем и преобразуем данные
   const filteredUsers = leaderboardData?.filter(u => {
     if (showAdmins) return true
-    // Скрываем VP4PR и координаторов
     const role = (u.role || '').toLowerCase()
-    return !role.includes('vp4pr') && !role.includes('coordinator')
+    return !role.includes('vp4pr') && !role.includes('coordinator') && !role.includes('admin')
   }) || []
 
   const topUsers = filteredUsers.map((user, index) => ({

@@ -148,7 +148,7 @@ class EquipmentDigestService:
         # VP4PR и Channel — зона оборудования
         coordinators_result = await db.execute(
             select(User).where(
-                User.role.in_([UserRole.VP4PR, UserRole.COORDINATOR_CHANNEL]),
+                User.role.in_([UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR_CHANNEL]),
                 User.telegram_id.isnot(None)
             )
         )

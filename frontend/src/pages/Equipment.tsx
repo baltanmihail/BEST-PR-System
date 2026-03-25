@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
 import { equipmentApi, type Equipment, type EquipmentResponse, type EquipmentCategory, type EquipmentCreate, type EquipmentRequestResponse } from '../services/equipment'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 import EquipmentCalendar from '../components/EquipmentCalendar'
 
 interface CartItem {
@@ -149,13 +149,7 @@ export default function EquipmentPage() {
   const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null)
   const [rejectReason, setRejectReason] = useState('')
 
-  const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
-  )
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   // Мутация удаления оборудования
   const deleteEquipmentMutation = useMutation({

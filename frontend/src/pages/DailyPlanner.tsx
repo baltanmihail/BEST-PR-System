@@ -19,7 +19,7 @@ import {
   type DailyTaskUpdate,
 } from '../services/dailyTasks'
 import { usersApi } from '../services/users'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 import { format, addDays, subDays, isToday } from 'date-fns'
 import { ru } from 'date-fns/locale'
 
@@ -85,9 +85,7 @@ export default function DailyPlanner() {
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const dateStr = format(selectedDate, 'yyyy-MM-dd')
-  const isVP4PR = user?.role === UserRole.VP4PR || user?.role === ('vp4pr' as UserRole)
-  const isCoordinator =
-    user && (String(user.role).includes('coordinator') || isVP4PR)
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

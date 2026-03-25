@@ -85,7 +85,7 @@ class FileUploadService:
             )
         
         # Проверяем, является ли пользователь VP4PR (автоодобрение) или координатором (модерация)
-        is_vp4pr = user.role == UserRole.VP4PR
+        is_vp4pr = user.role.is_privileged()
         is_coordinator = user.role in [
             UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
             UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR

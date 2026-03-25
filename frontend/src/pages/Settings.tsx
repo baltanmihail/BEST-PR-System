@@ -8,6 +8,7 @@ import { useThemeStore } from '../store/themeStore'
 import { useTour } from '../hooks/useTour'
 import api from '../services/api'
 import { usersApi, type ProfileUpdate } from '../services/users'
+import { isPrivileged } from '../types/user'
 
 export default function Settings() {
   const { theme } = useThemeStore()
@@ -29,7 +30,7 @@ export default function Settings() {
   })
   const [newSkill, setNewSkill] = useState('')
   
-  const isVP4PR = user?.role === 'vp4pr'
+  const isVP4PR = isPrivileged(user?.role || '')
   
   // Загружаем полный профиль
   const { data: fullProfile } = useQuery({
@@ -463,7 +464,8 @@ export default function Settings() {
               <div>
                 <p className="text-white/60 text-sm">Роль</p>
                 <p className={`text-white text-readable ${theme}`}>
-                  {user.role === 'vp4pr' ? 'VP4PR' :
+                  {user.role === 'admin' ? 'Админ' :
+                   user.role === 'vp4pr' ? 'VP4PR' :
                    user.role === 'coordinator_smm' ? 'Координатор SMM' :
                    user.role === 'coordinator_design' ? 'Координатор Design' :
                    user.role === 'coordinator_channel' ? 'Координатор Channel' :

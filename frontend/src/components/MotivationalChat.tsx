@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { MessageSquare, X } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useThemeStore } from '../store/themeStore'
+import { isCoordinatorOrAbove } from '../types/user'
 
 const messages = {
   unregistered: [
@@ -28,7 +29,7 @@ export default function MotivationalChat() {
   const [currentMessageIndex, setCurrentMessageIndex] = useState(0)
 
   const userRole = user?.role || 'unregistered'
-  const isCoordinator = userRole?.includes('coordinator') || userRole === 'vp4pr'
+  const isCoordinator = isCoordinatorOrAbove(userRole)
   const isRegistered = user && user.is_active
 
   const chatMessages = isCoordinator

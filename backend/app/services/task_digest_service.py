@@ -84,7 +84,7 @@ class TaskDigestService:
         week_ago = now - timedelta(days=7)
 
         vp_result = await db.execute(
-            select(User).where(User.role == UserRole.VP4PR.value, User.is_active == True)
+            select(User).where(User.role.in_([UserRole.VP4PR.value, UserRole.ADMIN.value]), User.is_active == True)
         )
         vp_users = vp_result.scalars().all()
         if not vp_users:

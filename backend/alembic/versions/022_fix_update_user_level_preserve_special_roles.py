@@ -1,11 +1,11 @@
-"""Fix update_user_level trigger to preserve coordinator and VP4PR roles
+"""Fix update_user_level trigger to preserve coordinator, VP4PR and admin roles
 
 Revision ID: 022
 Revises: 021
 Create Date: 2026-01-09 23:30:00.000000
 
 Fixed critical bug: The update_user_level() trigger function was overwriting
-coordinator and VP4PR roles when users received points, demoting them to
+coordinator, VP4PR and admin roles when users received points, demoting them to
 regular participants. This fix preserves special roles while still updating
 the level based on points.
 
@@ -23,7 +23,7 @@ depends_on = None
 def upgrade():
     """
     Исправляем функцию update_user_level() чтобы сохранять специальные роли
-    (координаторы и VP4PR) при обновлении баллов.
+    (координаторы, VP4PR и admin) при обновлении баллов.
     """
     op.execute("""
         CREATE OR REPLACE FUNCTION update_user_level()
@@ -32,13 +32,14 @@ def upgrade():
             is_special_role_old BOOLEAN := FALSE;
             is_special_role_new BOOLEAN := FALSE;
         BEGIN
-            -- Проверяем, является ли старая роль специальной (координатор или VP4PR)
+            -- Проверяем, является ли старая роль специальной (координатор, VP4PR или admin)
             is_special_role_old := OLD.role IN (
                 'coordinator_smm',
                 'coordinator_design',
                 'coordinator_channel',
                 'coordinator_prfr',
-                'vp4pr'
+                'vp4pr',
+                'admin'
             );
             
             -- Проверяем, является ли новая роль специальной (на случай, если роль меняется явно вместе с баллами)
@@ -47,7 +48,8 @@ def upgrade():
                 'coordinator_design',
                 'coordinator_channel',
                 'coordinator_prfr',
-                'vp4pr'
+                'vp4pr',
+                'admin'
             );
             
             -- Обновляем level на основе баллов (всегда)

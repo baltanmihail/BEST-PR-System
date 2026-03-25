@@ -287,7 +287,7 @@ async def get_users(
     from sqlalchemy import func, or_
     
     # Только VP4PR может видеть список пользователей
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only VP4PR can access user list"
@@ -373,7 +373,7 @@ async def delete_account(
         )
     
     # Проверяем права доступа
-    is_vp4pr = current_user.role == UserRole.VP4PR
+    is_vp4pr = current_user.role.is_privileged()
     is_own_account = current_user.id == target_user_id
     
     if not (is_vp4pr or is_own_account):
@@ -402,7 +402,7 @@ async def delete_account(
         )
     
     # Не позволяем удалять VP4PR (кроме самого себя)
-    if target_user.role == UserRole.VP4PR and not is_own_account:
+    if target_user.role.is_privileged() and not is_own_account:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot delete VP4PR account"
@@ -436,7 +436,7 @@ async def delete_account(
             # Уведомляем VP4PR о удалении аккаунта
             vp4pr_result = await db.execute(
                 select(User).where(
-                    User.role == UserRole.VP4PR,
+                    User.role.in_([UserRole.VP4PR, UserRole.ADMIN]),
                     User.deleted_at.is_(None),
                     User.id != target_user_id  # Не уведомляем самого себя
                 )

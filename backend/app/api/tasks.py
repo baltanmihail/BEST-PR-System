@@ -349,7 +349,7 @@ async def reorder_tasks(
     from fastapi import HTTPException, status
     
     # Проверка прав - только VP4PR может менять порядок
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only VP4PR can reorder tasks"
@@ -461,7 +461,7 @@ async def publish_task(
         User.is_active == True,
         ~User.role.in_([
             UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
         ])
     )
     users_result = await db.execute(users_query)
@@ -820,7 +820,7 @@ async def complete_task(
     from app.models.user import UserRole
     is_coordinator = current_user.role in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]
     
     if not assignment and not is_coordinator:
@@ -1239,7 +1239,7 @@ async def answer_task_question(
     # Проверяем права
     if current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

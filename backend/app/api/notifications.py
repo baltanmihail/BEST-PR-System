@@ -204,7 +204,7 @@ async def cleanup_old_notifications(
     """Удалить уведомления старше 21 дня. Только VP4PR/координаторы."""
     from app.models.user import UserRole
     if current_user.role not in [
-        UserRole.VP4PR, UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+        UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
         UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR
     ]:
         raise HTTPException(status_code=403, detail="Доступ запрещён")

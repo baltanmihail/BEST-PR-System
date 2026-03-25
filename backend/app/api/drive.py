@@ -96,7 +96,7 @@ def check_drive_access(user: User) -> bool:
     - VP4PR (глава PR-отдела)
     - Координаторы (SMM, Design, Channel, PR-FR)
     """
-    if user.role == UserRole.VP4PR:
+    if user.role.is_privileged():
         return True
     
     if user.role in [UserRole.SMM_COORDINATOR, UserRole.DESIGN_COORDINATOR, 
@@ -375,7 +375,7 @@ async def initialize_drive_structure(
     
     Доступ: только VP4PR
     """
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied. Only VP4PR can initialize drive structure."
@@ -523,7 +523,7 @@ async def sync_drive_changes(
     # Проверка прав доступа
     if current_user.role not in [
         UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
-        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR
+        UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR, UserRole.VP4PR, UserRole.ADMIN
     ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -563,7 +563,7 @@ async def cleanup_service_account_quota(
     from app.models.user import UserRole
     
     # Только VP4PR может очищать квоту
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only VP4PR can cleanup service account quota"

@@ -4,7 +4,7 @@ import { Calendar as CalendarIcon, RefreshCw, Loader2, ChevronLeft, ChevronRight
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
 import { calendarApi, type CalendarRole, type DetailLevel } from '../services/calendar'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 import { format, addDays, startOfWeek, endOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, addMonths, differenceInDays } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useNavigate } from 'react-router-dom'
@@ -82,13 +82,7 @@ export default function Calendar() {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
-  const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
-  )
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   const dateRange = useMemo(() => {
     let start: Date, end: Date

@@ -5,7 +5,7 @@ import { galleryApi, type GalleryItem, type GalleryFile } from '../services/gall
 import { tasksApi } from '../services/tasks'
 import { useThemeStore } from '../store/themeStore'
 import { useAuthStore } from '../store/authStore'
-import { UserRole } from '../types/user'
+import { isCoordinatorOrAbove } from '../types/user'
 
 export default function Gallery() {
   const { theme } = useThemeStore()
@@ -30,13 +30,7 @@ export default function Gallery() {
   const [videoPlaying, setVideoPlaying] = useState(false)
   const [showAllMedia, setShowAllMedia] = useState(false)
 
-  const isCoordinator = user && (
-    user.role === UserRole.COORDINATOR_SMM ||
-    user.role === UserRole.COORDINATOR_DESIGN ||
-    user.role === UserRole.COORDINATOR_CHANNEL ||
-    user.role === UserRole.COORDINATOR_PRFR ||
-    user.role === UserRole.VP4PR
-  )
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
 
   const syncMutation = useMutation({
     mutationFn: () => galleryApi.syncFromDrive(),

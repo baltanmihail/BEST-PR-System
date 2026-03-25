@@ -124,7 +124,8 @@ async def create_task_topic(
         UserRole.COORDINATOR_DESIGN,
         UserRole.COORDINATOR_CHANNEL,
         UserRole.COORDINATOR_PRFR,
-        UserRole.VP4PR
+        UserRole.VP4PR,
+        UserRole.ADMIN
     ]
     
     if not is_coordinator:

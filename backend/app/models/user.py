@@ -21,6 +21,19 @@ class UserRole(str, enum.Enum):
     COORDINATOR_CHANNEL = "coordinator_channel"
     COORDINATOR_PRFR = "coordinator_prfr"
     VP4PR = "vp4pr"
+    ADMIN = "admin"
+
+    def is_privileged(self) -> bool:
+        """VP4PR или ADMIN — максимальные права."""
+        return self in (UserRole.VP4PR, UserRole.ADMIN)
+
+    def is_coordinator_or_above(self) -> bool:
+        """Координатор, VP4PR или ADMIN."""
+        return self in (
+            UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+            UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR,
+            UserRole.VP4PR, UserRole.ADMIN,
+        )
 
 
 class UserRoleType(TypeDecorator):

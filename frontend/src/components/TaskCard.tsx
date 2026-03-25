@@ -12,6 +12,7 @@ import { usersApi, UserProfile } from '../services/users'
 import TaskQuestions from './TaskQuestions'
 import TaskFiles from './TaskFiles'
 import StageFileUpload from './StageFileUpload'
+import { isPrivileged, isCoordinatorOrAbove } from '../types/user'
 
 const typeLabels: Record<string, string> = {
   smm: 'SMM',
@@ -80,8 +81,8 @@ export default function TaskCard({ task }: TaskCardProps) {
   })
 
   const isRegistered = !!user?.is_active
-  const isCoordinator = user?.role === 'vp4pr' || (typeof user?.role === 'string' && user.role.includes('coordinator'))
-  const isVP4PR = user?.role === 'vp4pr'
+  const isCoordinator = user ? isCoordinatorOrAbove(user.role) : false
+  const isVP4PR = user ? isPrivileged(user.role) : false
   const isAssignedToMe = task.assignments?.some(a => a.user_id === user?.id && a.status !== 'cancelled')
   const canTakeTask = isRegistered && !isAssignedToMe && ['open', 'draft'].includes(task.status)
 

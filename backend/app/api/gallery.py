@@ -287,7 +287,7 @@ async def sync_gallery_from_drive(
         from sqlalchemy import select
         
         # Сначала ищем VP4PR
-        vp4pr_query = select(User).where(User.role == UserRole.VP4PR).limit(1)
+        vp4pr_query = select(User).where(User.role.in_([UserRole.VP4PR, UserRole.ADMIN])).limit(1)
         result = await db.execute(vp4pr_query)
         vp4pr_user = result.scalar_one_or_none()
         
@@ -335,7 +335,7 @@ async def reorder_gallery_items(
     from app.models.user import UserRole
     
     # Проверка прав - только VP4PR может менять порядок
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only VP4PR can reorder gallery items"

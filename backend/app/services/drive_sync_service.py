@@ -354,7 +354,7 @@ class DriveSyncService:
             from app.models.user import User, UserRole
             system_user_query = select(User).where(
                 or_(
-                    User.role == UserRole.VP4PR,
+                    User.role.in_([UserRole.VP4PR, UserRole.ADMIN]),
                     User.role.in_([
                         UserRole.COORDINATOR_SMM,
                         UserRole.COORDINATOR_DESIGN,

@@ -90,6 +90,7 @@ class EquipmentReminders:
             coordinators_query = select(User).where(
                 User.role.in_([
                     UserRole.VP4PR,
+                    UserRole.ADMIN,
                     UserRole.COORDINATOR_CHANNEL
                 ])
             )
@@ -254,7 +255,7 @@ class EquipmentReminders:
             if p:
                 parts.append(f"{fio}: {'; '.join(p)}")
         msg = "Завтра (срочно)\n" + "\n".join(parts[:8])
-        coord_result = await db.execute(select(User).where(User.role.in_([UserRole.VP4PR, UserRole.COORDINATOR_CHANNEL])))
+        coord_result = await db.execute(select(User).where(User.role.in_([UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR_CHANNEL])))
         for coord in coord_result.scalars().all():
             if coord.id:
                 try:

@@ -91,7 +91,7 @@ async def get_uploads(
     )
     
     # Фильтр по роли
-    is_moderator = current_user.role in [UserRole.VP4PR, UserRole.COORDINATOR]
+    is_moderator = current_user.role in [UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR]
     if not is_moderator:
         query = query.where(FileUpload.uploaded_by_id == current_user.id)
     
@@ -125,7 +125,7 @@ async def get_pending_uploads(
     
     Только для VP4PR и координаторов.
     """
-    if current_user.role not in [UserRole.VP4PR, UserRole.COORDINATOR]:
+    if current_user.role not in [UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Только VP4PR и координаторы могут просматривать очередь модерации"
@@ -153,7 +153,7 @@ async def get_upload_stats(
     db: AsyncSession = Depends(get_db)
 ):
     """Статистика загрузок для VP4PR"""
-    if current_user.role not in [UserRole.VP4PR, UserRole.COORDINATOR]:
+    if current_user.role not in [UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR]:
         raise HTTPException(status_code=403, detail="Доступ запрещён")
     
     pending = await db.scalar(
@@ -192,7 +192,7 @@ async def approve_upload(
     
     Файл перемещается в постоянную папку. Только VP4PR.
     """
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(status_code=403, detail="Только VP4PR может одобрять загрузки")
     
     service = FileUploadService(db)
@@ -213,7 +213,7 @@ async def reject_upload(
     
     Файл удаляется. Только VP4PR.
     """
-    if current_user.role != UserRole.VP4PR:
+    if not current_user.role.is_privileged():
         raise HTTPException(status_code=403, detail="Только VP4PR может отклонять загрузки")
     
     service = FileUploadService(db)
@@ -241,7 +241,7 @@ async def get_upload(
         raise HTTPException(status_code=404, detail="Загрузка не найдена")
     
     # Проверка доступа
-    is_moderator = current_user.role in [UserRole.VP4PR, UserRole.COORDINATOR]
+    is_moderator = current_user.role in [UserRole.VP4PR, UserRole.ADMIN, UserRole.COORDINATOR]
     if not is_moderator and upload.uploaded_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Нет доступа")
     

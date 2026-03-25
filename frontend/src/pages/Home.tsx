@@ -10,6 +10,7 @@ import { useThemeStore } from '../store/themeStore'
 import { useTour } from '../hooks/useTour'
 import { telegramChatsApi, GeneralChatResponse } from '../services/telegramChats'
 import { onboardingApi } from '../services/onboarding'
+import { isPrivileged, isCoordinatorOrAbove } from '../types/user'
 
 export default function Home() {
   const { fetchUser, user } = useAuthStore()
@@ -79,9 +80,8 @@ export default function Home() {
     initVisitForUnregistered()
   }, [user, fetchUser])
 
-  // Проверяем роль координатора или VP4PR (роль может быть строкой или enum)
   const roleStr = typeof user?.role === 'string' ? user.role.toLowerCase() : String(user?.role || '').toLowerCase()
-  const isCoordinator = user && (roleStr.includes('coordinator') || roleStr === 'vp4pr')
+  const isCoordinator = user && isCoordinatorOrAbove(user.role)
   const isRegistered = !!(user && user.is_active)
   const isUnregistered = !user || !user.is_active
   
@@ -154,7 +154,7 @@ export default function Home() {
         <div className="flex items-center space-x-2 md:space-x-3 mb-3 md:mb-4">
           <Sparkles className="h-6 w-6 md:h-8 md:w-8 flex-shrink-0" />
           <h1 className={`text-2xl md:text-4xl font-bold text-readable ${theme}`}>
-            {roleStr === 'vp4pr'
+            {isPrivileged(roleStr)
               ? 'Панель главы PR-отдела'
               : isCoordinator
               ? 'Панель координатора'
@@ -164,7 +164,7 @@ export default function Home() {
           </h1>
         </div>
         <p className={`text-base md:text-xl text-white text-readable ${theme} mb-4 md:mb-6`}>
-          {roleStr === 'vp4pr'
+          {isPrivileged(roleStr)
             ? 'Управляйте задачами, модерацией и командой'
             : isCoordinator
             ? 'Управляйте задачами, модерацией и командой'

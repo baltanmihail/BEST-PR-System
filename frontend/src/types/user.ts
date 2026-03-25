@@ -6,7 +6,20 @@ export enum UserRole {
   COORDINATOR_DESIGN = 'coordinator_design',
   COORDINATOR_CHANNEL = 'coordinator_channel',
   COORDINATOR_PRFR = 'coordinator_prfr',
-  VP4PR = 'vp4pr'
+  VP4PR = 'vp4pr',
+  ADMIN = 'admin'
+}
+
+export function isPrivileged(role: UserRole | string): boolean {
+  return role === UserRole.VP4PR || role === UserRole.ADMIN || role === 'vp4pr' || role === 'admin'
+}
+
+export function isCoordinatorOrAbove(role: UserRole | string): boolean {
+  return isPrivileged(role) || [
+    UserRole.COORDINATOR_SMM, UserRole.COORDINATOR_DESIGN,
+    UserRole.COORDINATOR_CHANNEL, UserRole.COORDINATOR_PRFR,
+    'coordinator_smm', 'coordinator_design', 'coordinator_channel', 'coordinator_prfr'
+  ].includes(role as any)
 }
 
 export interface User {
