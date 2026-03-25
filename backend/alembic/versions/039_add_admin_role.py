@@ -7,7 +7,7 @@ Create Date: 2026-03-23
 from alembic import op
 
 revision = '039_add_admin_role'
-down_revision = '038_add_daily_task_priority_time'
+down_revision = '038'
 branch_labels = None
 depends_on = None
 
