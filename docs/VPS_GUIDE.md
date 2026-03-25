@@ -80,6 +80,13 @@ docker compose logs backend | grep -i traceback
 
 ## 4. Деплой новой версии
 
+```bash
+cd "BEST PR System"
+git add .
+git commit -m "Что я делаю не так в своей жизни?"
+git push origin main
+```
+
 ### Обычный деплой (после git push)
 
 ```bash

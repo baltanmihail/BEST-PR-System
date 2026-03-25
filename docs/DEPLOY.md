@@ -7,6 +7,7 @@
 ```bash
 # 1. SSH на сервер
 ssh misha_b@192.144.12.196
+!passBEST
 
 # 2. Настройка сервера (Docker, nginx, certbot) — один раз
 cd /tmp
