@@ -1,3 +1,59 @@
+# Инструкция по развёртыванию
+
+## VPS (Ubuntu) — основной деплой
+
+### Быстрый старт
+
+```bash
+# 1. SSH на сервер
+ssh misha_b@192.144.12.196
+
+# 2. Настройка сервера (Docker, nginx, certbot) — один раз
+cd /tmp
+git clone https://github.com/baltanmihail/BEST-PR-System.git setup-tmp
+bash setup-tmp/deploy/setup-server.sh
+rm -rf setup-tmp
+exit  # перелогиниться для docker group
+
+# 3. Первый деплой
+ssh misha_b@192.144.12.196
+bash /home/misha_b/best-pr-system/deploy/first-deploy.sh
+
+# 4. SSL сертификат (после настройки DNS)
+sudo certbot --nginx -d pr.bmstu-best.ru
+
+# 5. Последующие деплои — просто:
+cd /home/misha_b/best-pr-system && bash deploy/deploy.sh
+```
+
+### Переменные окружения
+
+Скопировать `.env.example` в `.env` и заполнить. Обязательные:
+- `POSTGRES_PASSWORD` — пароль базы данных
+- `SECRET_KEY` — секрет для JWT (`openssl rand -hex 32`)
+- `TELEGRAM_BOT_TOKEN` — токен бота
+- `FRONTEND_URL=https://pr.bmstu-best.ru`
+
+Остальные — см. `.env.example`.
+
+### Миграция БД из Railway
+
+```bash
+# На локальной машине (или Railway CLI):
+pg_dump 'postgresql://USER:PASS@HOST:PORT/DB' -Fc > railway_dump.sql
+scp railway_dump.sql misha_b@192.144.12.196:~/best-pr-system/
+
+# На сервере:
+cd ~/best-pr-system
+bash deploy/migrate-db.sh railway_dump.sql
+```
+
+---
+
+# Railway (legacy)
+
+> Railway используется как fallback. Основной деплой — VPS выше.
+
 # 🚀 Инструкция по развёртыванию на Railway
 
 ## 📋 Быстрый старт
