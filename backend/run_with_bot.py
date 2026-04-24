@@ -254,6 +254,7 @@ async def run_bot():
         from aiogram import Bot, Dispatcher
         from aiogram.enums import ParseMode
         from aiogram.fsm.storage.memory import MemoryStorage
+        from aiogram.client.session.aiohttp import AiohttpSession
         from app.config import settings
         from bot.handlers import router
         
@@ -261,8 +262,12 @@ async def run_bot():
             logger.warning("⚠️ TELEGRAM_BOT_TOKEN не установлен, бот не запустится")
             return
         
+        # Настраиваем прокси через встроенный Tor-контейнер для обхода блокировок Telegram API
+        proxy_url = os.getenv("TELEGRAM_PROXY", "http://tor:8118")
+        session = AiohttpSession(proxy=proxy_url)
+        
         # Используем простой способ создания бота без DefaultBotProperties
-        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
         
         # Закрываем все предыдущие соединения, чтобы избежать конфликтов
         try:

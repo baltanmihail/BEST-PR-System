@@ -52,6 +52,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      tor:
+        condition: service_started
+
+  tor:
+    image: dperson/torproxy
+    container_name: best_pr_tor
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8118:8118"
+      - "127.0.0.1:9050:9050"
 
   frontend:
     build:
