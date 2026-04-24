@@ -239,11 +239,11 @@ async def run_bidirectional_sync_scheduler():
 
 async def run_bot():
     """Запуск Telegram бота"""
-    # Запускаем бота только в production, чтобы избежать конфликтов
-    environment = os.getenv("ENVIRONMENT", "development")
-    if environment != "production":
-        logger.info(f"⚠️ Бот не запускается в окружении '{environment}'. Запустите только в production.")
-        return
+    # Убрали проверку на ENVIRONMENT, так как мы всегда хотим запускать бота
+    # environment = os.getenv("ENVIRONMENT", "development")
+    # if environment != "production":
+    #     logger.info(f"⚠️ Бот не запускается в окружении '{environment}'. Запустите только в production.")
+    #     return
     
     # Ждём, пока API запустится
     await wait_for_api()
