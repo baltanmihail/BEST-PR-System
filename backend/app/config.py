@@ -107,7 +107,7 @@ class Settings(BaseSettings):
         return origins if origins else [
             "http://localhost:3000",
             "http://localhost:5173",
-            "https://best-pr-system.up.railway.app"
+            "https://best-pr-system.ru"
         ]
 
 
