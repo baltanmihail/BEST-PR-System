@@ -263,11 +263,20 @@ async def run_bot():
             return
         
         # Настраиваем прокси через встроенный Tor-контейнер для обхода блокировок Telegram API
+        # Заставляем AiohttpSession использовать SOCKS5 прокси для Tor (требует aiohttp-socks)
+        # Если aiohttp-socks не установлен, HTTP прокси на порту 8118 может сработать, если установлен Privoxy.
+        # В dperson/torproxy порт 8118 - это Privoxy, перенаправляющий HTTP на Tor,
+        # а 9050 - чистый SOCKS5 Tor.
         proxy_url = os.getenv("TELEGRAM_PROXY", "http://tor:8118")
-        session = AiohttpSession(proxy=proxy_url)
+        logger.info(f"🔄 Используем прокси для Telegram: {proxy_url}")
         
-        # Используем простой способ создания бота без DefaultBotProperties
-        bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
+        try:
+            session = AiohttpSession(proxy=proxy_url)
+            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка при создании сессии с прокси: {e}")
+            logger.info("🔄 Пробуем без прокси...")
+            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
         
         # Закрываем все предыдущие соединения, чтобы избежать конфликтов
         try:
