@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-DOMAIN="pr.bmstu-best.ru"
+DOMAIN="best-pr-system.ru"
 PROJECT_DIR="/home/misha_b/best-pr-system"
 REPO_URL="https://github.com/baltanmihail/BEST-PR-System.git"
 

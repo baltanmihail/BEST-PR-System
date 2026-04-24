@@ -3,7 +3,7 @@ set -e
 
 REPO_URL="https://github.com/baltanmihail/BEST-PR-System.git"
 PROJECT_DIR="$HOME/best-pr-system"
-DOMAIN="pr.bmstu-best.ru"
+DOMAIN="best-pr-system.ru"
 SERVER_IP="192.144.12.196"
 
 echo "============================================="

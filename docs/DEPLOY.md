@@ -21,7 +21,7 @@ ssh misha_b@192.144.12.196
 bash /home/misha_b/best-pr-system/deploy/first-deploy.sh
 
 # 4. SSL сертификат (после настройки DNS)
-sudo certbot --nginx -d pr.bmstu-best.ru
+sudo certbot --nginx -d best-pr-system.ru -d www.best-pr-system.ru
 
 # 5. Последующие деплои — просто:
 cd /home/misha_b/best-pr-system && bash deploy/deploy.sh
@@ -33,7 +33,7 @@ cd /home/misha_b/best-pr-system && bash deploy/deploy.sh
 - `POSTGRES_PASSWORD` — пароль базы данных
 - `SECRET_KEY` — секрет для JWT (`openssl rand -hex 32`)
 - `TELEGRAM_BOT_TOKEN` — токен бота
-- `FRONTEND_URL=https://pr.bmstu-best.ru`
+- `FRONTEND_URL=https://best-pr-system.ru`
 
 Остальные — см. `.env.example`.
 

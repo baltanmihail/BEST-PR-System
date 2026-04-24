@@ -1,7 +1,7 @@
 # VPS Guide — BEST PR System
 
 Сервер: `192.144.12.196` (Ubuntu 22.04)
-Домен: `pr.bmstu-best.ru`
+Домен: `best-pr-system.ru`
 
 ---
 
@@ -325,16 +325,19 @@ crontab -e
 
 ## 12. Полезные команды — шпаргалка
 
-| Действие | Команда |
-|----------|---------|
-| Подключиться | `ssh misha_b@192.144.12.196` |
-| Статус | `docker compose ps` |
-| Логи бэкенда | `docker compose logs -f backend` |
-| Деплой | `bash deploy/deploy.sh` |
-| Откат | `git checkout HEAD~1 && docker compose up -d --build` |
-| Перезапуск | `docker compose restart backend` |
-| Бэкап БД | `docker compose exec postgres pg_dump -U best_pr_user -d best_pr_system -Fc > backup.sql` |
-| Зайти в БД | `docker compose exec postgres psql -U best_pr_user -d best_pr_system` |
-| Миграции | `docker compose exec backend python -m alembic upgrade head` |
-| Место на диске | `df -h / && docker system df` |
-| Очистка Docker | `docker system prune -f` |
+
+| Действие       | Команда                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Подключиться   | `ssh misha_b@192.144.12.196`                                                              |
+| Статус         | `docker compose ps`                                                                       |
+| Логи бэкенда   | `docker compose logs -f backend`                                                          |
+| Деплой         | `bash deploy/deploy.sh`                                                                   |
+| Откат          | `git checkout HEAD~1 && docker compose up -d --build`                                     |
+| Перезапуск     | `docker compose restart backend`                                                          |
+| Бэкап БД       | `docker compose exec postgres pg_dump -U best_pr_user -d best_pr_system -Fc > backup.sql` |
+| Зайти в БД     | `docker compose exec postgres psql -U best_pr_user -d best_pr_system`                     |
+| Миграции       | `docker compose exec backend python -m alembic upgrade head`                              |
+| Место на диске | `df -h / && docker system df`                                                             |
+| Очистка Docker | `docker system prune -f`                                                                  |
+
+
