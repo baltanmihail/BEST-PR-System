@@ -1706,7 +1706,7 @@ class SheetsSyncService:
                     continue
                 
                 # Пытаемся извлечь task_id из гиперссылки или текста
-                # Формат гиперссылки: =HYPERLINK("https://best-pr-system.up.railway.app/tasks/{task_id}"; "...")
+                # Формат гиперссылки: =HYPERLINK("https://best-pr-system.ru/tasks/{task_id}"; "...")
                 import re
                 if isinstance(header, str) and "tasks/" in header:
                     match = re.search(r'/tasks/([a-f0-9-]{36})', header)

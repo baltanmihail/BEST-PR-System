@@ -83,7 +83,7 @@ ENVIRONMENT=production
 TELEGRAM_BOT_TOKEN=ваш_токен_бота
 TELEGRAM_ADMIN_IDS=5079636941
 TELEGRAM_GENERAL_CHAT_ID=3545542173
-FRONTEND_URL=https://best-pr-system.up.railway.app
+FRONTEND_URL=https://best-pr-system.ru
 ```
 
 **Google Drive и Sheets (для синхронизации):**
@@ -129,7 +129,7 @@ GOOGLE_DRIVE_OWNER_EMAIL=
 
 **Опциональные:**
 ```env
-CORS_ORIGINS=https://best-pr-system.up.railway.app
+CORS_ORIGINS=https://best-pr-system.ru
 LOG_LEVEL=INFO
 API_V1_PREFIX=/api/v1
 ```
@@ -143,7 +143,7 @@ API_V1_PREFIX=/api/v1
 
 **Переменные окружения:**
 ```env
-VITE_API_URL=https://best-pr-api.up.railway.app/api/v1
+VITE_API_URL=https://best-pr-system.ru/api/v1
 ```
 
 ### 3. Деплой
@@ -264,7 +264,7 @@ git push origin main
 1. Откройте [@BotFather](https://t.me/BotFather)
 2. Отправьте `/mybots` и выберите вашего бота
 3. Выберите **"Bot Settings"** → **"Mini App"**
-4. Укажите URL фронтенда: `https://best-pr-system.up.railway.app`
+4. Укажите URL фронтенда: `https://best-pr-system.ru`
 5. Готово! Кнопка "Open App" появится в интерфейсе бота
 
 📖 Подробная инструкция: [НАСТРОЙКА_MINI_APP.md](./НАСТРОЙКА_MINI_APP.md)

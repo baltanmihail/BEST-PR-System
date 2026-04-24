@@ -5,7 +5,7 @@ import httpx
 import asyncio
 from datetime import datetime, timedelta
 
-API_URL = "https://best-pr-system.up.railway.app/api/v1"
+API_URL = "https://best-pr-system.ru/api/v1"
 
 async def test_basic_endpoints():
     """Тестирование базовых endpoints"""
@@ -200,7 +200,7 @@ async def main():
     print("✅ Тестирование завершено!")
     print("=" * 60)
     print("\n💡 Совет: Откройте Swagger UI для интерактивного тестирования:")
-    print(f"   https://best-pr-system.up.railway.app/docs")
+    print(f"   https://best-pr-system.ru/docs")
 
 
 if __name__ == "__main__":

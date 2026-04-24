@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     GOOGLE_OAUTH_REFRESH_TOKEN: str = os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN", "")
     
     # Frontend URL (для ссылок в боте и уведомлениях)
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.up.railway.app")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "https://best-pr-system.ru")
     
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
@@ -95,13 +95,13 @@ class Settings(BaseSettings):
         """
         cors_str = os.getenv(
             "CORS_ORIGINS",
-            "http://localhost:3000,http://localhost:5173,https://best-pr-system.up.railway.app"
+            "http://localhost:3000,http://localhost:5173,https://best-pr-system.ru"
         )
         if not cors_str or not cors_str.strip():
             return [
                 "http://localhost:3000",
                 "http://localhost:5173",
-                "https://best-pr-system.up.railway.app"
+                "https://best-pr-system.ru"
             ]
         origins = [origin.strip() for origin in cors_str.split(",") if origin.strip()]
         return origins if origins else [

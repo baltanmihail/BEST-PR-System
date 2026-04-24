@@ -50,4 +50,4 @@ src/
 
 ## API
 
-API доступен по адресу: https://best-pr-system.up.railway.app/api/v1
+API доступен по адресу: https://best-pr-system.ru/api/v1

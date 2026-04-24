@@ -14,7 +14,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'https://best-pr-system.up.railway.app',
+        target: 'https://best-pr-system.ru',
         changeOrigin: true,
       },
     },

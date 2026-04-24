@@ -197,7 +197,7 @@ export default function EquipmentPage() {
 
   const API_ORIGIN = import.meta.env.VITE_API_URL
     ? import.meta.env.VITE_API_URL.replace(/\/api\/v1\/?$/, '')
-    : (import.meta.env.DEV ? 'http://localhost:8000' : 'https://best-pr-api.up.railway.app')
+    : (import.meta.env.DEV ? 'http://localhost:8000' : 'https://best-pr-system.ru')
 
   const getPhotoUrl = (url?: string): string | undefined => {
     if (!url) return undefined
