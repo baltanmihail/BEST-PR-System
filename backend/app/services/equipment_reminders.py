@@ -6,6 +6,7 @@ VP4PR, глава Channel и пользователь получают увед�
 import logging
 from typing import List, Dict, Optional
 from datetime import date, timedelta
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, cast, String
 
