@@ -56,11 +56,12 @@ services:
         condition: service_started
 
   tor:
-    image: dperson/torproxy
+    image: alpine:latest
     container_name: best_pr_tor
+    command: >
+      sh -c 'apk add --no-cache tor && echo "SocksPort 0.0.0.0:9050" > /etc/tor/torrc && tor -f /etc/tor/torrc'
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8118:8118"
       - "127.0.0.1:9050:9050"
 
   frontend:
