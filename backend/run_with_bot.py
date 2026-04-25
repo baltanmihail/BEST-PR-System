@@ -262,27 +262,34 @@ async def run_bot():
             logger.warning("⚠️ TELEGRAM_BOT_TOKEN не установлен, бот не запустится")
             return
         
-        # Настраиваем прокси через встроенный Tor-контейнер для обхода блокировок Telegram API
-        # Заставляем AiohttpSession использовать SOCKS5 прокси для Tor (требует aiohttp-socks)
-        proxy_url = os.getenv("TELEGRAM_PROXY", "socks5://tor:9050")
-        logger.info(f"🔄 Используем прокси для Telegram: {proxy_url}")
+        # Настраиваем прокси через встроенный Tor-контейнер или кастомный API сервер
+        telegram_api_url = os.getenv("TELEGRAM_API_URL")
         
-        try:
-            # Импортируем ProxyConnector здесь, чтобы не ломать приложение, если aiohttp-socks не установлен
-            from aiohttp_socks import ProxyConnector
-            connector = ProxyConnector.from_url(proxy_url)
-            session = AiohttpSession()
-            session._connector = connector # Hack for aiogram 3.2.0 AiohttpSession which might not accept connector in init
+        if telegram_api_url:
+            from aiogram.client.telegram import TelegramAPIServer
+            logger.info(f"🔄 Используем кастомный API сервер: {telegram_api_url}")
+            session = AiohttpSession(api=TelegramAPIServer.from_base(telegram_api_url))
             bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
-        except ImportError:
-            logger.warning("⚠️ aiohttp-socks не установлен! Пытаемся использовать HTTP прокси...")
-            proxy_url_http = proxy_url.replace("socks5", "http").replace("9050", "8118")
-            session = AiohttpSession(proxy=proxy_url_http)
-            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
-        except Exception as e:
-            logger.warning(f"⚠️ Ошибка при создании сессии с прокси: {e}")
-            logger.info("🔄 Пробуем без прокси...")
-            bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
+        else:
+            proxy_url = os.getenv("TELEGRAM_PROXY", "socks5://tor:9050")
+            logger.info(f"🔄 Используем прокси для Telegram: {proxy_url}")
+            
+            try:
+                # Импортируем ProxyConnector здесь, чтобы не ломать приложение, если aiohttp-socks не установлен
+                from aiohttp_socks import ProxyConnector
+                connector = ProxyConnector.from_url(proxy_url)
+                session = AiohttpSession()
+                session._connector = connector # Hack for aiogram 3.2.0 AiohttpSession which might not accept connector in init
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
+            except ImportError:
+                logger.warning("⚠️ aiohttp-socks не установлен! Пытаемся использовать HTTP прокси...")
+                proxy_url_http = proxy_url.replace("socks5", "http").replace("9050", "8118")
+                session = AiohttpSession(proxy=proxy_url_http)
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
+            except Exception as e:
+                logger.warning(f"⚠️ Ошибка при создании сессии с прокси: {e}")
+                logger.info("🔄 Пробуем без прокси...")
+                bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML)
         
         # Закрываем все предыдущие соединения, чтобы избежать конфликтов
         try:
