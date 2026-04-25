@@ -271,7 +271,8 @@ async def run_bot():
             # Импортируем ProxyConnector здесь, чтобы не ломать приложение, если aiohttp-socks не установлен
             from aiohttp_socks import ProxyConnector
             connector = ProxyConnector.from_url(proxy_url)
-            session = AiohttpSession(connector=connector)
+            session = AiohttpSession()
+            session._connector = connector # Hack for aiogram 3.2.0 AiohttpSession which might not accept connector in init
             bot = Bot(token=settings.TELEGRAM_BOT_TOKEN, parse_mode=ParseMode.HTML, session=session)
         except ImportError:
             logger.warning("⚠️ aiohttp-socks не установлен! Пытаемся использовать HTTP прокси...")
